@@ -446,8 +446,12 @@ def break_out_heading(target):
     """
     dx = target[0] - player_pos[0]
     dy = target[1] - player_pos[1]
-    straight = normalize_move(dx, dy)
-    if vec_len(straight[0], straight[1]) <= 0:
+    return sweep_from(normalize_move(dx, dy))
+
+
+def sweep_from(straight):
+    """The same widening sweep, around whatever heading is handed in."""
+    if straight is None or vec_len(straight[0], straight[1]) <= 0:
         return random_safe_movement()
 
     offsets = [0.0, 0.785, -0.785, 1.571, -1.571, 2.356, -2.356, 3.142]
@@ -1092,12 +1096,21 @@ if is_stuck and stuck_for > BREAK_OUT_AFTER:
         # 2. Otherwise the middle of the map, which is away from every edge.
         target = (width / 2.0, height / 2.0)
 
-    movement = break_out_heading(target)
-
+    # Pinned against a specific edge? Then sweep around "away from it" rather
+    # than around "toward the target" - but SWEEP either way.
+    #
+    # This used to overwrite the sweep outright, which quietly disabled it
+    # exactly where it was needed most. At a map edge escape_boundary() returns
+    # one fixed heading, so the bot pushed that same direction indefinitely: a
+    # log of one wedge shows heading 180.0 repeated with efficiency 0.01, over
+    # and over, because the away-from-edge direction happened to have a wall in
+    # it too. Seeding the sweep keeps the useful half of that information and
+    # still lets the other seven headings be tried.
     edge = escape_boundary()
     if edge is not None and not leads_into_gas(edge):
-        # Pinned against a specific edge: leave it first, then resume.
-        movement = edge
+        movement = sweep_from(edge)
+    else:
+        movement = break_out_heading(target)
 
     if leads_into_gas(movement):
         # Never break out into the gas - rather stay stuck a moment longer.

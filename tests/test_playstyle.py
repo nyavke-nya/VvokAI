@@ -390,8 +390,8 @@ def check_walls(report):
                  context["first_unblocked"]([north], north), (0, 0))
 
 
-BREAKOUT_FUNCS = {"break_out_heading", "normalize_move", "vec_len",
-                  "random_safe_movement"}
+BREAKOUT_FUNCS = {"break_out_heading", "sweep_from", "normalize_move",
+                  "vec_len", "random_safe_movement"}
 
 
 def check_breakout(report):
@@ -457,6 +457,24 @@ def check_breakout(report):
     state["blocked"] = {i * math.pi / 8 for i in range(-8, 9)}
     after = heading_after(0.3)
     report.check("same heading with everything marked blocked", after, before)
+
+    report.section("being pinned at a map edge must not disable the sweep")
+    # escape_boundary() returns one fixed heading, and this used to overwrite
+    # the sweep with it - which disabled the sweep exactly where it mattered
+    # most. A real log shows the consequence: heading 180.0 repeated with
+    # efficiency 0.01, because the away-from-edge direction had a wall in it
+    # too and nothing ever tried anything else.
+    away_from_edge = (-100.0, 0.0)
+    swept = set()
+    for tenth in range(60):
+        context["stuck_for"] = tenth / 10.0
+        vector = context["sweep_from"](away_from_edge)
+        swept.add(round(math.degrees(math.atan2(vector[1], vector[0]))))
+    report.at_least("seeding from the edge still sweeps", len(swept), 6)
+    context["stuck_for"] = 0.0
+    first = context["sweep_from"](away_from_edge)
+    report.check("and it starts by heading away from the edge",
+                 round(math.degrees(math.atan2(first[1], first[0]))), 180)
 
     report.section("it never gives up and stands still")
     for tenth in range(60):
