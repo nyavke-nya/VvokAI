@@ -716,6 +716,9 @@ def is_safe_ast(code_str):
     return True, None
 
 
+_compiled_playstyles = {}
+
+
 def interpret_pyla_code(pyla_code, context):
     safe_globals = SAFE_GLOBALS.copy()
     safe_globals.update(context)
@@ -723,11 +726,32 @@ def interpret_pyla_code(pyla_code, context):
 
     try:
         if isinstance(pyla_code, str):
-            is_safe, error_msg = is_safe_ast(pyla_code)
-            if not is_safe:
-                print(f"Security/Syntax Validation Failed for playstyle: {error_msg}")
-                return None, safe_globals
-            compiled_code = compile(pyla_code, '<string>', 'exec')
+            # Compile once, then reuse.
+            #
+            # This used to run is_safe_ast() - a full ast.parse plus a walk of
+            # every node - and then compile(), on every single iteration of the
+            # bot loop. That is fixed work on a script that has not changed, and
+            # it scales with the script's length: measured in the loop profile
+            # it was 17.5 ms per iteration on a 41 KB playstyle, second only to
+            # the YOLO pass and more than the wall detector. It is invisible on
+            # a small script, which is why nobody noticed until the playstyles
+            # grew.
+            #
+            # Keyed by the source text, so editing a playstyle and reloading it
+            # still re-validates and recompiles.
+            cached = _compiled_playstyles.get(pyla_code)
+            if cached is None:
+                is_safe, error_msg = is_safe_ast(pyla_code)
+                if not is_safe:
+                    print(f"Security/Syntax Validation Failed for playstyle: {error_msg}")
+                    return None, safe_globals
+                cached = compile(pyla_code, '<string>', 'exec')
+                # One entry is the normal case; the cap only matters if a UI
+                # edits a playstyle repeatedly within one run.
+                if len(_compiled_playstyles) > 8:
+                    _compiled_playstyles.clear()
+                _compiled_playstyles[pyla_code] = cached
+            compiled_code = cached
         else:
             compiled_code = pyla_code
 

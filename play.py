@@ -148,6 +148,9 @@ class Play:
         self.dodge_service = None
         self.health_reader = None
         self.health_readings = {}
+        self._stage_times = {}
+        self._stage_iterations = 0
+        self._stage_reported = time.perf_counter()
         self.dodge_config = None
         self.dodge_solver = None
         self.movement_shaper = None
@@ -1156,14 +1159,45 @@ class Play:
 
         self.window_controller.debug_view.publish(frame, debug_data)
 
+    def stage(self, name, started):
+        """Record how long one stage of the iteration took.
+
+        IPS on its own says the loop is slow but not which part of it is, and
+        every stage here is a plausible culprit: three ONNX sessions, a handful
+        of pixel counts, the playstyle, and the debug view. Guessing between
+        them from a single number wastes far more time than measuring.
+        """
+        now = time.perf_counter()
+        self._stage_times[name] = self._stage_times.get(name, 0.0) + (now - started) * 1000.0
+        return now
+
+    def report_stages(self):
+        self._stage_iterations += 1
+        now = time.perf_counter()
+        if now - self._stage_reported < 5.0:
+            return
+        elapsed = now - self._stage_reported
+        count = max(self._stage_iterations, 1)
+        parts = sorted(self._stage_times.items(), key=lambda kv: kv[1], reverse=True)
+        total = sum(self._stage_times.values()) / count
+        line = "  ".join(f"{name} {ms / count:.1f}" for name, ms in parts if ms / count >= 0.05)
+        print(f"[loop] {count / elapsed:.1f} IPS  |  {total:.1f} ms/iter  |  {line}")
+        self._stage_times = {}
+        self._stage_iterations = 0
+        self._stage_reported = now
+
     def main(self, frame, brawler, main):
         current_time = time.time()
+        mark = time.perf_counter()
         state = main.get_latest_state()
         self.ensure_dodge_service()
+        mark = self.stage("state", mark)
         data = self.get_main_data(frame)
+        mark = self.stage("yolo", mark)
         if current_time - self.time_since_walls_checked > self.walls_treshold:
             tile_data = self.get_tile_data(frame, data.get("player"))
             walls, bushes = self.process_tile_data(tile_data)
+            mark = self.stage("walls", mark)
             self.time_since_walls_checked = current_time
             self.last_walls_data = walls
             data['wall'] = walls
@@ -1202,6 +1236,7 @@ class Play:
             self.publish_debug_view(frame, data, state)
             return
         self.time_since_last_proceeding = time.time()
+        mark = time.perf_counter()
         if current_time - self.time_since_hypercharge_checked > self.hypercharge_treshold:
             self.is_hypercharge_ready = self.check_if_hypercharge_ready(frame)
             self.time_since_hypercharge_checked = current_time
@@ -1211,11 +1246,17 @@ class Play:
         if current_time - self.time_since_super_checked > self.super_treshold:
             self.is_super_ready = self.check_if_super_ready(frame)
             self.time_since_super_checked = current_time
+        mark = self.stage("buttons", mark)
         self.frame = frame
         self.publish_dodge_context(data)
         if self.dodge_service is not None and not self.dodge_service.config.threaded:
             self.dodge_service.process_frame(frame, current_time)
+        mark = self.stage("dodge_ctx", mark)
         movement = self.loop(brawler, data, current_time)
+        mark = self.stage("playstyle", mark)
         self.publish_debug_view(frame, data, state, movement)
+        mark = self.stage("debugview", mark)
         if movement is not None:
             self.do_movement(movement)
+        self.stage("move", mark)
+        self.report_stages()
