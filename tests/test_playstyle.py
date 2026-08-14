@@ -399,9 +399,14 @@ def main():
     meta = playstyle_meta(PLAYSTYLES[1])
     report.check("unified_light declares dodge off", meta.get("dodge"), False)
     report.check("unified_dodge does not", playstyle_meta(PLAYSTYLES[0]).get("dodge"), None)
-    light = playstyle_source(PLAYSTYLES[1])
-    leftovers = sorted({m for m in re.findall(
-        r"projectiles|solve_dodge|dodge_enabled|DODGE_[A-Z_]+|UNDER_FIRE_SHOTS", light)})
+    # Checked over the AST, not the raw text: the file's header comment
+    # explains what was removed and why, and naming a thing in prose is not
+    # the same as still calling it.
+    light = ast.parse(playstyle_source(PLAYSTYLES[1]))
+    banned = {"projectiles", "solve_dodge", "dodge_enabled", "UNDER_FIRE_SHOTS",
+              "DODGE_MIN_CONFIDENCE", "DODGE_BREAKS_SPACING", "ATTACK_WHILE_DODGING"}
+    leftovers = sorted({n.id for n in ast.walk(light)
+                        if isinstance(n, ast.Name) and n.id in banned})
     report.check("unified_light has no projectile code left", leftovers, [])
 
     check_walls(report)

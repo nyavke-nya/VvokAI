@@ -1,22 +1,37 @@
 {"name": "Unified Light", "description": "Same tactics as Unified + Dodge - archetype spacing, regrouping, health awareness, smooth movement - with the projectile stack removed. The tracker thread never starts, so it costs no CPU.", "brawlers": ["all"], "gamemodes": ["all"], "author": "vvok", "date": "2026-08-14", "dodge": false}
 
 # ═══════════════════════════════════════════════════════════════════════
-#  UNIFIED + DODGE
+#  UNIFIED LIGHT
 #
-#  Merges default_up / default_right (combat tree), follower (regroup with
-#  teammates), showdown_survivor (rotate to centre, flee the gas) and
-#  universal_smart (archetype-driven spacing) into a single behaviour tree,
-#  then layers projectile evasion on top.
+#  Everything Unified + Dodge does, minus the projectile evasion: the combat
+#  tree, regrouping with teammates, rotation to the centre, fleeing the gas,
+#  archetype-driven spacing, health awareness and target selection are all
+#  identical. Keep changes in step with unified_dodge.pyla - the two are meant
+#  to differ in exactly one thing.
 #
-#  Movement philosophy:
-#    - normally the joystick GLIDES. The engine eases the vector and caps how
-#      fast it may rotate, so the bot draws arcs instead of flicking between
-#      compass directions.
-#    - while dodging it SNAPS. Setting `sharp_movement = True` bypasses the
-#      easing, the movement rate limiter and the unstuck rotation, so the
-#      escape happens on the very next touch event.
-#  That contrast is deliberate: smooth movement is hard to read, and a sudden
-#  break out of it is hard to lead.
+#  The metadata header carries "dodge": false, and that is not decoration. The
+#  projectile tracker runs on its own thread at capture rate whether or not
+#  anything reads it, so a playstyle that merely never calls solve_dodge()
+#  still pays for tracking it ignores. That flag stops the tracker and the aim
+#  solver from starting at all.
+#
+#  Two consequences worth knowing:
+#
+#    - Aimed shots are off. Leading a target needs the tracker's camera-pan
+#      estimate to tell a moving enemy from a moving camera; without it the
+#      game's own auto-aim is the better choice.
+#
+#    - `is_stuck`, `stuck_for` and `map_boundary` are all measured from the
+#      camera, so here they never fire. The break-out block and
+#      escape_boundary() below are therefore inert, and getting unwedged falls
+#      to the engine's timer-based rotation (unstuck_movement_delay in
+#      cfg/bot_config.toml) - which is what every official playstyle used.
+#      They are left in place rather than deleted so the two files stay
+#      line-for-line comparable.
+#
+#  Health reading and movement smoothing do not depend on the tracker, so the
+#  bot still disengages when hurt and still glides rather than flicking
+#  between compass directions.
 # ═══════════════════════════════════════════════════════════════════════
 
 

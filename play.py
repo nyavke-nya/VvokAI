@@ -640,8 +640,13 @@ class Play:
                     self.health_readings[key] = reading
 
         record(data.get('player'), False, "p")
-        record(data.get('teammate'), False, "t")
         record(data.get('enemy'), True, "e")
+        # Teammate health is measured only to be drawn. No tactic consults it -
+        # assess_fight counts nearby teammates but never asks how hurt they
+        # are - so outside the debug view it is pure cost, and at six brawlers
+        # on screen it was about a third of this function.
+        if self.dodge_config.debug_overlay:
+            record(data.get('teammate'), False, "t")
 
     def health_of(self, box, hostile=None):
         """Health fraction for a box, or None when it could not be read.
@@ -763,8 +768,10 @@ class Play:
         )
 
     def loop(self, brawler, data, current_time):
+        inner = time.perf_counter()
         self.last_player_box = data['player'][0]
         self.read_vitals(data)
+        inner = self.stage("| vitals", inner)
         projectiles = self.get_projectiles()
         player_center, player_radius = self.get_player_hit_circle(self.last_player_box)
         service = self.dodge_service
@@ -849,7 +856,9 @@ class Play:
                 'JOYSTICK_RADIUS': JOYSTICK_RADIUS,
                 'rotate_movement': self.rotate_movement
             }
+        inner = self.stage("| context", inner)
         movement = self.get_movement()
+        inner = self.stage("| pyla", inner)
         sharp = bool(self.last_pyla_globals.get('sharp_movement'))
         current_time = time.time()
         vector = self.movement_to_vector(movement)
@@ -898,7 +907,9 @@ class Play:
             if movement is None:
                 self.window_controller.release_movement()
                 self.last_movement = ''
+                self.stage("| shape", inner)
                 return None
+        self.stage("| shape", inner)
         return movement
 
     def check_if_hypercharge_ready(self, frame):
