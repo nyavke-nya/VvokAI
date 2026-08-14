@@ -139,13 +139,22 @@ class DodgeSolver:
         return threats
 
     def solve(self, projectiles, player_center, player_radius, tactical_vector,
-              is_blocked, player_speed=None, now=None, motion=None, collect_analysis=False):
+              is_blocked, player_speed=None, now=None, motion=None, collect_analysis=False,
+              hazard_veto=None):
         """Pick an escape direction.
 
         `tactical_vector` is whatever the playstyle decided to do this frame, in
         joystick units. `is_blocked` takes a joystick-unit vector and reports
-        whether a wall is in the way. Returns a DodgeDecision; when nothing is
-        incoming, `urgency` is "none" and `vector` is None.
+        whether a wall is in the way. `hazard_veto` does the same for poison and
+        for whatever a thrower left on the ground. Returns a DodgeDecision; when
+        nothing is incoming, `urgency` is "none" and `vector` is None.
+
+        Hazards are an input here rather than a check applied to the answer.
+        Refusing the finished escape afterwards threw the whole dodge away - 92
+        of 669 critical dodges in one session were cancelled that way, with the
+        bot then standing still and taking the shot. The solver has fifteen
+        other directions; it should be told which ones are poisoned and pick
+        among the rest.
         """
         config = self.config
         now = time.time() if now is None else now
@@ -205,6 +214,7 @@ class DodgeSolver:
             move_vy = direction[1] * speed
             hit_wall = False
             hit_edge = False
+            poisoned = False
 
             score = 0.0
             hits = 0
@@ -240,10 +250,20 @@ class DodgeSolver:
             else:
                 candidate = (direction[0] * joystick_scale, direction[1] * joystick_scale)
                 walled = bool(is_blocked is not None and is_blocked(candidate))
+                poisoned = False
                 if motion is not None and motion.is_direction_blocked(candidate, now):
                     # Measured obstruction, as opposed to the wall model's
                     # opinion: a direction we already pushed and did not move in.
                     walled = True
+
+                poisoned = bool(hazard_veto is not None and hazard_veto(candidate))
+                if poisoned:
+                    # Strictly worse than standing still, unlike a wall. A wall
+                    # means the bot does not move and takes the shot it would
+                    # have taken anyway; gas and puddles mean it takes the shot
+                    # AND stands in continuous damage it walked into on purpose.
+                    score += config.hazard_penalty
+                    hit_edge = True
 
                 if not walled and motion is not None and motion.is_toward_boundary(candidate):
                     # The map edge is not a hard stop yet, but there is no room
@@ -294,7 +314,7 @@ class DodgeSolver:
                     "edge": hit_edge,
                 })
 
-            if not is_stay and not hit_wall and not hit_edge:
+            if not is_stay and not hit_wall and not hit_edge and not poisoned:
                 if lean_clearance is None or clearance > lean_clearance:
                     lean_clearance = clearance
                     lean_vector = (direction[0] * joystick_scale,

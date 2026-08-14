@@ -762,6 +762,9 @@ class Play:
             blocked,
             player_speed=self.dodge_service.player_speed,
             motion=self.dodge_service.motion,
+            # Same veto the emergency path uses, so the two cannot pick
+            # different escapes for the same shot.
+            hazard_veto=self.escape_leads_into_hazard,
         )
         self.last_dodge_decision = decision
         return decision

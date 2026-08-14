@@ -301,6 +301,7 @@ class DodgeService:
                 player_radius,
                 tactical,
                 is_blocked,
+                hazard_veto=gas_veto,
                 player_speed=self.tracker.player_speed,
                 now=stamp,
                 motion=self.tracker.motion,
@@ -326,13 +327,12 @@ class DodgeService:
             # (halving the game's framerate) and kept the joystick under
             # priority almost continuously, which starved ordinary movement -
             # the bot stopped walking to its teammate entirely.
-            # Poison outranks a projectile. One shot is a chunk of health;
-            # standing in gas is a chunk every tick until you leave, and the
-            # bot walked in there deliberately. The playstyle refuses these
-            # too, but the whole point of this path is that it does not wait
-            # for the playstyle.
+            # Backstop only. The solver was given the same veto and has
+            # already scored poisoned directions out of contention, so this
+            # should now fire almost never - if the count in the log climbs
+            # again, the two are disagreeing and that is the bug to chase.
             if gas_veto is not None and gas_veto(decision.vector):
-                self.log.log_note("dodge_refused_gas",
+                self.log.log_note("dodge_refused_hazard_late",
                                   vector=[round(decision.vector[0], 1),
                                           round(decision.vector[1], 1)])
             else:

@@ -355,6 +355,21 @@ escape_hold_extra = 0.25
 # Set to 0 to go back to standing still when the geometry is hopeless.
 near_miss_weight = 0.6
 
+# Cost of an escape that ends in poison or in something a thrower left behind.
+#
+# Deliberately larger than any number of hits, because it is strictly worse
+# than a wall. A wall means the bot does not move and takes the shot it was
+# going to take anyway; gas means it takes the shot AND stands in continuous
+# damage that it walked into on purpose.
+#
+# This is an INPUT to the solver, not a check on its answer. Refusing the
+# finished escape was the earlier design and it threw the whole dodge away:
+# 92 of 669 critical dodges in one session were cancelled that way, with the
+# bot then standing still and eating the shot. There are fifteen other
+# directions; the solver should be told which are poisoned and choose among
+# the rest.
+hazard_penalty = 30.0
+
 # How much better the lean has to be before it is worth taking, in px. Without
 # a floor the bot would twitch for a couple of pixels of clearance it cannot
 # feel, which reads as jitter rather than evasion.

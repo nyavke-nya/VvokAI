@@ -149,6 +149,43 @@ def main():
     decision = solve(shots=[Shot(0.0, eta=0.7)])
     report.check("a clean escape is still preferred", decision.hit_count, 0)
 
+    report.section("poison must redirect the dodge, not cancel it")
+    # The escape it would naturally pick, with nothing in the way.
+    natural = solve().vector
+    natural_angle = math.atan2(natural[1], natural[0])
+
+    # Now poison exactly there. Cancelling the dodge - the earlier design -
+    # left the bot standing still and eating the shot; 92 of 669 critical
+    # dodges in one session went that way.
+    poisoned = blocker(natural_angle)
+    solver = DodgeSolver(config())
+    decision = solver.solve([Shot(0.0)], PLAYER, 53.0, None, None,
+                            player_speed=330.0, now=1000.0,
+                            collect_analysis=True, hazard_veto=poisoned)
+    report.check("it still dodges", decision.active, True)
+    if decision.vector:
+        report.check("but not into the poison", poisoned(decision.vector), False)
+
+    report.section("poison must cost more than a wall")
+    solver = DodgeSolver(config())
+    decision = solver.solve([Shot(0.0)], PLAYER, 53.0, None,
+                            blocker(math.pi / 2), player_speed=330.0, now=1000.0,
+                            collect_analysis=True, hazard_veto=blocker(-math.pi / 2))
+    candidates = decision.analysis["candidates"]
+    stay = decision.analysis["stay_score"]
+    hazard_scores = [c["score"] for c in candidates if c["edge"] and not c["wall"]]
+    if hazard_scores and stay is not None:
+        report.at_least("a poisoned direction scores worse than standing still",
+                        round(min(hazard_scores) - stay, 1), 1.0)
+
+    report.section("everything poisoned - it must not walk into any of it")
+    solver = DodgeSolver(config())
+    decision = solver.solve([Shot(0.0)], PLAYER, 53.0, None, None,
+                            player_speed=330.0, now=1000.0,
+                            hazard_veto=lambda v: math.hypot(v[0], v[1]) > 1e-6)
+    report.check("stands its ground rather than stepping into poison",
+                 decision.active, False)
+
     check_gas_veto(report)
     return report.finish()
 
