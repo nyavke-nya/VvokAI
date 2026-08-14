@@ -38,3 +38,6 @@ tools/*.mp4
 tools/*.mkv
 tools/*.avi
 
+
+# Written by the installer on every run.
+install_log.txt
