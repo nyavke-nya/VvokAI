@@ -396,12 +396,32 @@ enabled = true
 #   ~1800  slow lobs (Barley, Dynamike, Tick)
 #   ~2600  most brawlers
 #   ~3400  fast bullets (Colt, Piper, Brock)
-projectile_speed = 2600.0
+projectile_speed = 1150.0
 
-# Clamp on the computed lead. Beyond ~0.45 s the target has usually changed
-# direction anyway, so leading further does more harm than good.
+# Measure it instead, from this brawler's own shots, and use the constant above
+# only until enough have been seen.
+#
+# The constant was 2600, and the tracker had been quietly disagreeing the whole
+# time: across one session it measured real shots at 411 to 3040 px/s with a
+# median of 1152. Assuming 2600 put the lead at 0.186 s on a 480 px target when
+# the honest answer was 0.432 - so every shot at a moving enemy landed behind
+# them, and no clamp was involved. One constant cannot serve Piper and Barley
+# at once; measuring can.
+#
+# Own shots are trivially separable and nothing else looks like them: they
+# appear beside the player and travel away. They never pass the origin gate,
+# which only accepts things coming AT us, so this is measured on its own.
+measure_projectile_speed = true
+speed_min_samples = 6
+
+# Clamp on the computed lead.
+#
+# Raised from 0.45. With the speed above corrected downward the geometry now
+# asks for more than 0.45 s at anything past mid range, and clipping it there
+# meant knowingly aiming short - the solver even reports that as reduced
+# confidence, which is how it showed up.
 min_lead = 0.0
-max_lead = 0.45
+max_lead = 0.7
 
 # Frames of tracking before an enemy's velocity is trusted. Until then the bot
 # aims straight at them, which is what auto-aim would have done anyway.

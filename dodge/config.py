@@ -167,6 +167,8 @@ class DodgeConfig:
         self.aim_swipe_radius = _f(aim, "swipe_radius", 130.0) * scale
         self.aim_swipe_hold = max(0.0, _f(aim, "swipe_hold", 0.02))
         self.aim_min_lead_distance = _f(aim, "min_lead_distance", 18.0) * scale
+        self.aim_measure_speed = _b(aim, "measure_projectile_speed", True)
+        self.aim_speed_min_samples = max(3, _i(aim, "speed_min_samples", 6))
 
         hazard = raw.get("hazard", {})
         self.hazard_enabled = _b(hazard, "enabled", True)

@@ -168,6 +168,13 @@ class DodgeService:
         enemy = self.enemy_tracker.find(target_pos)
         velocity = (enemy.vx, enemy.vy) if enemy else (0.0, 0.0)
         confidence = enemy.confidence if enemy else 0.0
+
+        if projectile_speed is None and self.config.aim_measure_speed:
+            # Prefer the speed actually measured from this brawler's own shots
+            # over the configured constant. One constant cannot be right for
+            # everyone: across a session real shots ranged 411-3040 px/s.
+            projectile_speed = self.tracker.own_projectile_speed
+
         return self.aim_solver.solve(
             shooter_pos,
             target_pos,
@@ -175,6 +182,10 @@ class DodgeService:
             projectile_speed=projectile_speed,
             confidence=confidence,
         )
+
+    @property
+    def measured_projectile_speed(self):
+        return self.tracker.own_projectile_speed
 
     @property
     def motion(self):

@@ -288,6 +288,10 @@ class ProjectileTracker:
         self._hazards = []
         self._next_hazard_id = 1
 
+        # Speeds of shots seen leaving the player. Feeds the aim solver, which
+        # otherwise has to guess at a single constant for every brawler.
+        self._own_shot_speeds = deque(maxlen=60)
+
         self.stats = {
             "blobs": 0, "tracks": 0, "confirmed": 0, "ms": 0.0, "rejected": 0,
             # Why tracks die and why they fail to confirm. Without these the
@@ -357,6 +361,7 @@ class ProjectileTracker:
         self._prev_gray_half = None
         self._tracks = []
         self._speed_samples.clear()
+        self._own_shot_speeds.clear()
         self._hazards = []
         self._player_speed = self.config.default_player_speed
 
@@ -1031,6 +1036,10 @@ class ProjectileTracker:
                 rejects["bent"] += 1
                 continue
 
+            # Our own shots never pass the origin gate below - it only accepts
+            # things flying AT us - so they are measured here, on the way past.
+            self._measure_own_shot(track, velocity, speed, context)
+
             accepted, origin, required_hits = self._check_origin(track, velocity, context)
             if not accepted or track.hits < required_hits:
                 rejects["origin"] += 1
@@ -1086,6 +1095,51 @@ class ProjectileTracker:
     # ------------------------------------------------------------------
     # self-calibration
     # ------------------------------------------------------------------
+
+    def _measure_own_shot(self, track, velocity, speed, context):
+        """Learn how fast THIS brawler's shots fly, from watching them fly.
+
+        The aim solver needs a projectile speed to turn a distance into a lead
+        time, and a single configured constant cannot be right: measured across
+        one session, real shots ranged from 411 to 3040 px/s with a median of
+        1152. The default was 2600 - roughly the 85th percentile - so the lead
+        came out less than half of what it should have been, and every shot at
+        a moving target landed behind them.
+
+        Our own shots are easy to pick out and nothing else looks like them:
+        they appear next to the player and travel away. They are never
+        confirmed as projectiles - the origin gate only accepts shots coming
+        AT us - so this is measured separately, purely for the aim solver.
+        """
+        player_box = context.player_box
+        if not player_box or len(player_box) < 4:
+            return
+
+        px = (player_box[0] + player_box[2]) * 0.5
+        py = (player_box[1] + player_box[3]) * 0.5
+        origin_x, origin_y = track.origin_pos
+        dx, dy = origin_x - px, origin_y - py
+        distance = math.hypot(dx, dy)
+        if distance < 1e-6 or distance > self.config.spawn_radius:
+            return
+
+        # Travelling away from us, not past us.
+        outward = (dx / distance) * (velocity[0] / speed) + (dy / distance) * (velocity[1] / speed)
+        if outward < self.config.min_outward_cosine:
+            return
+
+        self._own_shot_speeds.append(speed)
+
+    @property
+    def own_projectile_speed(self):
+        """Measured speed of our own shots, or None until enough are seen.
+
+        A median rather than a mean: a mis-tracked frame produces a wild value
+        and would drag an average badly, while the median simply ignores it.
+        """
+        if len(self._own_shot_speeds) < self.config.aim_speed_min_samples:
+            return None
+        return _median(self._own_shot_speeds)
 
     def _consider_hazard(self, track, stamp, speed):
         """Promote a stopped shot into a ground hazard.
