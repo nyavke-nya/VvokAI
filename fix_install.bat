@@ -26,31 +26,33 @@ if not exist "main.py" (
 )
 
 :: ---------------------------------------------------------------- Python
-set "PYTHON_CMD=python"
+::
+:: The VERSION matters, not merely that python exists. Several of the bot's
+:: dependencies - av in particular - ship compiled wheels only up to 3.12, so
+:: on 3.13 pip falls back to building from source and stops at "Microsoft
+:: Visual C++ 14.0 or greater is required". That reads like a missing
+:: compiler; it is really a Python that is too new. Picking the first python on
+:: PATH regardless of version is what walked into it.
+set "PYTHON_CMD="
+call :TRY_PYTHON "python"
+call :TRY_PYTHON "%LocalAppData%\Programs\Python\Python311\python.exe"
+call :TRY_PYTHON "%ProgramFiles%\Python311\python.exe"
+call :TRY_PYTHON "%LocalAppData%\Programs\Python\Python312\python.exe"
+call :TRY_PYTHON "%ProgramFiles%\Python312\python.exe"
+call :TRY_PYTHON "%LocalAppData%\Programs\Python\Python310\python.exe"
+if defined PYTHON_CMD goto :PYTHON_FOUND
+
+echo.
+echo [ERROR] No suitable Python found. This project needs 3.10, 3.11 or 3.12.
 python --version >nul 2>&1
-if not errorlevel 1 goto :PYTHON_FOUND
-
-echo [INFO] Python is not on PATH. Looking in the usual places...
-if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
-    set "PYTHON_CMD=%LocalAppData%\Programs\Python\Python311\python.exe"
-    goto :PYTHON_FOUND
+if not errorlevel 1 (
+    for /f "tokens=*" %%v in ('python --version 2^>^&1') do echo         You have %%v, which is too new for some dependencies.
 )
-if exist "%ProgramFiles%\Python311\python.exe" (
-    set "PYTHON_CMD=%ProgramFiles%\Python311\python.exe"
-    goto :PYTHON_FOUND
-)
-if exist "%LocalAppData%\Programs\Python\Python312\python.exe" (
-    set "PYTHON_CMD=%LocalAppData%\Programs\Python\Python312\python.exe"
-    goto :PYTHON_FOUND
-)
-if exist "%LocalAppData%\Programs\Python\Python310\python.exe" (
-    set "PYTHON_CMD=%LocalAppData%\Programs\Python\Python310\python.exe"
-    goto :PYTHON_FOUND
-)
-
-echo [ERROR] No Python found. Install Python 3.11 from
+echo.
+echo         Install Python 3.11.9 from
 echo         https://www.python.org/downloads/release/python-3119/
 echo         and tick "Add python.exe to PATH" during setup.
+echo         You can keep your existing Python; both can be installed at once.
 echo.
 pause
 exit /b 1
@@ -59,6 +61,17 @@ exit /b 1
 for /f "tokens=*" %%v in ('"%PYTHON_CMD%" --version 2^>^&1') do echo [INFO] Using %%v
 
 :: ---------------------------------------------------------------- venv
+::
+:: An existing venv built on the wrong Python is worse than none: every install
+:: below would target it and fail the same way again.
+if exist "venv\Scripts\python.exe" (
+    venv\Scripts\python.exe -c "import sys; sys.exit(0 if (3,10) <= sys.version_info[:2] <= (3,12) else 1)" >nul 2>&1
+    if errorlevel 1 (
+        echo [INFO] The existing venv uses an unsupported Python. Rebuilding it...
+        rmdir /s /q venv
+    )
+)
+
 if not exist "venv\Scripts\python.exe" (
     echo [INFO] Creating the virtual environment...
     "%PYTHON_CMD%" -m venv venv
@@ -179,4 +192,17 @@ if "%IMPORTS_OK%"=="0" (
 echo ============================================================
 echo.
 pause
+exit /b 0
+
+
+:: --------------------------------------------------------------------------
+:: Accept a candidate interpreter only if it exists AND is a version the
+:: dependencies actually publish wheels for. The first match wins, so the
+:: preferred versions are tried first by the caller.
+:: --------------------------------------------------------------------------
+:TRY_PYTHON
+if defined PYTHON_CMD exit /b 0
+"%~1" -c "import sys; sys.exit(0 if (3,10) <= sys.version_info[:2] <= (3,12) else 1)" >nul 2>&1
+if errorlevel 1 exit /b 0
+set "PYTHON_CMD=%~1"
 exit /b 0
