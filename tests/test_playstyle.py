@@ -10,20 +10,23 @@ leave a fight, and when to stop waiting for a teammate who is not playing.
 """
 
 import ast
+import os
 import re
 import sys
 
-from _harness import Failures, base_context, box, lift, playstyle_source
+from _harness import (PLAYSTYLES, Failures, base_context, box, lift,
+                      playstyle_meta, playstyle_source)
 
 from utils import SAFE_GLOBALS, is_safe_ast
 
 
-def check_names(report):
-    report.section("the sandbox must be able to run it")
-    source = playstyle_source()
+def check_names(report, path=None):
+    label = os.path.basename(path) if path else "unified_dodge.pyla"
+    report.section(f"{label}: the sandbox must be able to run it")
+    source = playstyle_source(path)
 
     safe, error = is_safe_ast(source)
-    report.check("passes the sandbox's AST check", safe, True)
+    report.check(f"{label} passes the sandbox's AST check", safe, True)
     if not safe:
         print(f"    {error}")
         return
@@ -57,12 +60,12 @@ def check_names(report):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
         and node.id not in known
     })
-    report.check("every name it uses is provided", unresolved, [])
+    report.check(f"{label} resolves every name it uses", unresolved, [])
 
-    check_call_signatures(report, tree, play)
+    check_call_signatures(report, tree, play, label)
 
 
-def check_call_signatures(report, tree, play):
+def check_call_signatures(report, tree, play, label):
     """Every engine function must be called with a workable argument count.
 
     A name existing is not enough. Calling a four-argument engine function with
@@ -117,7 +120,7 @@ def check_call_signatures(report, tree, play):
             problems.append(f"{node.func.id}() line {node.lineno}: "
                             f"{given} args, engine wants {expected}")
 
-    report.check("engine calls use the right number of arguments", problems, [])
+    report.check(f"{label} calls the engine with the right argument counts", problems, [])
 
 
 # ---------------------------------------------------------------------------
@@ -389,7 +392,18 @@ def check_walls(report):
 
 def main():
     report = Failures("playstyle")
-    check_names(report)
+    for path in PLAYSTYLES:
+        check_names(report, path)
+
+    report.section("the light variant must actually switch the tracker off")
+    meta = playstyle_meta(PLAYSTYLES[1])
+    report.check("unified_light declares dodge off", meta.get("dodge"), False)
+    report.check("unified_dodge does not", playstyle_meta(PLAYSTYLES[0]).get("dodge"), None)
+    light = playstyle_source(PLAYSTYLES[1])
+    leftovers = sorted({m for m in re.findall(
+        r"projectiles|solve_dodge|dodge_enabled|DODGE_[A-Z_]+|UNDER_FIRE_SHOTS", light)})
+    report.check("unified_light has no projectile code left", leftovers, [])
+
     check_walls(report)
     check_fight(report)
     check_idle(report)

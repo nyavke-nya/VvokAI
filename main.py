@@ -61,7 +61,7 @@ def apply_play_order(queue_data):
 def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
     class Main:
         def __init__(self):
-            current_playstyle = load_toml_as_dict("cfg/bot_config.toml").get("current_playstyle", "default_up.pyla")
+            current_playstyle = load_toml_as_dict("cfg/bot_config.toml").get("current_playstyle", "unified_dodge.pyla")
             try:
                 self.max_ips = int(load_toml_as_dict("cfg/general_config.toml")['max_ips'])
             except ValueError:
@@ -78,7 +78,8 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
             save_brawler_data(data)
             print("Starting with queue data:", data)
             self.playstyle_info, pyla_code = load_pyla_script(current_playstyle)
-            self.Play = Play(*self.load_models(), self.window_controller, pyla_code)
+            self.Play = Play(*self.load_models(), self.window_controller, pyla_code,
+                             playstyle_info=self.playstyle_info)
             self.Time_management = TimeManagement()
             self.lobby_automator = LobbyAutomation(self.window_controller)
             self.runtime_control = runtime_control

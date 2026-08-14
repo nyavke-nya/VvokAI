@@ -45,7 +45,14 @@ PLAYER_COLLISION_RADIUS = 24
 
 class Play:
 
-    def __init__(self, main_info_model, tile_detector_model, close_tile_detector_model, window_controller, pyla_code):
+    def __init__(self, main_info_model, tile_detector_model, close_tile_detector_model, window_controller,
+                 pyla_code, playstyle_info=None):
+        # A playstyle can opt out of the whole projectile stack by putting
+        # "dodge": false in its metadata header. That is not the same as simply
+        # never calling solve_dodge(): the tracker runs on its own thread at
+        # capture rate whether or not anybody reads its output, so a playstyle
+        # that ignores it still pays for it.
+        self.playstyle_info = playstyle_info or {}
         bot_config = load_toml_as_dict("cfg/bot_config.toml")
         time_config = load_toml_as_dict("cfg/time_tresholds.toml")
         self.fix_movement_keys = {
@@ -580,6 +587,15 @@ class Play:
             scale_factor=self.window_controller.scale_factor,
             tile_size=self.TILE_SIZE,
         )
+        if self.playstyle_info.get("dodge") is False:
+            # The tracker costs ~3.3 ms of a core per captured frame and the
+            # aim solver needs its camera-pan estimate to tell a moving enemy
+            # apart from a moving camera, so both go together. Health reading
+            # and movement smoothing do not depend on either and stay on.
+            self.dodge_config.enabled = False
+            self.dodge_config.aim_enabled = False
+            print(f"Playstyle '{self.playstyle_info.get('name', '?')}' declares dodge off: "
+                  "projectile tracker and aim solver will not start.")
         self.movement_shaper = MovementShaper(self.dodge_config)
         # A second solver instance, so the playstyle calling solve_dodge() does
         # not fight the tracker thread over the shared commitment state.

@@ -19,6 +19,15 @@ os.chdir(REPO)
 
 PLAYSTYLE = os.path.join(REPO, "playstyles", "unified_dodge.pyla")
 
+# Every playstyle shipped with the fork. The name and signature checks run
+# against all of them: a context key renamed in play.py breaks each one the
+# same way, and the light variant is derived from the full one so it inherits
+# any mistake made there.
+PLAYSTYLES = [
+    os.path.join(REPO, "playstyles", "unified_dodge.pyla"),
+    os.path.join(REPO, "playstyles", "unified_light.pyla"),
+]
+
 
 class Failures:
     """Collects check results so one test file reports every failure at once."""
@@ -63,12 +72,16 @@ class Failures:
         return 0
 
 
-def playstyle_source():
+def playstyle_source(path=None):
     """The playstyle body, without its JSON metadata header line."""
-    text = open(PLAYSTYLE, encoding="utf-8").read()
+    text = open(path or PLAYSTYLE, encoding="utf-8").read()
     header, _, body = text.partition("\n")
     json.loads(header)          # the header must stay valid JSON
     return body
+
+
+def playstyle_meta(path=None):
+    return json.loads(open(path or PLAYSTYLE, encoding="utf-8").readline())
 
 
 def lift(names, constants, context):

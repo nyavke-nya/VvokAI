@@ -1,0 +1,992 @@
+{"name": "Unified Light", "description": "Same tactics as Unified + Dodge - archetype spacing, regrouping, health awareness, smooth movement - with the projectile stack removed. The tracker thread never starts, so it costs no CPU.", "brawlers": ["all"], "gamemodes": ["all"], "author": "vvok", "date": "2026-08-14", "dodge": false}
+
+# ═══════════════════════════════════════════════════════════════════════
+#  UNIFIED + DODGE
+#
+#  Merges default_up / default_right (combat tree), follower (regroup with
+#  teammates), showdown_survivor (rotate to centre, flee the gas) and
+#  universal_smart (archetype-driven spacing) into a single behaviour tree,
+#  then layers projectile evasion on top.
+#
+#  Movement philosophy:
+#    - normally the joystick GLIDES. The engine eases the vector and caps how
+#      fast it may rotate, so the bot draws arcs instead of flicking between
+#      compass directions.
+#    - while dodging it SNAPS. Setting `sharp_movement = True` bypasses the
+#      easing, the movement rate limiter and the unstuck rotation, so the
+#      escape happens on the very next touch event.
+#  That contrast is deliberate: smooth movement is hard to read, and a sudden
+#  break out of it is hard to lead.
+# ═══════════════════════════════════════════════════════════════════════
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  TUNING
+# ─────────────────────────────────────────────────────────────────────
+
+# Seconds between gadget uses, so a ready gadget is not spammed every frame.
+GADGET_COOLDOWN = 3.0
+
+# How close to a teammate is "regrouped", in tiles.
+REGROUP_TILES = 3.0
+
+# Regrouping during a fight. Beyond this distance the combat movement gets bent
+# back toward the teammate, so the bot never drifts off to fight alone. Set
+# REGROUP_PULL to 0 to fight independently, 1 to always walk at the teammate.
+REGROUP_IN_FIGHT_TILES = 6.0
+REGROUP_PULL = 0.45
+
+# Strafe direction flips on this period, in seconds. Longer reads as
+# deliberate repositioning, shorter as jittering.
+STRAFE_PERIOD = 2.0
+
+# Drag the attack stick to lead moving targets instead of tapping it, which
+# would hand the shot to the game's auto-aim and fire at where they already
+# were. Turn off for brawlers whose shots are area-of-effect anyway.
+AIMED_SHOTS = True
+
+# Seconds of being genuinely unable to move before breaking out overrides
+# everything else, dodging included. Short enough that the bot never spends a
+# fight wedged in a corner, long enough that brushing a wall while strafing
+# does not trigger it.
+BREAK_OUT_AFTER = 0.7
+
+# ── Spacing, as fractions of the brawler's own attack range ──────────────
+# The bot holds the [NEAR, FAR] band: inside it, it strafes rather than closing,
+# because it can already shoot from there. Raise NEAR to play safer, lower FAR
+# to be more willing to walk into range.
+HOLD_RANGE_NEAR = 0.66
+HOLD_RANGE_FAR = 0.90
+
+# Snipers hold even further out; their whole advantage is reach.
+SNIPER_HOLD_NEAR = 0.60
+SNIPER_HOLD_FAR = 0.94
+
+# Lobbers need to be close enough that the arc lands, but not in the open.
+LOBS_HOLD_NEAR = 0.50
+LOBS_HOLD_FAR = 0.85
+
+# Melee archetypes close until this fraction of their range, then circle.
+ASSASSIN_CLOSE_TO = 0.40
+TANK_CLOSE_TO = 0.25
+
+# ── Self-preservation ────────────────────────────────────────────────────
+# The bot used to close on anything it could see and died to fights it was
+# never going to win. These decide when a fight is worth taking at all.
+
+# Radius counted as "in this fight", in tiles.
+ENGAGE_RADIUS_TILES = 9.0
+
+# Back off when enemies outnumber the friendly side (bot + nearby teammates)
+# by this much. 1 means "retreat as soon as it is 2v1".
+OUTNUMBERED_BY = 1
+
+# Never chase past this fraction of attack range. Beyond it the enemy is
+# leading the bot somewhere, not losing to it.
+NO_CHASE_BEYOND = 1.25
+
+# How hard a retreat pulls compared to normal spacing, 0-1.
+RETREAT_STRENGTH = 0.8
+
+# ── Health ───────────────────────────────────────────────────────────────
+# Read straight off the health bars, so these are real fractions and not
+# guesses. All of them degrade safely: when a bar cannot be read the reading is
+# None and every rule below is skipped, leaving the distance-based tactics that
+# ran before health existed.
+
+# Disengage outright below this. At a third of a bar most exchanges in Brawl
+# Stars are lethal, and a trade the bot "wins" at 20% still ends with it dead
+# to whoever walks past next.
+RETREAT_BELOW_HEALTH = 0.32
+
+# Below this, stop closing and hold at range - unless the enemy is visibly
+# worse off, in which case the trade is still good.
+CAUTIOUS_BELOW_HEALTH = 0.55
+
+# Press a wounded enemy: below this much health they stop being a threat, and
+# letting them walk away means fighting them again at full.
+FINISH_BELOW_HEALTH = 0.35
+
+# ...but only with this much of a health lead. Charging a dying enemy while
+# dying yourself is a trade, not a kill.
+FINISH_HEALTH_LEAD = 0.25
+
+# Prefer shooting whoever is closest to death over whoever is closest, as long
+# as they are within this fraction of attack range. Set to 0 to always shoot
+# the nearest.
+TARGET_WEAKEST_WITHIN = 1.0
+
+# ── Anti-stagnation ──────────────────────────────────────────────────────
+# Seconds of nothing happening before the bot stops waiting on its teammate and
+# walks to the middle of the map on its own.
+#
+# "Nothing happening" means all of: no enemy in sight, no shot inbound, the
+# teammate the bot attached itself to has not moved, and the bot itself has not
+# covered any ground. That combination is an AFK or camping ally - the bot used
+# to strafe next to them until the match ended.
+IDLE_AFTER = 5.0
+
+# How far the teammate must move to count as "still playing", in tiles.
+# Detection boxes jitter by a few pixels every frame and the world frame is
+# rebuilt from camera pan, so this has to sit well clear of both.
+IDLE_MOVE_TILES = 1.5
+
+# Once the bot has given up and headed for the centre, it commits for this long
+# rather than re-attaching to the same idle teammate the moment it steps away.
+IDLE_COMMIT = 6.0
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  SETUP
+# ─────────────────────────────────────────────────────────────────────
+
+_name = brawler or current_brawler
+_known = _name in brawlers_info
+brawler_info = brawlers_info.get(_name)
+if not brawler_info:
+    # Unknown brawler (new release, missing stats file). Fall back to a
+    # mid-range profile rather than dying and leaving the bot standing still.
+    print(f"Brawler '{_name}' missing from brawlers_info, using generic profile.")
+    brawler_info = {
+        "safe_range": 300.0,
+        "attack_range": 480.0,
+        "super_type": "damage",
+        "super_range": 480,
+        "ignore_walls_for_attacks": False,
+        "ignore_walls_for_supers": False,
+        "hold_attack": 0,
+    }
+
+persistent_data.setdefault("time_since_holding_attack", None)
+persistent_data.setdefault("last_gadget_use", 0.0)
+persistent_data.setdefault("last_activity", 0.0)
+persistent_data.setdefault("idle_anchor", None)
+persistent_data.setdefault("center_run_until", 0.0)
+
+if _known:
+    must_hold = must_brawler_hold_attack(_name, brawlers_info)
+    safe_range, attack_range, super_range = get_brawler_range(_name)
+else:
+    # The scaled range table is keyed by brawler, so an unknown one has to use
+    # the raw fallback numbers instead.
+    must_hold = False
+    safe_range = brawler_info["safe_range"]
+    attack_range = brawler_info["attack_range"]
+    super_range = brawler_info["super_range"]
+
+player_pos = get_entity_pos(player_data)
+
+movement = (0, 0)
+sharp_movement = False
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  VECTOR HELPERS
+# ─────────────────────────────────────────────────────────────────────
+
+def vec_len(x, y):
+    return math.sqrt(x * x + y * y)
+
+
+def normalize_move(x, y, radius=JOYSTICK_RADIUS):
+    length = vec_len(x, y)
+    if length <= 0:
+        return (0, 0)
+    return (x * radius / length, y * radius / length)
+
+
+def is_blocked(move):
+    """Only the wall model. Deliberately.
+
+    Earlier versions also refused directions the motion monitor had measured as
+    stalled, and directions pointing at the map edge. That compounded: pinned in
+    a corner, the bot accumulated blocked directions faster than they expired,
+    every candidate looked impassable, and it stood there vibrating - 67% of one
+    session was spent stuck against the right-hand edge.
+
+    The wall model is accurate on its own. The measured signals are still used,
+    but only to trigger the escape below, never to forbid a direction.
+    """
+    return is_path_blocked(player_data, move, walls)
+
+
+def first_unblocked(moves, fallback=None):
+    for move in moves:
+        if not is_blocked(move):
+            return move
+
+    # None of the offered headings work. Sweeping the full circle before giving
+    # up matters: the old version returned `fallback` here, and `fallback` is
+    # normally the very direction that was just rejected - so the bot walked
+    # straight into a wall it had already drawn in red on its own overlay.
+    #
+    # Whichever free direction lies closest to what was wanted is chosen, so
+    # the goal survives even when the exact heading does not.
+    wanted = fallback if fallback is not None else (moves[0] if moves else None)
+    if wanted is not None and vec_len(wanted[0], wanted[1]) > 0:
+        best = None
+        best_alignment = -2.0
+        step = 0
+        while step < 16:
+            angle = 2.0 * math.pi * step / 16.0
+            candidate = normalize_move(math.cos(angle), math.sin(angle))
+            step += 1
+            if is_blocked(candidate):
+                continue
+            alignment = (candidate[0] * wanted[0] + candidate[1] * wanted[1])
+            if alignment > best_alignment:
+                best_alignment = alignment
+                best = candidate
+        if best is not None:
+            return best
+
+    # Genuinely boxed in. Standing still beats grinding against a wall - the
+    # break-out logic below is what gets us out of this.
+    return (0, 0)
+
+
+def sidestep_options(move):
+    """The same heading, progressively angled away, for getting round things.
+
+    Keeping the goal and bending the path is what a person does at a wall.
+    Falling back to a random direction throws the goal away, which is how the
+    bot ends up jittering next to an obstacle instead of rejoining its team.
+    """
+    return [
+        move,
+        rotate_movement(move, 0.6), rotate_movement(move, -0.6),
+        rotate_movement(move, 1.2), rotate_movement(move, -1.2),
+        rotate_movement(move, 2.0), rotate_movement(move, -2.0),
+    ]
+
+
+def move_toward(target_pos):
+    dx = target_pos[0] - player_pos[0]
+    dy = target_pos[1] - player_pos[1]
+    full = normalize_move(dx, dy)
+    # Axis slides round a square corner; the angled steps get round anything
+    # else, including the map edge the wall model cannot see.
+    options = [full, normalize_move(dx, 0), normalize_move(0, dy)]
+    options = options + sidestep_options(full)[1:]
+    return first_unblocked(options, full)
+
+
+def move_away_from(target_pos):
+    dx = player_pos[0] - target_pos[0]
+    dy = player_pos[1] - target_pos[1]
+    full = normalize_move(dx, dy)
+    return first_unblocked([full, normalize_move(dx, 0), normalize_move(0, dy)], full)
+
+
+def strafe_around(target_pos):
+    dx = target_pos[0] - player_pos[0]
+    dy = target_pos[1] - player_pos[1]
+    side = 1 if int(time.time() / STRAFE_PERIOD) % 2 == 0 else -1
+    full = normalize_move(-dy * side, dx * side)
+    reverse = normalize_move(dy * side, -dx * side)
+    return first_unblocked([full, reverse], full)
+
+
+def escape_boundary():
+    """Walk away from the map edge we are pinned against, or None if free.
+
+    map_boundary is measured, not guessed: (1, 0) means the camera has run out
+    of map to the right. Heading straight back is far better than picking a
+    random direction, which is how the bot spent ten seconds vibrating in a
+    corner instead of rejoining its team.
+    """
+    sx, sy = map_boundary
+    if not sx and not sy:
+        return None
+    away = normalize_move(-sx, -sy)
+    # Deliberately not filtered through is_blocked: the blocked-direction
+    # memory fills up while stuck, and this is the one heading known to help.
+    for move in sidestep_options(away):
+        if not is_path_blocked(player_data, move, walls):
+            return move
+    return away
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  ANTI-STAGNATION
+# ─────────────────────────────────────────────────────────────────────
+
+def to_world(point):
+    """Screen coordinate to a frame that does not move with the camera."""
+    return (point[0] + odometer[0], point[1] + odometer[1])
+
+
+def map_center():
+    return (width / 2.0, height / 2.0)
+
+
+def update_stagnation(mate_coords, mate_distance=None):
+    """Notice when the match has stopped happening around the bot.
+
+    Following a teammate is normally the right default - they know where the
+    objective is and the bot does not. Attached to an AFK or camping ally it
+    degenerates: the bot strafes in a circle next to them until the match ends,
+    contributing nothing and dying to whoever wanders past first.
+
+    What deliberately does NOT count as activity is the bot's own movement. The
+    idle behaviour IS movement - strafing around the teammate covers several
+    tiles every second - so treating that as "something is happening" would keep
+    the clock reset forever, which is exactly the loop this exists to break.
+
+    Positions are compared in world coordinates. On screen a perfectly
+    stationary teammate slides around whenever the bot itself walks, so screen
+    coordinates cannot answer "did they move" at all.
+    """
+    now = time.time()
+    threshold = TILE_SIZE * IDLE_MOVE_TILES
+    mate_world = to_world(mate_coords) if mate_coords is not None else None
+
+    active = False
+    if enemy_data:
+        # A fight is on.
+        active = True
+    elif mate_coords is not None and mate_distance is not None:
+        if mate_distance > TILE_SIZE * REGROUP_TILES:
+            # Still on the way to them. Walking somewhere is not stagnation,
+            # and cutting the approach short would undo the regroup entirely.
+            active = True
+
+    if persistent_data["last_activity"] <= 0.0:
+        # First frame of the match.
+        persistent_data["idle_anchor"] = mate_world
+        persistent_data["last_activity"] = now
+        return False
+
+    if not active and mate_world is not None:
+        anchor = persistent_data["idle_anchor"]
+        if anchor is None:
+            # A teammate just came into view, which is a change worth waiting on.
+            active = True
+        elif vec_len(mate_world[0] - anchor[0], mate_world[1] - anchor[1]) > threshold:
+            active = True
+
+    if active:
+        persistent_data["last_activity"] = now
+        # Re-anchor only on real activity, so a teammate drifting a few pixels
+        # per frame cannot walk the anchor along with them and stay "moving".
+        persistent_data["idle_anchor"] = mate_world
+        return False
+
+    return now - persistent_data["last_activity"] >= IDLE_AFTER
+
+
+def head_to_center():
+    """Give up on waiting and take the middle of the map.
+
+    Committed to for IDLE_COMMIT seconds so the bot does not re-attach to the
+    same idle teammate on the very next frame and oscillate between them.
+    """
+    now = time.time()
+    if persistent_data["center_run_until"] <= now:
+        persistent_data["center_run_until"] = now + IDLE_COMMIT
+        print("[unified] nothing happening for "
+              f"{IDLE_AFTER:.0f}s - moving to map centre")
+
+    center = map_center()
+    if vec_len(center[0] - player_pos[0], center[1] - player_pos[1]) > TILE_SIZE * 2:
+        return move_toward(center)
+
+    # Already central and still nothing is happening: sweep instead of idling,
+    # so the bot actually finds someone.
+    persistent_data["last_activity"] = now
+    persistent_data["idle_anchor"] = None
+    return random_safe_movement()
+
+
+def center_run_active():
+    return time.time() < persistent_data["center_run_until"]
+
+
+def random_safe_movement():
+    options = [
+        (0, -JOYSTICK_RADIUS),
+        (0, JOYSTICK_RADIUS),
+        (-JOYSTICK_RADIUS, 0),
+        (JOYSTICK_RADIUS, 0),
+        normalize_move(JOYSTICK_RADIUS, -JOYSTICK_RADIUS),
+        normalize_move(-JOYSTICK_RADIUS, -JOYSTICK_RADIUS),
+        normalize_move(JOYSTICK_RADIUS, JOYSTICK_RADIUS),
+        normalize_move(-JOYSTICK_RADIUS, JOYSTICK_RADIUS),
+    ]
+    random.shuffle(options)
+    return first_unblocked(options, get_random_movement())
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  ARCHETYPE
+#  Spacing rules differ enormously between a Mortis and a Piper, and the
+#  brawler stats file already carries enough to tell them apart.
+# ─────────────────────────────────────────────────────────────────────
+
+def detect_archetype():
+    reach = float(brawler_info.get("attack_range", attack_range or 400))
+    safe = float(brawler_info.get("safe_range", safe_range or 200))
+    if brawler_info.get("ignore_walls_for_attacks", False):
+        return "LOBS"
+    if reach <= 256:
+        return "ASSASSIN"
+    if safe == 0.0 and reach <= 350:
+        return "TANK"
+    if reach >= 600:
+        return "SNIPER"
+    return "RANGED"
+
+
+archetype = detect_archetype()
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  COMBAT
+# ─────────────────────────────────────────────────────────────────────
+
+def do_attack(target=None):
+    if not must_hold:
+        # Lead the target when we know where it is going. aimed_attack falls
+        # back to a plain tap on its own when the lead is negligible, so a
+        # stationary enemy costs nothing extra.
+        if AIMED_SHOTS and aim_enabled and target is not None:
+            aimed_attack(target)
+        else:
+            attack()
+        return
+
+    hold_time = float(brawler_info.get("hold_attack", 0.0))
+    if persistent_data["time_since_holding_attack"] is None:
+        persistent_data["time_since_holding_attack"] = time.time()
+        attack(touch_up=False, touch_down=True)
+    elif time.time() - persistent_data["time_since_holding_attack"] >= hold_time:
+        attack(touch_up=True, touch_down=False)
+        persistent_data["time_since_holding_attack"] = None
+
+
+def try_use_super(enemy_coords, enemy_distance):
+    if not is_super_ready or persistent_data["time_since_holding_attack"] is not None:
+        return
+
+    super_type = brawler_info.get("super_type", "damage")
+    if not is_enemy_hittable(player_pos, enemy_coords, walls, "super"):
+        return
+
+    in_range = enemy_distance <= super_range
+    always_worth_it = super_type in ["spawnable", "other"]
+    # Stu and Surge charge forward on their super, so they can open from
+    # further out than the raw range suggests.
+    dash_opener = (
+        _name in ["stu", "surge"]
+        and super_type == "charge"
+        and enemy_distance <= super_range + attack_range
+    )
+
+    if in_range or always_worth_it or dash_opener:
+        if is_hypercharge_ready:
+            use_hypercharge()
+        use_super()
+
+
+def try_attack(enemy_coords, enemy_distance, allow_wall_attack=False):
+    if enemy_distance > attack_range:
+        return False
+
+    if not is_enemy_hittable(player_pos, enemy_coords, walls, "attack") and not allow_wall_attack:
+        return False
+
+    if is_gadget_ready and persistent_data["time_since_holding_attack"] is None:
+        if time.time() - persistent_data["last_gadget_use"] > GADGET_COOLDOWN:
+            use_gadget()
+            persistent_data["last_gadget_use"] = time.time()
+
+    do_attack(enemy_coords)
+    return True
+
+
+# Release a charged shot that has been held past its maximum.
+if must_hold and persistent_data["time_since_holding_attack"] is not None:
+    _limit = float(brawler_info.get("hold_attack", 0.0)) + seconds_to_hold_attack_after_reaching_max
+    if time.time() - persistent_data["time_since_holding_attack"] >= _limit:
+        attack(touch_up=True, touch_down=False)
+        persistent_data["time_since_holding_attack"] = None
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  POISON GAS  (from showdown_survivor)
+# ─────────────────────────────────────────────────────────────────────
+
+gas_reading = is_there_poison_gas(player_data)
+
+
+def leads_into_gas(move):
+    """True if this movement heads into the showdown gas.
+
+    Gas is unconditional, continuous damage - unlike a projectile, there is no
+    version of walking into it that works out. So it outranks everything,
+    dodging included: sidestepping a shot into the cloud trades one hit for a
+    steady drain plus the same shot next second.
+    """
+    if move is None:
+        return False
+    x, y = move
+    if y < -8 and gas_reading["up"]:
+        return True
+    if y > 8 and gas_reading["down"]:
+        return True
+    if x < -8 and gas_reading["left"]:
+        return True
+    if x > 8 and gas_reading["right"]:
+        return True
+    return False
+
+
+def avoid_poison_gas():
+    x = 0
+    y = 0
+
+    if gas_reading["up"] or gas_reading["down"]:
+        y = JOYSTICK_RADIUS if gas_reading["up"] > gas_reading["down"] else -JOYSTICK_RADIUS
+    if gas_reading["left"] or gas_reading["right"]:
+        x = JOYSTICK_RADIUS if gas_reading["left"] > gas_reading["right"] else -JOYSTICK_RADIUS
+
+    if x == 0 and y == 0:
+        return None
+
+    move = normalize_move(x, y)
+    return first_unblocked([move, (x, 0), (0, y)], move)
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  NO ENEMY  (follower + showdown_survivor + default)
+# ─────────────────────────────────────────────────────────────────────
+
+def no_enemy_movement():
+    mate_coords, mate_distance = find_closest_teammate(teammate_data, player_pos, walls)
+
+    # 0. Nothing has happened for a while: stop waiting on the teammate and go
+    #    where the game is. Checked before the regroup branch, because it is
+    #    precisely the regroup branch that gets stuck on an idle ally.
+    if update_stagnation(mate_coords, mate_distance) or center_run_active():
+        return head_to_center()
+
+    # 1. Regroup, unless we are already next to them.
+    if mate_coords is not None:
+        if mate_distance is not None and mate_distance > TILE_SIZE * REGROUP_TILES:
+            return move_toward(mate_coords)
+        # Already together: drift instead of standing on their head.
+        return strafe_around(mate_coords)
+
+    # 2. Alone: rotate toward the middle of the map, which is where the
+    #    objective is in every mode and where the showdown gas closes to last.
+    center_x, center_y = map_center()
+    dx = center_x - player_pos[0]
+    dy = center_y - player_pos[1]
+    if vec_len(dx, dy) > TILE_SIZE * 2:
+        return move_toward((center_x, center_y))
+
+    # 3. Already central: push forward, then anywhere that is not a wall.
+    #    "Forward" flips if the map has already run out that way. This is the
+    #    only place the boundary reading steers movement - as a hint, not as a
+    #    ban, because banning directions is what got the bot wedged before.
+    forward = (0, -JOYSTICK_RADIUS)
+    if map_boundary[1] < 0:
+        forward = (0, JOYSTICK_RADIUS)
+    if not is_blocked(forward):
+        return forward
+    return random_safe_movement()
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  ARCHETYPE SPACING
+# ─────────────────────────────────────────────────────────────────────
+
+def hold_spacing(enemy_coords, enemy_distance, near, far):
+    """Stay in the band [near, far] of our own attack range.
+
+    Inside the band the bot strafes: it can already shoot, so closing further
+    only walks into the enemy's range for nothing. The band is deliberately
+    near the edge of our reach - a ranged brawler that closes to 60% of its
+    range has thrown away the only advantage it has.
+    """
+    if enemy_distance < attack_range * near:
+        return move_away_from(enemy_coords)
+    if enemy_distance <= attack_range * far:
+        return strafe_around(enemy_coords)
+    return move_toward(enemy_coords)
+
+
+def count_within(entities, radius):
+    found = 0
+    for entity in entities:
+        if get_distance(get_entity_pos(entity), player_pos) <= radius:
+            found += 1
+    return found
+
+
+def my_health():
+    """Own health, 0-1, or None when it could not be read."""
+    if not health_enabled:
+        return None
+    return player_health
+
+
+def enemy_health(enemy_coords):
+    """Health of the enemy nearest to a point, or None."""
+    if not health_enabled:
+        return None
+    nearest = None
+    best = TILE_SIZE * 2.0
+    for enemy in enemy_data:
+        distance = get_distance(get_entity_pos(enemy), enemy_coords)
+        if distance < best:
+            best = distance
+            nearest = enemy
+    if nearest is None:
+        return None
+    return health_of(nearest, True)
+
+
+def assess_fight(enemy_distance, enemy_coords):
+    """Decide whether this fight is worth taking.
+
+    Returns "fight", "hold" or "retreat".
+
+    Health is the first thing checked and the last word, because it is the only
+    input here that is not a proxy. Everything below it - headcount, how much
+    is in the air, how far the bot has been drawn from its team - are guesses
+    at "am I losing this". How much health is left is the actual answer.
+
+    Note the asymmetry: being hurt makes the bot leave, but the enemy being
+    hurt does NOT make it charge in. It removes the caution that headcount and
+    incoming fire would otherwise impose, and lets it keep fighting - a bot
+    that hunts every wounded enemy dies to the second one standing behind them.
+    """
+    mine = my_health()
+    theirs = enemy_health(enemy_coords)
+
+    if mine is not None:
+        if mine <= RETREAT_BELOW_HEALTH:
+            # Nothing else matters. At this much health almost any exchange is
+            # lethal, and the trade the bot is about to take is one it loses
+            # even if it wins.
+            return "retreat"
+        if mine <= CAUTIOUS_BELOW_HEALTH and (theirs is None or theirs > mine + 0.15):
+            # Hurt, and not obviously ahead. Stop closing, keep shooting.
+            return "hold"
+
+    radius = TILE_SIZE * ENGAGE_RADIUS_TILES
+    enemies_near = count_within(enemy_data, radius)
+    mates_near = count_within(teammate_data, radius)
+
+    # A wounded, isolated enemy is worth pressing even when the raw headcount
+    # says otherwise - they are about to stop being a gun.
+    finishable = (
+        theirs is not None and mine is not None
+        and theirs <= FINISH_BELOW_HEALTH
+        and mine >= theirs + FINISH_HEALTH_LEAD
+        and enemies_near <= mates_near + 1
+    )
+
+    # Outnumbered. Trading here loses by definition, regardless of aim.
+    if enemies_near > mates_near + OUTNUMBERED_BY and not finishable:
+        return "retreat"
+
+
+    # Chasing. Past this the bot walks out of its own team's cover and into
+    # whatever the enemy is walking toward.
+    if enemy_distance > attack_range * NO_CHASE_BEYOND:
+        return "hold"
+
+    return "fight"
+
+
+def retreat_movement(enemy_coords):
+    """Fall back toward a teammate, or straight away from the enemy."""
+    mate_coords, _ = find_closest_teammate(teammate_data, player_pos, walls)
+    away = move_away_from(enemy_coords)
+    if mate_coords is None:
+        return away
+
+    # Retreating toward a friend beats retreating into open ground: it ends
+    # with two guns pointing at the chaser instead of one.
+    toward = move_toward(mate_coords)
+
+    # Unless the friend is on the far side of the enemy - then the two pulls
+    # cancel and the bot stands still being shot, or worse, walks through the
+    # enemy to reach them.
+    away_len = vec_len(away[0], away[1])
+    toward_len = vec_len(toward[0], toward[1])
+    if away_len > 0 and toward_len > 0:
+        alignment = (away[0] * toward[0] + away[1] * toward[1]) / (away_len * toward_len)
+        if alignment < -0.2:
+            return away
+
+    return normalize_move(
+        away[0] * (1.0 - RETREAT_STRENGTH) + toward[0] * RETREAT_STRENGTH,
+        away[1] * (1.0 - RETREAT_STRENGTH) + toward[1] * RETREAT_STRENGTH,
+    )
+
+
+def combat_movement(enemy_coords, enemy_distance):
+    stance = assess_fight(enemy_distance, enemy_coords)
+
+    if stance == "retreat":
+        if debug:
+            mine = my_health()
+            reason = f"hp {mine:.0%}" if mine is not None else "fight not worth taking"
+            print(f"retreating: {reason}")
+        return retreat_movement(enemy_coords)
+
+    if stance == "hold":
+        # Not chasing this enemy. If the team is somewhere else, that is where
+        # to be - circling a far-off enemy while the squad walks away is how
+        # the bot ended up alone in the first place.
+        mate_coords, mate_distance = find_closest_teammate(teammate_data, player_pos, walls)
+        if mate_coords is not None and mate_distance is not None:
+            if mate_distance > TILE_SIZE * REGROUP_TILES:
+                return move_toward(mate_coords)
+        # Team is already here: hold the ground and keep the gun on target.
+        return strafe_around(enemy_coords)
+
+    # Melee archetypes have to close; everyone else fights at the far edge of
+    # their own range, which is the whole point of having one.
+    if archetype == "ASSASSIN":
+        if enemy_distance > attack_range * ASSASSIN_CLOSE_TO:
+            return move_toward(enemy_coords)
+        return strafe_around(enemy_coords)
+
+    if archetype == "TANK":
+        if enemy_distance > attack_range * TANK_CLOSE_TO:
+            return move_toward(enemy_coords)
+        return strafe_around(enemy_coords)
+
+    if archetype == "SNIPER":
+        return hold_spacing(enemy_coords, enemy_distance, SNIPER_HOLD_NEAR, SNIPER_HOLD_FAR)
+
+    if archetype == "LOBS":
+        return hold_spacing(enemy_coords, enemy_distance, LOBS_HOLD_NEAR, LOBS_HOLD_FAR)
+
+    # RANGED. safe_range acts as a hard floor: some brawlers are punished for
+    # being closer than that regardless of their reach.
+    near = max(HOLD_RANGE_NEAR, safe_range * 0.55 / max(attack_range, 1.0))
+    return hold_spacing(enemy_coords, enemy_distance, near, HOLD_RANGE_FAR)
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  TACTICAL LAYER
+# ─────────────────────────────────────────────────────────────────────
+
+def pick_target():
+    """Who to shoot at.
+
+    Nearest is the obvious answer and it is usually wrong. Damage only counts
+    when it finishes something: two enemies at half health are two guns, one at
+    zero and one at full is one gun. So among the enemies actually in range,
+    prefer the one closest to dying.
+
+    Falls back to nearest whenever health is unavailable, which is also what
+    happens when nobody in range has a readable bar.
+    """
+    coords, distance = find_closest_enemy(enemy_data, player_pos, walls, "attack")
+    if coords is None or not health_enabled or TARGET_WEAKEST_WITHIN <= 0:
+        return coords, distance
+
+    reach = attack_range * TARGET_WEAKEST_WITHIN
+    best = None
+    best_health = None
+    best_distance = None
+    for enemy in enemy_data:
+        position = get_entity_pos(enemy)
+        enemy_range = get_distance(position, player_pos)
+        if enemy_range > reach:
+            continue
+        if not is_enemy_hittable(player_pos, position, walls, "attack"):
+            # No line of fire, so however hurt they are is irrelevant.
+            continue
+        hp = health_of(enemy, True)
+        if hp is None:
+            continue
+        if best_health is None or hp < best_health:
+            best = position
+            best_health = hp
+            best_distance = enemy_range
+
+    if best is None:
+        return coords, distance
+
+    # Only switch off the nearest target if the alternative is meaningfully
+    # weaker - otherwise the bot flicks between two equally healthy enemies and
+    # lands nothing on either.
+    nearest_health = health_of_at(coords)
+    if nearest_health is not None and best_health > nearest_health - 0.12:
+        return coords, distance
+
+    if debug:
+        print(f"target: switching to weaker enemy at {best_health:.0%}")
+    return best, best_distance
+
+
+def health_of_at(point):
+    """Health of whichever enemy box sits at a point."""
+    if not health_enabled or point is None:
+        return None
+    for enemy in enemy_data:
+        if get_distance(get_entity_pos(enemy), point) < TILE_SIZE * 0.5:
+            return health_of(enemy, True)
+    return None
+
+
+enemy_coords = None
+enemy_distance = None
+if is_there_enemy(enemy_data):
+    enemy_coords, enemy_distance = pick_target()
+
+gas_movement = avoid_poison_gas()
+
+if gas_movement is not None:
+    movement = gas_movement
+elif enemy_coords is None:
+    movement = no_enemy_movement()
+else:
+    movement = combat_movement(enemy_coords, enemy_distance)
+
+    # Do not fight alone. If a teammate has been left far behind, bias the
+    # combat movement back toward them - previously the bot only regrouped when
+    # no enemy was visible at all, which in practice is almost never, so it
+    # drifted off and fought 1v2.
+    mate_coords, mate_distance = find_closest_teammate(teammate_data, player_pos, walls)
+    # A fight is the definition of something happening, so keep the idle clock
+    # fed here too. Without this the timer would run down during a long
+    # engagement and fire the moment the last enemy dropped out of sight.
+    update_stagnation(mate_coords, mate_distance)
+    persistent_data["center_run_until"] = 0.0
+    if mate_coords is not None and mate_distance is not None:
+        if mate_distance > TILE_SIZE * REGROUP_IN_FIGHT_TILES:
+            toward_mate = move_toward(mate_coords)
+            movement = normalize_move(
+                movement[0] * (1.0 - REGROUP_PULL) + toward_mate[0] * REGROUP_PULL,
+                movement[1] * (1.0 - REGROUP_PULL) + toward_mate[1] * REGROUP_PULL,
+            )
+
+    if is_blocked(movement):
+        if enemy_distance < safe_range:
+            movement = first_unblocked(
+                [move_away_from(enemy_coords), strafe_around(enemy_coords), random_safe_movement()],
+                movement,
+            )
+        else:
+            movement = first_unblocked(
+                [move_toward(enemy_coords), strafe_around(enemy_coords), random_safe_movement()],
+                movement,
+            )
+
+# Measured stall: the stick is held but the camera is not panning, so we are
+# pressed against something. This is the game reporting the truth, which beats
+# the timer-based unstuck heuristic - and it is the only thing that notices the
+# edge of the map, since there is no wall sprite there to detect.
+#
+# Bend around the obstacle rather than picking a random direction: the reason
+# we were walking that way (rejoining a teammate, closing on an enemy) is still
+# valid, it is only the exact heading that is blocked.
+if is_stuck and movement is not None:
+    escape = escape_boundary()
+    if escape is not None:
+        movement = escape
+    else:
+        movement = first_unblocked(sidestep_options(movement), movement)
+
+# Shooting is independent of where we are walking, so it happens either way.
+if enemy_coords is not None:
+    try_use_super(enemy_coords, enemy_distance)
+    try_attack(enemy_coords, enemy_distance, allow_wall_attack=(archetype == "LOBS"))
+
+
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  WALL GUARD
+#
+#  One check, applied to whatever every layer above finally decided.
+#
+#  Individual moves were already filtered, but three paths reached this point
+#  without ever being tested: the teammate-pull blend, the retreat blend, and
+#  the dodge vector. A blend of two legal directions is not itself legal - the
+#  average of "north" and "east" is "north-east", which can be solid rock - and
+#  the dodge solver only ever PRICED a wall, so a blocked heading could still
+#  win on score. That is why the bot kept walking into the sector its own
+#  joystick overlay was drawing in red.
+#
+#  Walking into a wall is never the best available option: the bot does not
+#  move, so it eats whatever it was dodging anyway, and then grinds against the
+#  wall until something else intervenes. Bending to the nearest free heading
+#  keeps the intent and drops only the exact angle.
+# ─────────────────────────────────────────────────────────────────────
+
+if movement is not None and vec_len(movement[0], movement[1]) > 0:
+    if is_blocked(movement):
+        freed = first_unblocked(sidestep_options(movement), movement)
+        if debug and freed != movement:
+            print("wall guard: bent movement out of a blocked heading")
+        movement = freed
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  BREAKING OUT  (last word, above everything including the dodge)
+#
+#  A brawler that cannot move cannot dodge either, so once we have been
+#  genuinely stuck for a moment, getting free outranks every other goal. This
+#  runs after the dodge layer on purpose: previously it ran before, and the
+#  dodge simply overwrote it, which is how the bot spent whole minutes wedged
+#  against the map edge while dutifully "evading".
+# ─────────────────────────────────────────────────────────────────────
+
+if is_stuck and stuck_for > BREAK_OUT_AFTER:
+    target = None
+
+    # 1. A teammate is the best thing to walk toward: it is where the bot
+    #    should be going anyway, and it is by definition reachable ground.
+    mate_coords, mate_distance = find_closest_teammate(teammate_data, player_pos, walls)
+    if mate_coords is not None:
+        target = mate_coords
+    else:
+        # 2. Otherwise the middle of the map, which is away from every edge.
+        target = (width / 2.0, height / 2.0)
+
+    dx = target[0] - player_pos[0]
+    dy = target[1] - player_pos[1]
+    # No blocked-direction filtering here at all. Whatever bookkeeping said is
+    # evidently wrong, since we are not moving; the only useful information
+    # left is where we want to end up.
+    movement = normalize_move(dx, dy)
+
+    edge = escape_boundary()
+    if edge is not None and not leads_into_gas(edge):
+        # Pinned against a specific edge: leave it first, then resume.
+        movement = edge
+
+    if leads_into_gas(movement):
+        # Never break out into the gas - rather stay stuck a moment longer.
+        alternative = avoid_poison_gas()
+        if alternative is not None:
+            movement = alternative
+
+    # Break out briskly - this is the one non-combat case where a sharp
+    # movement is warranted, because gentle easing is what kept us pinned.
+    sharp_movement = True
+
+    if debug:
+        print("breaking out, stuck for", round(stuck_for, 1), "s toward", target)
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  SAFETY
+# ─────────────────────────────────────────────────────────────────────
+
+if movement is None:
+    movement = (0, 0)
+
+# Never re-validate a dodge or a break-out: the solver already priced walls in,
+# and re-rolling here is what used to discard a perfectly good escape.
+if not sharp_movement and is_blocked(movement):
+    movement = random_safe_movement()
