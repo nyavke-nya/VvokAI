@@ -22,6 +22,21 @@ from dodge.solver import DodgeSolver
 from dodge.tracker import FrameContext, ProjectileTracker
 
 
+def _segment_hits_circle(start, end, centre, radius):
+    """Does the segment start->end pass within `radius` of `centre`?"""
+    dx, dy = end[0] - start[0], end[1] - start[1]
+    fx, fy = start[0] - centre[0], start[1] - centre[1]
+    length_sq = dx * dx + dy * dy
+    if length_sq < 1e-9:
+        return math.hypot(fx, fy) <= radius
+    # Closest approach, clamped to the segment.
+    t = -(fx * dx + fy * dy) / length_sq
+    t = min(max(t, 0.0), 1.0)
+    cx = start[0] + dx * t - centre[0]
+    cy = start[1] + dy * t - centre[1]
+    return math.hypot(cx, cy) <= radius
+
+
 class DodgeService:
     def __init__(self, window_controller, config=None, tile_size=54.0):
         scale = getattr(window_controller, "scale_factor", None) or 1.0
@@ -183,6 +198,36 @@ class DodgeService:
     def get_projectiles(self):
         with self._lock:
             return list(self._projectiles)
+
+    def hazards(self):
+        """Ground hazards left by throwers: mines, puddles, fire."""
+        if not self.config.enabled or not self.config.hazard_enabled:
+            return []
+        return self.tracker.hazards()
+
+    def leads_into_hazard(self, origin, vector, reach=None):
+        """Would stepping this way from `origin` enter a hazard?
+
+        Swept against the segment rather than the end point: a mine sitting
+        halfway along a short sidestep still gets walked over.
+        """
+        hazards = self.hazards()
+        if not hazards or not vector or origin is None:
+            return False
+
+        length = math.hypot(vector[0], vector[1])
+        if length < 1e-6:
+            return False
+        travel = reach if reach is not None else self.config.hazard_clearance * 4.0
+        ux, uy = vector[0] / length, vector[1] / length
+        end = (origin[0] + ux * travel, origin[1] + uy * travel)
+
+        clearance = self.config.hazard_clearance + self._player_radius
+        for hazard in hazards:
+            if _segment_hits_circle(origin, end, (hazard.x, hazard.y),
+                                    hazard.radius + clearance):
+                return True
+        return False
 
     def get_decision(self):
         with self._lock:

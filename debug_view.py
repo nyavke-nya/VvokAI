@@ -569,6 +569,30 @@ def draw_health(image, readings):
                     0.42, colour, 1, cv2.LINE_AA)
 
 
+def draw_hazards(image, hazards):
+    """Ground the bot must not walk on.
+
+    Drawn as a hatched circle so it is obvious these are areas rather than
+    objects, and so a false one is easy to spot: anything ringed here that is
+    plainly just map decoration means the promotion rule has a hole in it.
+    """
+    for hazard in hazards or []:
+        if not isinstance(hazard, dict):
+            continue
+        try:
+            x, y = int(hazard["x"]), int(hazard["y"])
+            radius = max(int(hazard.get("r", 20)), 6)
+        except (KeyError, TypeError, ValueError):
+            continue
+        cv2.circle(image, (x, y), radius, (0, 0, 0), 5, cv2.LINE_AA)
+        cv2.circle(image, (x, y), radius, (60, 200, 255), 2, cv2.LINE_AA)
+        # A cross through it, so it reads as "no" rather than as a target.
+        offset = int(radius * 0.7)
+        for dx, dy in ((offset, offset), (offset, -offset)):
+            cv2.line(image, (x - dx, y - dy), (x + dx, y + dy), (0, 0, 0), 4, cv2.LINE_AA)
+            cv2.line(image, (x - dx, y - dy), (x + dx, y + dy), (60, 200, 255), 1, cv2.LINE_AA)
+
+
 def draw_playstyle_error(image, message):
     """A banner across the top when the playstyle is throwing.
 
@@ -787,6 +811,7 @@ def draw_debug_data(image, debug_data, width, height):
         if isinstance(track, dict):
             _draw_trail(image, track.get("trail"), (255, 120, 255), 2)
     draw_projectiles(image, debug_data.get("projectiles"))
+    draw_hazards(image, debug_data.get("hazards"))
     draw_aim(image, debug_data.get("aim"), player_boxes)
     draw_dodge(image, debug_data.get("dodge"), player_boxes)
     draw_tracker_stats(image, debug_data.get("tracker_stats"), debug_data.get("motion"))

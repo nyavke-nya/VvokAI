@@ -389,6 +389,60 @@ swipe_hold = 0.02
 min_lead_distance = 18.0
 
 
+[hazard]
+# Ground hazards: things a thrower leaves lying on the map.
+#
+# Tick's mines, Barley's and Grom's puddles, Sprout's hedge, Amber's fire - all
+# of them arrive as a lobbed shot and then sit there doing damage. To the
+# projectile tracker they simply stop being projectiles, which is why the bot
+# used to walk straight through them.
+#
+# The detection rule is deliberately NOT colour. Colour is the obvious approach
+# and it is the reason to avoid it: Tick's mines are pink, but so is plenty of
+# map art; fire is orange, and so is desert sand. The health reader proved the
+# point - with colour gating alone it read 25 of 40 patches of ordinary grass
+# as a full health bar, at full confidence.
+#
+# Instead a hazard has to have EARNED it. It must already have been a confirmed
+# projectile: born next to an enemy, travelling away from them, straight, past
+# the full confirmation gate - and only then slowed to a stop. No animated
+# scenery has that history, because scenery never arrives.
+enabled = true
+
+# Below this speed (full-frame px/s) a confirmed shot counts as landed.
+max_speed = 90.0
+
+# Frames it must still be visible for after stopping. Mines blink while they
+# sit, so they keep re-appearing in the motion mask; this waits for that rather
+# than reacting to a single frame of a shot passing behind cover.
+confirm_hits = 3
+
+# Hazards are drawn as circles at least this big, in tiles. A mine's blob is
+# small but its blast is not, and the point is to stay out of the blast.
+min_radius_tiles = 0.55
+
+# Detections closer than this to a known hazard are the same object seen again.
+merge_radius_tiles = 0.9
+
+# Forgotten this long after it was last seen. It either went off or was never
+# really there; either way it is no longer worth avoiding.
+unseen_ttl = 1.2
+
+# Hard ceiling on how long one is remembered, whatever happens. Nothing in the
+# game lasts this long, and a stuck entry would fence the bot out of the map.
+max_lifetime = 12.0
+
+# Extra room left around a hazard when deciding whether a move enters it.
+clearance_tiles = 0.35
+
+# Only promote shots that were credited to a VISIBLE enemy. Stricter than the
+# dodge path on purpose: a shot with no visible shooter is still worth
+# sidestepping, because that decision lasts a fraction of a second and costs
+# nothing if it was wrong - but a hazard fences off ground for seconds, so it
+# is only accepted on the strongest evidence available.
+require_enemy_origin = true
+
+
 [health]
 # Reading health bars straight off the screen.
 #

@@ -165,6 +165,19 @@ class DodgeConfig:
         self.aim_swipe_hold = max(0.0, _f(aim, "swipe_hold", 0.02))
         self.aim_min_lead_distance = _f(aim, "min_lead_distance", 18.0) * scale
 
+        hazard = raw.get("hazard", {})
+        self.hazard_enabled = _b(hazard, "enabled", True)
+        # A shot slower than this has stopped flying and, if it was already a
+        # confirmed projectile, has landed.
+        self.hazard_max_speed = _f(hazard, "max_speed", 90.0) * scale
+        self.hazard_confirm_hits = max(2, _i(hazard, "confirm_hits", 3))
+        self.hazard_min_radius = _f(hazard, "min_radius_tiles", 0.55) * self.tile
+        self.hazard_merge_radius = _f(hazard, "merge_radius_tiles", 0.9) * self.tile
+        self.hazard_ttl = max(0.2, _f(hazard, "unseen_ttl", 1.2))
+        self.hazard_max_lifetime = max(1.0, _f(hazard, "max_lifetime", 12.0))
+        self.hazard_clearance = _f(hazard, "clearance_tiles", 0.35) * self.tile
+        self.hazard_require_enemy_origin = _b(hazard, "require_enemy_origin", True)
+
         health = raw.get("health", {})
         self.health_enabled = _b(health, "enabled", True)
         # Search band above the box, as fractions of the box height.

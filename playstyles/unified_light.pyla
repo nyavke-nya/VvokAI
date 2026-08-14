@@ -535,15 +535,31 @@ gas_reading = is_there_poison_gas(player_data)
 
 
 def leads_into_gas(move):
-    """True if this movement heads into the showdown gas.
+    """True if this movement heads into anything that hurts to stand in.
 
-    Gas is unconditional, continuous damage - unlike a projectile, there is no
-    version of walking into it that works out. So it outranks everything,
-    dodging included: sidestepping a shot into the cloud trades one hit for a
-    steady drain plus the same shot next second.
+    Two kinds, treated identically because to the bot they are the same
+    problem - somewhere it must not walk, that no amount of dodging justifies
+    entering:
+
+      * the showdown gas, measured as coloured pixels around the player;
+      * whatever a thrower left on the ground - Tick's mines, Barley's and
+        Grom's puddles, Sprout's hedge, Amber's fire.
+
+    Both are unconditional, continuous damage. Unlike a projectile there is no
+    version of walking into one that works out: sidestepping a shot into a
+    puddle trades one hit for a steady drain plus the same shot next second.
+
+    The engine finds ground hazards without looking at colour at all. A hazard
+    has to have been a confirmed projectile first - born next to an enemy,
+    flown away from them in a straight line, past the full confirmation gate -
+    and only then come to a stop. Map decorations never have that history,
+    which is what keeps this free of the false positives a colour rule would
+    produce.
     """
     if move is None:
         return False
+    if leads_into_hazard(move):
+        return True
     x, y = move
     if y < -8 and gas_reading["up"]:
         return True

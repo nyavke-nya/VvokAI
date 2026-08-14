@@ -155,7 +155,7 @@ class FrameContext:
 class _Track:
     __slots__ = ("id", "samples", "missed", "radius", "colour_score",
                  "origin_enemies", "origin_pos", "confirmed", "born_at",
-                 "origin_reason", "velocity", "seed_dir", "matched")
+                 "origin_reason", "velocity", "seed_dir", "matched", "peak_speed")
 
     def __init__(self, track_id, stamp, x, y, radius, colour_score, enemies, seed_dir=None):
         self.id = track_id
@@ -181,6 +181,10 @@ class _Track:
         # Frames actually matched, which is not len(samples): the deque caps at
         # 12, so a long-lived track would otherwise look permanently young.
         self.matched = 1
+        # Fastest this track has ever been measured at. A landed hazard must
+        # have genuinely flown at some point; something that merely twitched in
+        # place never qualifies.
+        self.peak_speed = 0.0
 
     @property
     def hits(self):
@@ -206,11 +210,45 @@ class _Track:
             if sample[0] > newest:
                 self.samples.append(sample)
         self.matched = max(self.matched, other.matched)
+        self.peak_speed = max(self.peak_speed, other.peak_speed)
         self.missed = min(self.missed, other.missed)
         if self.seed_dir is None:
             self.seed_dir = other.seed_dir
         if not self.origin_enemies:
             self.origin_enemies = other.origin_enemies
+
+
+class Hazard:
+    """Something a thrower left on the ground, in full-frame pixels.
+
+    Tick's mines, Barley's and Grom's puddles, Sprout's hedge, Amber's fire -
+    all of them arrive as a lobbed shot and then stay put doing damage. To the
+    projectile tracker they simply stop being projectiles, which is why the bot
+    used to walk straight through them.
+    """
+
+    __slots__ = ("id", "x", "y", "radius", "born_at", "seen_at", "source")
+
+    def __init__(self, hazard_id, x, y, radius, born_at, source):
+        self.id = hazard_id
+        self.x = x
+        self.y = y
+        self.radius = radius
+        self.born_at = born_at
+        self.seen_at = born_at
+        # Track id of the shot that became this, kept for the log.
+        self.source = source
+
+    def age(self, now):
+        return now - self.born_at
+
+    def as_dict(self):
+        return {
+            "id": self.id,
+            "x": round(self.x, 1),
+            "y": round(self.y, 1),
+            "r": round(self.radius, 1),
+        }
 
 
 class ProjectileTracker:
@@ -243,6 +281,12 @@ class ProjectileTracker:
         # before filtering, which is the only honest way to judge how much
         # noise is getting through.
         self.debug_blobs = []
+
+        # Ground hazards: shots that landed and stayed. Held in screen
+        # coordinates and slid along with the camera each frame, the same way
+        # the YOLO boxes are.
+        self._hazards = []
+        self._next_hazard_id = 1
 
         self.stats = {
             "blobs": 0, "tracks": 0, "confirmed": 0, "ms": 0.0, "rejected": 0,
@@ -313,6 +357,7 @@ class ProjectileTracker:
         self._prev_gray_half = None
         self._tracks = []
         self._speed_samples.clear()
+        self._hazards = []
         self._player_speed = self.config.default_player_speed
 
     def update(self, frame, context, stamp=None):
@@ -350,6 +395,7 @@ class ProjectileTracker:
             self._roll(gray, gray_half, stamp, (0.0, 0.0))
             return [], (0.0, 0.0)
 
+        self._age_hazards(shift, step, stamp)
         self._update_player_speed(shift, dt, context.joystick_active, step)
         player_center = None
         if context.player_box and len(context.player_box) >= 4:
@@ -716,6 +762,9 @@ class ProjectileTracker:
             # Re-fit now that the new sample is in, so _collect and the merge
             # pass can both read it instead of fitting the same track twice.
             track.velocity = self._fit_velocity(track)
+            track.peak_speed = max(
+                track.peak_speed,
+                math.hypot(track.velocity[0], track.velocity[1]))
 
         lost = 0
         survivors = []
@@ -967,6 +1016,10 @@ class ProjectileTracker:
             speed = math.hypot(velocity[0], velocity[1])
             if speed < config.min_speed or speed > config.max_speed:
                 rejects["speed"] += 1
+                # Too slow to be a shot in flight - but that is exactly what a
+                # landed hazard looks like, and this branch is where they were
+                # being thrown away.
+                self._consider_hazard(track, stamp, speed)
                 continue
 
             # Straightness needs three points to mean anything. With only two
@@ -1033,6 +1086,84 @@ class ProjectileTracker:
     # ------------------------------------------------------------------
     # self-calibration
     # ------------------------------------------------------------------
+
+    def _consider_hazard(self, track, stamp, speed):
+        """Promote a stopped shot into a ground hazard.
+
+        The whole design rests on one requirement: it must ALREADY have been a
+        confirmed projectile. That is what keeps this free of the garbage a
+        colour-based detector produces - and colour is the obvious approach,
+        which is exactly why it is not used here. Tick's mines are pink, but so
+        are plenty of map decorations; fire is orange, and so is desert sand.
+        On the bench, colour alone read 25 of 40 patches of ordinary grass as a
+        full health bar, and this would be no better.
+
+        A hazard instead has to have earned a history: born next to an enemy,
+        travelled away from them in a straight line, survived confirmation as a
+        shot, and only THEN slowed to a stop. No animated scenery has that
+        story, because scenery never arrives.
+        """
+        config = self.config
+        if not track.confirmed or speed > config.hazard_max_speed:
+            return
+        if track.peak_speed < config.min_speed:
+            # Never actually flew, so it was never a shot. Refuse it.
+            return
+        if track.hits < config.hazard_confirm_hits:
+            return
+        if config.hazard_require_enemy_origin and track.origin_reason != "enemy":
+            # Stricter than the dodge path, deliberately. A shot with no
+            # visible shooter is still worth sidestepping - that decision lasts
+            # a fraction of a second and costs nothing if it was wrong. A
+            # hazard fences off ground for seconds, so it is only accepted on
+            # the strongest evidence: an enemy was actually seen to throw it.
+            return
+
+        _, x, y = track.last
+        radius = max(track.radius, config.hazard_min_radius)
+
+        # Already know about this one? A mine sits blinking for seconds and is
+        # re-detected constantly; merging keeps one entry per object and lets
+        # its lifetime be measured from when it first landed.
+        for hazard in self._hazards:
+            if math.hypot(hazard.x - x, hazard.y - y) < config.hazard_merge_radius:
+                hazard.x = 0.7 * hazard.x + 0.3 * x
+                hazard.y = 0.7 * hazard.y + 0.3 * y
+                hazard.radius = max(hazard.radius, radius)
+                hazard.seen_at = stamp
+                return
+
+        self._hazards.append(Hazard(self._next_hazard_id, x, y, radius, stamp, track.id))
+        self._next_hazard_id += 1
+
+    def _age_hazards(self, shift, step, stamp):
+        """Slide hazards with the camera and drop the ones that have expired.
+
+        They sit still in the world, so on screen they move exactly as the map
+        does. Without this they would drift away from the thing they mark the
+        moment the bot walks.
+        """
+        if not self._hazards:
+            return
+
+        dx = shift[0] * step
+        dy = shift[1] * step
+        config = self.config
+        alive = []
+        for hazard in self._hazards:
+            hazard.x += dx
+            hazard.y += dy
+            if stamp - hazard.seen_at > config.hazard_ttl:
+                # Not seen for a while: either it went off or it was never
+                # really there. Either way it is no longer worth avoiding.
+                continue
+            if stamp - hazard.born_at > config.hazard_max_lifetime:
+                continue
+            alive.append(hazard)
+        self._hazards = alive
+
+    def hazards(self):
+        return list(self._hazards)
 
     def _update_player_speed(self, shift, dt, joystick_active, step):
         """Learn how fast this brawler moves, in pixels, from the camera itself.

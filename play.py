@@ -149,6 +149,7 @@ class Play:
         self.health_reader = None
         self.health_readings = {}
         self.last_gas_reading = None
+        self.last_gas_center = None
         self._stage_times = {}
         self._stage_iterations = 0
         self._stage_reported = time.perf_counter()
@@ -450,6 +451,8 @@ class Play:
         # Kept so the dodge service's emergency path can veto an escape without
         # re-scanning the frame from another thread.
         self.last_gas_reading = reading
+        box = player_data[0] if isinstance(player_data, list) and player_data             and isinstance(player_data[0], list) else player_data
+        self.last_gas_center = self.get_entity_pos(box) if box else None
         return reading
 
     def _measure_poison_gas(self, player_data, threshold=7000, area_from_player_checked=1.5):
@@ -656,6 +659,24 @@ class Play:
         if self.dodge_config.debug_overlay:
             record(data.get('teammate'), False, "t")
 
+    def escape_leads_into_hazard(self, vector):
+        """Poison, or something a thrower left on the ground.
+
+        One veto covering both, because to the bot they are the same problem:
+        somewhere it must not walk, that no amount of dodging justifies
+        entering. Handed to the dodge service so its emergency path can refuse,
+        and exposed to the playstyle so ordinary movement refuses too.
+        """
+        if self.escape_leads_into_gas(vector):
+            return True
+        service = self.dodge_service
+        if service is None or not service.enabled:
+            return False
+        center = self.last_gas_center
+        if center is None:
+            return False
+        return service.leads_into_hazard(center, vector)
+
     def escape_leads_into_gas(self, vector):
         """Would sidestepping this way put the brawler in poison?
 
@@ -854,6 +875,12 @@ class Play:
                 'health_enabled': bool(
                     self.dodge_config and self.dodge_config.health_enabled
                 ),
+
+                # Ground hazards left by throwers - mines, puddles, fire. Same
+                # veto the emergency path uses, so the two never disagree.
+                'leads_into_hazard': self.escape_leads_into_hazard,
+                'hazards': (self.dodge_service.hazards()
+                            if self.dodge_service is not None else []),
                 'player_data': data['player'][0],
                 'enemy_data': data['enemy'],
                 'teammate_data': data['teammate'],
@@ -906,7 +933,7 @@ class Play:
                 vector,
                 is_blocked=lambda candidate, box=self.last_player_box,
                 walls=data['wall']: self.is_path_blocked(box, candidate, walls),
-                gas_veto=self.escape_leads_into_gas,
+                gas_veto=self.escape_leads_into_hazard,
             )
 
         if vector is None:
@@ -1161,6 +1188,10 @@ class Play:
                 }
                 for key, reading in self.health_readings.items()
                 if reading.bar is not None
+            ]
+
+            debug_data["hazards"] = [
+                h.as_dict() for h in (self.dodge_service.hazards() or [])
             ]
 
             if self.dodge_config.debug_show_candidates:
