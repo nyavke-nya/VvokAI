@@ -427,6 +427,23 @@ max_lead = 0.7
 # aims straight at them, which is what auto-aim would have done anyway.
 min_samples = 3
 
+# How many of the most recent positions the velocity is fitted over.
+#
+# Fitting the whole eight-deep history averages across any change of direction,
+# so a brawler who has just turned reads as moving slower than they are - and
+# the lead comes out short in exactly the moment it matters. Four is enough to
+# be steady and short enough to follow a turn.
+velocity_window = 4
+
+# Multiplier on the finished lead.
+#
+# Above 1 on purpose. Every part of the chain rounds downward: the velocity fit
+# lags a turn slightly, the enemy box is a frame or two old by the time it is
+# used, and the touch event takes time to reach the device. Each is small; they
+# all point the same way, and the shot lands behind the target. Raise if shots
+# still trail, lower if they now lead too far.
+lead_scale = 1.15
+
 # Enemy velocities above this (full-frame px/s) are treated as a tracking
 # mismatch between two different enemies rather than real movement.
 max_enemy_speed = 900.0

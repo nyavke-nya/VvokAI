@@ -52,6 +52,31 @@ def main():
                             projectile_speed=1150.0, confidence=1.0)
     report.check("no sideways offset", round(solution.lead_distance), 0)
 
+    report.section("a wildly fast reading is clamped, never zeroed")
+    from dodge.tracker import FrameContext
+    tracker_cfg = config()
+    enemies = EnemyTracker(tracker_cfg)
+    stamp = 1000.0
+    # A track that jumps to a different enemy each frame, always the same way,
+    # so the fit sees a steady but impossible speed rather than a wobble that
+    # averages back to nothing.
+    x = 300.0
+    for step in range(6):
+        enemies.update([[x, 400.0, x + 90.0, 520.0]], (0.0, 0.0), stamp)
+        # Just inside the association gate, so it stays ONE track - a jump
+        # bigger than the gate simply starts a new track with no velocity at
+        # all, which is not the case being tested.
+        x += 100.0
+        stamp += 1 / 30.0
+    tracked = enemies.tracked()
+    if tracked:
+        speed = tracked[0].speed
+        report.at_most("the speed is capped", round(speed),
+                       round(tracker_cfg.aim_max_enemy_speed) + 1)
+        # Zeroing threw the heading away with the magnitude, so one bad frame
+        # meant no lead at all and the shot went where they already were.
+        report.at_least("but a direction survives", round(speed), 1)
+
     report.section("a shaky velocity estimate is only half trusted")
     full = solver.solve((0, 0), (480, 0), (0.0, 300.0), projectile_speed=1150.0,
                         confidence=1.0)

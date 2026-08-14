@@ -169,6 +169,8 @@ class DodgeConfig:
         self.aim_min_lead_distance = _f(aim, "min_lead_distance", 18.0) * scale
         self.aim_measure_speed = _b(aim, "measure_projectile_speed", True)
         self.aim_speed_min_samples = max(3, _i(aim, "speed_min_samples", 6))
+        self.aim_velocity_window = max(2, _i(aim, "velocity_window", 4))
+        self.aim_lead_scale = max(0.0, _f(aim, "lead_scale", 1.15))
 
         hazard = raw.get("hazard", {})
         self.hazard_enabled = _b(hazard, "enabled", True)

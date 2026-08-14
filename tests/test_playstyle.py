@@ -390,6 +390,71 @@ def check_walls(report):
                  context["first_unblocked"]([north], north), (0, 0))
 
 
+BREAKOUT_FUNCS = {"break_out_heading", "normalize_move", "vec_len",
+                  "random_safe_movement"}
+
+
+def check_breakout(report):
+    """A wedged bot must try somewhere else, not lean on the same spot.
+
+    Breaking out used to aim straight at the target and never reconsider. With
+    the target on the far side of a wall the heading was hopeless from the
+    first frame, and nothing in the logic could notice: one session logged
+    stuck_for climbing to 44 seconds with the commanded vector unchanged and
+    the world not moving a pixel.
+    """
+    import math
+
+    state = {"stuck_for": 0.0, "blocked": set()}
+
+    def rotate(move, radians):
+        cos, sin = math.cos(radians), math.sin(radians)
+        return (move[0] * cos - move[1] * sin, move[0] * sin + move[1] * cos)
+
+    def direction_blocked(vector, now=None):
+        length = math.hypot(vector[0], vector[1])
+        if length < 1e-6:
+            return False
+        for angle in state["blocked"]:
+            dot = (vector[0] / length) * math.cos(angle) + (vector[1] / length) * math.sin(angle)
+            if dot > 0.92:
+                return True
+        return False
+
+    context = base_context(rotate_movement=rotate,
+                           is_direction_blocked=direction_blocked)
+    context["stuck_for"] = 0.0
+    lift(BREAKOUT_FUNCS, {"BREAK_OUT_SWEEP"}, context)
+
+    def heading_after(seconds):
+        context["stuck_for"] = seconds
+        state["stuck_for"] = seconds
+        vector = context["break_out_heading"]((1800.0, 500.0))
+        return round(math.degrees(math.atan2(vector[1], vector[0])))
+
+    report.section("a wedged bot must not hold one heading forever")
+    # Sampled finely: the sweep advances every BREAK_OUT_SWEEP seconds, so
+    # coarse sampling can step straight over one of the headings.
+    seen = {heading_after(t / 10.0) for t in range(0, 60)}
+    report.at_least("the sweep covers several headings in six seconds",
+                    len(seen), 6)
+    report.check("straight at the target is tried first", heading_after(0.0), 0)
+    report.check("and straight back is reached", 180 in seen or -180 in seen, True)
+
+    report.section("headings measured as failing are skipped")
+    state["blocked"] = {0.0}
+    context["is_direction_blocked"] = direction_blocked
+    first = heading_after(0.0)
+    report.check("the known-bad heading is not chosen", first != 0, True)
+
+    report.section("everything measured as failing still produces movement")
+    state["blocked"] = {i * math.pi / 8 for i in range(-8, 9)}
+    context["stuck_for"] = 0.0
+    vector = context["break_out_heading"]((1800.0, 500.0))
+    report.at_least("it keeps pushing rather than giving up",
+                    round(math.hypot(vector[0], vector[1])), 1)
+
+
 def main():
     report = Failures("playstyle")
     for path in PLAYSTYLES:
@@ -410,6 +475,7 @@ def main():
     report.check("unified_light has no projectile code left", leftovers, [])
 
     check_walls(report)
+    check_breakout(report)
     check_fight(report)
     check_idle(report)
     return report.finish()

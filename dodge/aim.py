@@ -141,10 +141,18 @@ class EnemyTracker:
             vx, vy = self._fit_velocity(track)
             speed = math.hypot(vx, vy)
             if speed > config.aim_max_enemy_speed:
-                # Almost certainly a mismatch between two different enemies
-                # rather than someone genuinely moving that fast.
-                vx = vy = 0.0
-                speed = 0.0
+                # Probably a mismatch between two different enemies rather than
+                # someone genuinely moving that fast - but CLAMPED, not zeroed.
+                #
+                # Zeroing threw the direction away with the magnitude, so one
+                # bad frame meant no lead at all and the shot went straight at
+                # where they already were. The heading is almost always right
+                # even when the speed is not, and a clamped lead in the right
+                # direction beats no lead.
+                scale = config.aim_max_enemy_speed / speed
+                vx *= scale
+                vy *= scale
+                speed = config.aim_max_enemy_speed
             hits = len(track.samples)
             confidence = min(hits / max(config.aim_min_samples, 1), 1.0)
             if hits < config.aim_min_samples:
@@ -166,9 +174,12 @@ class EnemyTracker:
                 best = enemy
         return best
 
-    @staticmethod
-    def _fit_velocity(track):
-        samples = list(track.samples)
+    def _fit_velocity(self, track):
+        # Only the most recent samples. Fitting the whole eight-deep history
+        # averages across any change of direction, so a brawler who just turned
+        # reads as moving slower than they are - and the lead comes out short
+        # in exactly the moment it matters.
+        samples = list(track.samples)[-self.config.aim_velocity_window:]
         if len(samples) < 2:
             return (0.0, 0.0)
 
@@ -226,8 +237,12 @@ class AimSolver:
         # Trust the lead only as far as the velocity estimate is trustworthy.
         # A half-confident track gets half the lead, which is much better than
         # either ignoring the motion or over-committing to a noisy estimate.
-        scale = max(0.0, min(confidence, 1.0))
-        point = (target_pos[0] + vx * flight * scale, target_pos[1] + vy * flight * scale)
+        trust = max(0.0, min(confidence, 1.0))
+        # lead_scale stretches the aim point, it is NOT part of how much the
+        # estimate is trusted - folding the two together made the reported
+        # confidence come back as 1.15, which is not a confidence.
+        reach = trust * config.aim_lead_scale
+        point = (target_pos[0] + vx * flight * reach, target_pos[1] + vy * flight * reach)
 
         # Clipping the flight time keeps the bot from extrapolating half a
         # second into a target's future, but it also means the aim point is
@@ -246,7 +261,7 @@ class AimSolver:
             direction=(aim_x / length, aim_y / length),
             flight_time=flight,
             lead_distance=math.hypot(point[0] - target_pos[0], point[1] - target_pos[1]),
-            confidence=scale * clip_quality,
+            confidence=trust * clip_quality,
         )
 
     @staticmethod
