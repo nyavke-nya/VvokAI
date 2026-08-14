@@ -335,9 +335,62 @@ def check_idle(report):
     report.check("released after IDLE_COMMIT", context["center_run_active"](), False)
 
 
+# rotate_movement is supplied by the engine, not defined in the playstyle.
+WALL_FUNCS = {"first_unblocked", "is_blocked", "sidestep_options",
+              "normalize_move", "vec_len"}
+
+
+def check_walls(report):
+    """A blocked heading must never survive to the joystick.
+
+    The bot used to walk straight into the sector its own overlay was drawing
+    in red. first_unblocked() returned its `fallback` when every offered move
+    was blocked, and `fallback` is normally the move that was just rejected.
+    """
+    blocked = {"north": True}
+
+    def path_blocked(player, move, walls):
+        # Solid rock to the north; everything else is walkable.
+        length = (move[0] ** 2 + move[1] ** 2) ** 0.5
+        return bool(blocked.get("north")) and length > 0 and move[1] / length < -0.6
+
+    def rotate(move, radians):
+        import math as m
+        c, s = m.cos(radians), m.sin(radians)
+        return (move[0] * c - move[1] * s, move[0] * s + move[1] * c)
+
+    context = lift(WALL_FUNCS, {"REGROUP_TILES"},
+                   base_context(is_path_blocked=path_blocked, rotate_movement=rotate))
+
+    north = (0.0, -100.0)
+    report.check("the test wall is actually blocking north",
+                 context["is_blocked"](north), True)
+
+    report.section("a blocked heading must be bent, never returned")
+    chosen = context["first_unblocked"]([north], north)
+    report.check("first_unblocked no longer hands back the blocked fallback",
+                 context["is_blocked"](chosen), False)
+    report.check("...and it does not just give up either", chosen != (0, 0), True)
+
+    bent = context["first_unblocked"](context["sidestep_options"](north), north)
+    report.check("the wall guard's own call bends out of the wall",
+                 context["is_blocked"](bent), False)
+
+    report.section("boxed in on every side")
+    blocked["north"] = False
+
+    def all_blocked(player, move, walls):
+        return (move[0] ** 2 + move[1] ** 2) ** 0.5 > 0
+
+    context["is_path_blocked"] = all_blocked
+    report.check("standing still beats grinding into rock",
+                 context["first_unblocked"]([north], north), (0, 0))
+
+
 def main():
     report = Failures("playstyle")
     check_names(report)
+    check_walls(report)
     check_fight(report)
     check_idle(report)
     return report.finish()

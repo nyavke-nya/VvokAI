@@ -231,10 +231,34 @@ def first_unblocked(moves, fallback=None):
     for move in moves:
         if not is_blocked(move):
             return move
-    if fallback is not None:
-        return fallback
-    if moves:
-        return moves[0]
+
+    # None of the offered headings work. Sweeping the full circle before giving
+    # up matters: the old version returned `fallback` here, and `fallback` is
+    # normally the very direction that was just rejected - so the bot walked
+    # straight into a wall it had already drawn in red on its own overlay.
+    #
+    # Whichever free direction lies closest to what was wanted is chosen, so
+    # the goal survives even when the exact heading does not.
+    wanted = fallback if fallback is not None else (moves[0] if moves else None)
+    if wanted is not None and vec_len(wanted[0], wanted[1]) > 0:
+        best = None
+        best_alignment = -2.0
+        step = 0
+        while step < 16:
+            angle = 2.0 * math.pi * step / 16.0
+            candidate = normalize_move(math.cos(angle), math.sin(angle))
+            step += 1
+            if is_blocked(candidate):
+                continue
+            alignment = (candidate[0] * wanted[0] + candidate[1] * wanted[1])
+            if alignment > best_alignment:
+                best_alignment = alignment
+                best = candidate
+        if best is not None:
+            return best
+
+    # Genuinely boxed in. Standing still beats grinding against a wall - the
+    # break-out logic below is what gets us out of this.
     return (0, 0)
 
 
@@ -947,6 +971,33 @@ if dodge_enabled and projectiles:
                 # Keep the pressure on while sidestepping.
                 if ATTACK_WHILE_DODGING and enemy_coords is not None:
                     try_attack(enemy_coords, enemy_distance, allow_wall_attack=(archetype == "LOBS"))
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  WALL GUARD
+#
+#  One check, applied to whatever every layer above finally decided.
+#
+#  Individual moves were already filtered, but three paths reached this point
+#  without ever being tested: the teammate-pull blend, the retreat blend, and
+#  the dodge vector. A blend of two legal directions is not itself legal - the
+#  average of "north" and "east" is "north-east", which can be solid rock - and
+#  the dodge solver only ever PRICED a wall, so a blocked heading could still
+#  win on score. That is why the bot kept walking into the sector its own
+#  joystick overlay was drawing in red.
+#
+#  Walking into a wall is never the best available option: the bot does not
+#  move, so it eats whatever it was dodging anyway, and then grinds against the
+#  wall until something else intervenes. Bending to the nearest free heading
+#  keeps the intent and drops only the exact angle.
+# ─────────────────────────────────────────────────────────────────────
+
+if movement is not None and vec_len(movement[0], movement[1]) > 0:
+    if is_blocked(movement):
+        freed = first_unblocked(sidestep_options(movement), movement)
+        if debug and freed != movement:
+            print("wall guard: bent movement out of a blocked heading")
+        movement = freed
 
 
 # ─────────────────────────────────────────────────────────────────────

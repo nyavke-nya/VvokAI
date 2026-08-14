@@ -296,7 +296,14 @@ default_player_speed = 330.0
 tactical_weight = 0.20
 
 # Cost added to an escape direction that walks into a wall.
-wall_penalty = 2.5
+#
+# Raised from 2.5 so that a wall effectively vetoes a direction rather than
+# merely discouraging it. At 2.5 the dodge solver would happily pick a blocked
+# heading whenever it scored a little better on threats - and that is the worst
+# of both worlds: the bot does not move, so it eats the shot anyway, and it
+# spends the next second grinding against a wall it had already marked red on
+# its own joystick overlay. A blocked escape is not an escape.
+wall_penalty = 12.0
 
 # Round-trip lag between what the bot sees and when its joystick command takes
 # effect, in seconds: the device encodes the frame, streams it, we decode and
