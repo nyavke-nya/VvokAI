@@ -3,6 +3,12 @@ setlocal enabledelayedexpansion
 title VvokAI - repair install
 color 0B
 
+:: Work from the folder this file lives in, whatever the shell's current
+:: directory happens to be. Launching it by full path from somewhere else - a
+:: console already sitting in System32, say - would otherwise look for main.py
+:: in that other place and refuse to run.
+cd /d "%~dp0"
+
 echo ============================================================
 echo   VvokAI - repairing the Python environment
 echo ============================================================
