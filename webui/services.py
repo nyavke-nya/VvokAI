@@ -82,6 +82,9 @@ INVALID_PLAYER_TAG_MESSAGE = "Player tag is incorrect. Use your Brawl Stars play
 logger = logging.getLogger(__name__)
 
 
+SECRET_PLACEHOLDER = "•" * 12
+
+
 class WebDataService:
     PLAY_ORDER_VALUES = {"in_order", "lowest_to_highest", "highest_to_lowest"}
 
@@ -89,6 +92,8 @@ class WebDataService:
         "run_for_minutes": ("int", 0),
         "player_tag": ("str", ""),
         "brawl_api_token": ("str", ""),
+        "brawl_api_email": ("str", ""),
+        "brawl_api_password": ("str", ""),
         "default_trophy_target": ("int", 1000),
         "play_order": ("play_order", "in_order"),
         "max_ips": ("auto_int", "auto"),
@@ -705,7 +710,14 @@ class WebDataService:
     def get_settings_payload(self, section: str) -> dict[str, Any]:
         section = section.lower()
         if section == "general":
-            return self._select_fields(self._load_config("cfg/general_config.toml"), self.GENERAL_FIELDS)
+            payload = self._select_fields(self._load_config("cfg/general_config.toml"),
+                                          self.GENERAL_FIELDS)
+            # The password is never sent back to the browser. A placeholder
+            # goes instead, so the field can still show that one is set, and
+            # update_settings treats that exact string as "leave it alone".
+            if payload.get("brawl_api_password"):
+                payload["brawl_api_password"] = SECRET_PLACEHOLDER
+            return payload
         if section == "bot":
             payload = self._select_fields(self._load_config("cfg/bot_config.toml"), self.BOT_FIELDS)
             payload["current_playstyle"] = self._load_config("cfg/bot_config.toml").get("current_playstyle", "unified_dodge.pyla")
@@ -724,6 +736,11 @@ class WebDataService:
         payload = payload or {}
         if section == "general":
             config = self._load_config("cfg/general_config.toml")
+            payload = dict(payload)
+            # The browser never received the real password, so echoing the
+            # placeholder back must not overwrite it with asterisks.
+            if payload.get("brawl_api_password") == SECRET_PLACEHOLDER:
+                payload.pop("brawl_api_password")
             self._save_config("cfg/general_config.toml", self._apply_updates(config, self.GENERAL_FIELDS, payload))
             if "play_order" in payload and self.get_settings_payload("general").get("play_order") != "in_order":
                 self.save_queue_data([
