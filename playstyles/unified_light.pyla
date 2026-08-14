@@ -938,7 +938,12 @@ if enemy_coords is not None:
 #  keeps the intent and drops only the exact angle.
 # ─────────────────────────────────────────────────────────────────────
 
-if movement is not None and vec_len(movement[0], movement[1]) > 0:
+#  It deliberately does NOT touch a dodge vector. The solver already scores
+#  every candidate against the wall model - a blocked escape is scored as
+#  standing still, which is what it is - so bending its answer afterwards would
+#  move the bot to a heading it never evaluated, quite possibly back into the
+#  shot it just avoided.
+if movement is not None and not sharp_movement and vec_len(movement[0], movement[1]) > 0:
     if is_blocked(movement):
         freed = first_unblocked(sidestep_options(movement), movement)
         if debug and freed != movement:

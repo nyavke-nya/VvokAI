@@ -209,21 +209,19 @@ class DodgeSolver:
                 stay_score = score
             else:
                 candidate = (direction[0] * joystick_scale, direction[1] * joystick_scale)
-                if is_blocked is not None and is_blocked(candidate):
-                    score += config.wall_penalty
-                    hit_wall = True
-                if motion is not None:
+                walled = bool(is_blocked is not None and is_blocked(candidate))
+                if motion is not None and motion.is_direction_blocked(candidate, now):
                     # Measured obstruction, as opposed to the wall model's
-                    # opinion. A direction we already tried and did not move in
-                    # is not an escape, it is standing still while being shot.
-                    if motion.is_direction_blocked(candidate, now):
-                        score += config.wall_penalty
-                        hit_wall = True
-                    elif motion.is_toward_boundary(candidate):
-                        # The map edge is not a hard stop yet, but there is no
-                        # room to keep going that way.
-                        score += config.wall_penalty * 0.6
-                        hit_edge = True
+                    # opinion: a direction we already pushed and did not move in.
+                    walled = True
+
+                if not walled and motion is not None and motion.is_toward_boundary(candidate):
+                    # The map edge is not a hard stop yet, but there is no room
+                    # to keep going that way, so it is worth avoiding without
+                    # being treated as a wall.
+                    score += config.wall_penalty
+                    hit_edge = True
+
                 if tactical_unit is not None and config.tactical_weight:
                     alignment = direction[0] * tactical_unit[0] + direction[1] * tactical_unit[1]
                     score += config.tactical_weight * (1.0 - alignment)
@@ -231,6 +229,31 @@ class DodgeSolver:
                     # No tactical preference, so mildly prefer not moving at all
                     # over thrashing for no reason.
                     score += config.tactical_weight * 0.5
+
+                if walled:
+                    hit_wall = True
+                    # Applied LAST, and as an assignment rather than a penalty.
+                    #
+                    # A blocked direction is not expensive, it is inert: the
+                    # stick goes over, the brawler does not move, and every shot
+                    # arrives exactly as if it had stayed put. So its score IS
+                    # the score of standing still, and nothing may be added
+                    # after that - a tactical nudge stacked on top would make a
+                    # wall look worse than doing nothing, which is not true.
+                    #
+                    # Pricing it as a penalty was wrong at both settings tried.
+                    # Small (2.5) and the solver picked walls over clean
+                    # escapes; large (12.0) and a walled direction cost more
+                    # than four simultaneous hits - so once the wall model
+                    # started seeing the whole screen, 22-36 boxes instead of
+                    # 11, most of the circle looked catastrophic and the solver
+                    # concluded there was no escape at all. "Impossible"
+                    # verdicts went 27% -> 32%, and the hit rate after dodging
+                    # rose with them.
+                    #
+                    # The epsilon breaks the tie toward genuinely standing
+                    # still, which at least does not fight the stick.
+                    score = (stay_score if stay_score is not None else score) + 1e-3
 
             if breakdown is not None:
                 breakdown.append({

@@ -295,15 +295,19 @@ default_player_speed = 330.0
 # sidestepping - the bot "did not dodge while approaching".
 tactical_weight = 0.20
 
-# Cost added to an escape direction that walks into a wall.
+# Cost added to an escape that heads into the edge of the MAP.
 #
-# Raised from 2.5 so that a wall effectively vetoes a direction rather than
-# merely discouraging it. At 2.5 the dodge solver would happily pick a blocked
-# heading whenever it scored a little better on threats - and that is the worst
-# of both worlds: the bot does not move, so it eats the shot anyway, and it
-# spends the next second grinding against a wall it had already marked red on
-# its own joystick overlay. A blocked escape is not an escape.
-wall_penalty = 12.0
+# Walls are no longer priced at all - a blocked direction is scored as standing
+# still, because that is literally what happens when the stick goes over and
+# the brawler does not move. Tuning a penalty for that was a mistake in both
+# directions: at 2.5 the solver picked walls over clean escapes, and at 12.0 a
+# walled direction scored worse than four simultaneous hits, so once the wall
+# model started seeing the whole screen the solver decided most of the circle
+# was catastrophic and gave up. "Impossible" verdicts went 27% -> 32%.
+#
+# The map edge is different: it is a soft limit rather than a hard stop, so it
+# still gets a nudge rather than an equivalence.
+wall_penalty = 2.5
 
 # Round-trip lag between what the bot sees and when its joystick command takes
 # effect, in seconds: the device encodes the frame, streams it, we decode and
