@@ -1231,6 +1231,19 @@ function formatResultLabel(value) {
 function renderSettings() {
     const view = document.getElementById("view-settings");
 
+    // Never rebuild the panel while someone is typing in it.
+    //
+    // This is called from the autosave, from the player-info refresh and from
+    // the player-tag debounce, and it replaces the whole panel with fresh
+    // markup - so a field being filled in was destroyed mid-word along with
+    // whatever had not been saved yet. Typing an email address and watching it
+    // vanish was exactly this.
+    const focused = document.activeElement;
+    if (focused && view.contains(focused)
+        && ["INPUT", "SELECT", "TEXTAREA"].includes(focused.tagName)) {
+        return;
+    }
+
     view.innerHTML = `
         <div class="set-grid">
             <section class="panel settings-section">
@@ -1857,6 +1870,17 @@ function bindSettingsEvents() {
             });
         }
         input.addEventListener(eventName, () => scheduleAutosave(input));
+
+        // Text-like fields also save as they are typed, not only when focus
+        // leaves them. "change" fires on blur, so anything typed and not yet
+        // blurred existed nowhere but in the DOM - and the moment any of the
+        // several callers of renderSettings() rebuilt the panel, it was gone.
+        // The autosave is debounced, so this is still one request per pause in
+        // typing rather than one per keystroke.
+        if (["text", "password", "number", "email"].includes(input.type)
+            && input.dataset.settingKey !== "player_tag") {
+            input.addEventListener("input", () => scheduleAutosave(input));
+        }
     });
 
     document.querySelectorAll("[data-timer-key]").forEach((slider) => {

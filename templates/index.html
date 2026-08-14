@@ -96,5 +96,9 @@
     <!-- Cursor-tracked lighting, parallax and counters. Loaded after app.js
          and watches for its re-renders, so it needs no hooks inside it. -->
     <script src="{{ url_for('static', filename='js/vvok-fx.js') }}"></script>
+    <!-- Russian for the interface chrome. A pass over the finished DOM rather
+         than a string table in every template, so an untranslated string shows
+         in English instead of showing as a missing key. -->
+    <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
 </body>
 </html>
