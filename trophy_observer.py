@@ -1,7 +1,7 @@
+import csv
 import os
 import requests
 from utils import load_toml_as_dict, save_dict_as_toml, api_base_url, hash_playstyle, PYLA_VERSION, resolve_project_path
-import pandas as pd
 from enum import Enum
 from dataclasses import dataclass
 from typing import Optional
@@ -17,6 +17,13 @@ class MatchResult(Enum):
     VICTORY = "victory"
     DRAW = "draw"
     DEFEAT = "defeat"
+
+
+HISTORY_COLUMNS = [
+    "date_time", "brawler_name", "result", "current_trophies", "trophy_delta",
+    "new_winstreak", "playstyle_hash", "playstyle_name", "playstyle_gamemodes",
+    "playstyle_brawlers", "pyla_version", "power_level",
+]
 
 
 @dataclass
@@ -83,17 +90,37 @@ class TrophyObserver:
         raise ValueError("Current trophies exceed all defined ranges")
 
     def load_history(self):
-        if os.path.exists(self.history_file):
-            history = pd.read_csv(self.history_file)
-        else:
-            history = pd.DataFrame(
-                columns=["date_time", "brawler_name", "result", "current_trophies", "trophy_delta", "new_winstreak",
-                         "playstyle_hash", "playstyle_name", "playstyle_gamemodes", "playstyle_brawlers",
-                         "pyla_version", "power_level"])
-        return history
+        """Match history as a list of dicts.
+
+        This used to be a pandas DataFrame, and pandas was in the dependency
+        list for these two functions and nothing else - the web interface
+        already reads the same file with the csv module. A sixty-megabyte
+        dependency for read_csv and to_csv is a poor trade at the best of
+        times, and it was not the best of times: people downloading the fork
+        were landing on `ModuleNotFoundError: No module named 'pandas'`,
+        because when its install fails there is nothing else holding the bot
+        together. The standard library does this job and cannot fail to
+        install.
+        """
+        if not os.path.exists(self.history_file):
+            return []
+
+        try:
+            with open(self.history_file, "r", encoding="utf-8-sig", newline="") as handle:
+                return [dict(row) for row in csv.DictReader(handle)]
+        except OSError as error:
+            print(f"Could not read match history: {error}")
+            return []
 
     def save_history(self):
-        self.match_history.to_csv(self.history_file, index=False)
+        try:
+            with open(self.history_file, "w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=HISTORY_COLUMNS)
+                writer.writeheader()
+                for row in self.match_history:
+                    writer.writerow({key: row.get(key, "") for key in HISTORY_COLUMNS})
+        except OSError as error:
+            print(f"Could not write match history: {error}")
 
     def parse_game_result(self, raw_result: str) -> ParsedGameResult:
         """Parses raw game result string into a structured data class."""
@@ -171,13 +198,15 @@ class TrophyObserver:
         if self.current_wins:
             print(f"Current Wins: {self.current_wins}")
 
-        self.match_history.loc[len(self.match_history)] = [datetime.now().isoformat(), current_brawler,
-                                                           parsed_result.result.value, old_trophies, trophy_delta,
-                                                           self.win_streak, hash_playstyle(playstyle_info),
-                                                           playstyle_info["name"],
-                                                           "|".join(playstyle_info["gamemodes"]),
-                                                           "|".join(playstyle_info["brawlers"]), PYLA_VERSION,
-                                                           (power_level if power_level is not None else -1)]
+        self.match_history.append(dict(zip(HISTORY_COLUMNS, [
+            datetime.now().isoformat(), current_brawler,
+            parsed_result.result.value, old_trophies, trophy_delta,
+            self.win_streak, hash_playstyle(playstyle_info),
+            playstyle_info["name"],
+            "|".join(playstyle_info["gamemodes"]),
+            "|".join(playstyle_info["brawlers"]), PYLA_VERSION,
+            (power_level if power_level is not None else -1),
+        ])))
         self.match_counter += 1
         self.send_results_to_api()
         self.save_history()
@@ -192,10 +221,9 @@ class TrophyObserver:
         self.current_trophies = new
 
     def send_results_to_api(self):
-        new_matches = self.match_history.iloc[self.last_sent_index:]
-        if new_matches.empty:
+        payload = self.match_history[self.last_sent_index:]
+        if not payload:
             return
-        payload = new_matches.to_dict(orient="records")
         if api_base_url != "localhost":
             try:
                 response = requests.post(f'https://{api_base_url}/api/matches', json=payload)

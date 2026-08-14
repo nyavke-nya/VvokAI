@@ -85,19 +85,27 @@ call venv\Scripts\activate.bat
 python -m pip install --upgrade pip setuptools wheel >nul 2>&1
 
 :: Install Requirements and Analyze Hardware
-if not exist "venv\.setup_complete" (
-    echo [INFO] Analyzing hardware and installing optimized AI frameworks...
+::
+:: The marker is keyed on the dependency list, not merely on existing. It used
+:: to be written once and never revisited, so dependencies were checked exactly
+:: one time in the life of an install: anyone who updated the fork kept whatever
+:: they already had, and anyone whose first install half-failed stayed broken
+:: while the launcher reported success. That is how a fresh download ends at
+:: "ModuleNotFoundError" with nothing in the log to explain it.
+python tools\check_setup.py
+if %errorlevel% neq 0 (
+    echo [INFO] Dependencies changed or setup has not completed. Installing...
     echo [INFO] This will download large AI models and configure CUDA/DirectML. Please wait...
-    
+
     :: Pipe "y" to automatically answer "yes" to any PyTorch / CUDA prompts
     echo y | python setup.py install
-    
+
     if %errorlevel% neq 0 (
         echo [ERROR] Setup failed during dependency installation.
         pause
         exit /b
     )
-    echo. > venv\.setup_complete
+    python tools\check_setup.py --write
     echo [SUCCESS] Hardware setup complete!
 )
 

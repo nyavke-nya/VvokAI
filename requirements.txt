@@ -14,7 +14,6 @@ adbutils~=2.12
 av~=12.3
 Flask~=3.1
 pycryptodome~=3.21
-pandas~=3.0
 
 # Last on purpose. easyocr depends on opencv-python-headless, and both packages
 # unpack into the same cv2/ folder - so whichever pip installs last is the one
