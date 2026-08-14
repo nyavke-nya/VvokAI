@@ -847,6 +847,8 @@ class WebDataService:
 
     def get_match_history_payload(self) -> dict[str, Any]:
         csv_path = resolve_project_path("cfg", "match_history.csv")
+        if not csv_path.exists():
+            return self._build_match_history_response([])
 
         grouped: dict[str, dict[str, Any]] = {}
 

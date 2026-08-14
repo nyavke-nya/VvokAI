@@ -380,6 +380,31 @@ def install_opencv():
     return pip_install(["opencv-python~=4.11"], "OpenCV (with window support)")
 
 
+def ensure_configs():
+    """Create working configuration files from their examples if missing."""
+    cfg_dir = ROOT / "cfg"
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    for example in cfg_dir.glob("*.example.toml"):
+        target_name = example.name.replace(".example.toml", ".toml")
+        target = cfg_dir / target_name
+        if not target.exists():
+            try:
+                shutil.copyfile(example, target)
+            except OSError:
+                pass
+    history_file = cfg_dir / "match_history.csv"
+    if not history_file.exists():
+        try:
+            history_file.write_text(
+                "date_time,brawler_name,result,current_trophies,trophy_delta,"
+                "new_winstreak,playstyle_hash,playstyle_name,playstyle_gamemodes,"
+                "playstyle_brawlers,pyla_version,power_level\n",
+                encoding="utf-8"
+            )
+        except OSError:
+            pass
+
+
 # ---------------------------------------------------------------------------
 #  Verify
 # ---------------------------------------------------------------------------
@@ -471,6 +496,7 @@ def main():
     log("=" * 62)
 
     free, pythons, vendor, missing_files = report_system()
+    ensure_configs()
 
     if args.report:
         return 0

@@ -4,6 +4,7 @@ import io
 import math
 import os
 import random
+import shutil
 import ssl
 import threading
 import time
@@ -115,6 +116,16 @@ def load_toml_as_dict(file_path, cache=True):
     full_path = PROJECT_ROOT / str(file_path).lstrip('/\\')
     if str(full_path) in cached_toml and cache:
         return cached_toml[str(full_path)]
+
+    if not full_path.exists():
+        example_path = full_path.with_name(full_path.stem + ".example" + full_path.suffix)
+        if example_path.exists():
+            try:
+                full_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(example_path, full_path)
+            except Exception as e:
+                print(f"Could not copy {example_path} to {full_path}: {e}")
+
     try:
         with open(full_path, 'r', encoding='utf-8') as f:
             data = toml.load(f)
