@@ -451,15 +451,18 @@ def break_out_heading(target):
     offsets = [0.0, 0.785, -0.785, 1.571, -1.571, 2.356, -2.356, 3.142]
     step = int(stuck_for / BREAK_OUT_SWEEP) % len(offsets)
 
-    index = 0
-    while index < len(offsets):
-        candidate = rotate_movement(straight, offsets[(step + index) % len(offsets)])
-        if not is_direction_blocked(candidate):
-            return candidate
-        index += 1
-
-    # Everything has been measured as failing. Keep sweeping anyway - standing
-    # still is the one option guaranteed not to help.
+    # The step index is the ONLY input. An earlier version also skipped
+    # headings the motion monitor had measured as failing, which sounds like an
+    # improvement and was the opposite: that memory holds five directions, each
+    # covering about eighty degrees, and it churns every frame as new stalls
+    # are recorded and old ones expire. Which offset survived the filter
+    # therefore changed frame to frame - and since breaking out sets
+    # sharp_movement, every change snapped instantly. The bot span on the spot.
+    #
+    # Time alone is stable by construction: one heading, held for
+    # BREAK_OUT_SWEEP seconds, then the next. The whole circle is still covered
+    # in about six seconds, and a heading that happens to be blocked costs one
+    # step rather than the ability to hold any heading at all.
     return rotate_movement(straight, offsets[step])
 
 

@@ -441,18 +441,33 @@ def check_breakout(report):
     report.check("straight at the target is tried first", heading_after(0.0), 0)
     report.check("and straight back is reached", 180 in seen or -180 in seen, True)
 
-    report.section("headings measured as failing are skipped")
-    state["blocked"] = {0.0}
-    context["is_direction_blocked"] = direction_blocked
-    first = heading_after(0.0)
-    report.check("the known-bad heading is not chosen", first != 0, True)
+    report.section("one heading is HELD, not re-picked every frame")
+    # This is what made the bot spin on the spot. An earlier version filtered
+    # the sweep through the motion monitor's blocked-direction memory, which
+    # holds five directions and churns every frame as stalls are recorded and
+    # expire - so the surviving offset changed frame to frame, and because
+    # breaking out sets sharp_movement, every change snapped instantly.
+    state["blocked"] = {0.0, 1.571, -1.571, 2.356, 3.142}
+    held = {heading_after(0.30 + i * 0.01) for i in range(30)}
+    report.check("the heading does not move within one sweep step",
+                 len(held), 1)
 
-    report.section("everything measured as failing still produces movement")
+    report.section("a churning blocked-direction memory changes nothing")
+    before = heading_after(0.3)
     state["blocked"] = {i * math.pi / 8 for i in range(-8, 9)}
-    context["stuck_for"] = 0.0
-    vector = context["break_out_heading"]((1800.0, 500.0))
-    report.at_least("it keeps pushing rather than giving up",
-                    round(math.hypot(vector[0], vector[1])), 1)
+    after = heading_after(0.3)
+    report.check("same heading with everything marked blocked", after, before)
+
+    report.section("it never gives up and stands still")
+    for tenth in range(60):
+        vector = context["break_out_heading"]((1800.0, 500.0))
+        if round(math.hypot(vector[0], vector[1])) < 1:
+            report.check("a zero vector was produced at t=%.1f" % (tenth / 10.0),
+                         True, False)
+            break
+        context["stuck_for"] = tenth / 10.0
+    else:
+        report.check("it keeps pushing at every point in the sweep", True, True)
 
 
 def main():
