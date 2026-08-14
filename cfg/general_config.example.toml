@@ -32,6 +32,28 @@ player_tag = ""
 
 # Brawl Stars API token from https://developer.brawlstars.com
 #
-# The token is bound to the IP address you created it for, so it will not work
-# from anywhere else - but it is still a credential. Never commit it.
+# Supercell binds every token to the addresses it was created for. There is no
+# setting that turns that off, so a token issued at home stops working the
+# moment the ISP hands out a new address, and the API answers with a bare 403.
+#
+# Two ways to live with that:
+#
+#   1. When creating the key, set the IP range to 0.0.0.0/0. It then works from
+#      anywhere, no credentials are stored and no code is involved. Do this if
+#      the portal lets you.
+#
+#   2. Fill in the two fields below. On a 403 the bot logs in to the developer
+#      portal, deletes the key it made last time, issues a new one for the
+#      current address and retries - about two seconds, once per address change.
+#
+# Never commit this file; it is git-ignored for exactly this reason.
 brawl_api_token = ""
+
+# Developer-portal login, used ONLY to re-issue the token above when the IP
+# changes. Leave blank to disable that - option 1 above needs neither.
+#
+# A password in a plain text file is a password in a plain text file. It never
+# leaves this machine except to developer.brawlstars.com, and it is never
+# logged, but if that trade is not acceptable use the 0.0.0.0/0 key instead.
+brawl_api_email = ""
+brawl_api_password = ""

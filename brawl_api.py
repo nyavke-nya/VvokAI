@@ -14,8 +14,11 @@ trophies, highest trophies, rank and power. `get_brawler_stats` therefore
 returns None for the streak, and callers keep whatever value they already had
 rather than overwriting it with a guess.
 
-The token is bound to the IP address you registered it from. If requests start
-coming back 403, that is almost always a changed IP rather than a bad token.
+The token is bound to the IP address you registered it from, so a new address
+from the ISP silently kills it and the API answers with a bare 403. When
+developer-portal credentials are configured, brawl_token re-issues the key for
+the current address and the request is retried once; see that module for the
+credential-free alternative.
 """
 
 import threading
@@ -78,6 +81,12 @@ def get_player_info(tag):
         _last_error = "Empty player tag."
         return None
 
+    return _fetch(tag, token, allow_refresh=True)
+
+
+def _fetch(tag, token, allow_refresh):
+    global _last_error
+
     now = time.time()
     with _cache_lock:
         cached = _cache.get(tag)
@@ -105,11 +114,26 @@ def get_player_info(tag):
         _last_error = f"Player #{tag} not found."
     elif response.status_code == 403:
         # By far the most common failure, and the message the API returns for
-        # it is unhelpfully generic.
+        # it says nothing about the cause. The token is bound to an IP address
+        # and the ISP changed it; nothing about the tag or the account is wrong.
+        if allow_refresh:
+            import brawl_token
+
+            if brawl_token.is_configured():
+                fresh = brawl_token.refresh()
+                if fresh:
+                    # One retry only. If the reissued token is refused too, the
+                    # problem is not the address and looping would not help.
+                    return _fetch(tag, fresh, allow_refresh=False)
+                _last_error = brawl_token.last_error() or _last_error
+                return None
+
         _last_error = (
             "API rejected the token (403). Tokens are locked to the IP address "
-            "they were created for - re-create it at developer.brawlstars.com "
-            "if your IP changed."
+            "they were created for, and yours has changed. Either create a key "
+            "at developer.brawlstars.com for the range 0.0.0.0/0, or add "
+            "brawl_api_email and brawl_api_password to cfg/general_config.toml "
+            "and the bot will reissue it by itself."
         )
     elif response.status_code == 429:
         _last_error = "Rate limited by the Brawl Stars API. Try again shortly."

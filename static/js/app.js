@@ -246,7 +246,9 @@ async function bootstrap() {
         const playerInfo = await fetchJSON(`/api/player-info?tag=${encodeURIComponent(playerTag)}`, {}, true);
         state.playerInfo = playerInfo?.ok
             ? playerInfo
-            : { ok: false, player_tag: cleanPlayerTag(playerTag), player_name: "", stats: {}, message: playerInfo?.message || INVALID_PLAYER_TAG_MESSAGE };
+            : { ok: false, player_tag: cleanPlayerTag(playerTag), player_name: "", stats: {},
+                message: playerInfo?.message || INVALID_PLAYER_TAG_MESSAGE,
+                code: playerInfo?.code || "INVALID_PLAYER_TAG" };
     }
 
     updateChrome();
@@ -559,10 +561,14 @@ function getPlayerPillState() {
 
     const cleanTag = cleanPlayerTag(state.playerInfo.player_tag || state.bootstrap.settings.general.player_tag || "");
     if (state.playerInfo.ok === false && cleanTag) {
+        // The server says what actually failed. Showing a fixed "wrong tag"
+        // here sent people to check a tag that was fine while the real cause -
+        // an IP-locked API token and a new address - went unmentioned.
+        const tagLooksWrong = state.playerInfo.code === "INVALID_PLAYER_TAG";
         return {
             className: "has-error",
-            title: "Player tag is incorrect",
-            detail: "Use your Brawl Stars player tag, not your Supercell ID.",
+            title: tagLooksWrong ? "Player tag is incorrect" : "Brawl Stars API problem",
+            detail: state.playerInfo.message || INVALID_PLAYER_TAG_MESSAGE,
         };
     }
     if (state.playerInfo.player_name) {

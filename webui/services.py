@@ -804,12 +804,27 @@ class WebDataService:
 
         player_info = get_player_info(clean_tag)
         if not self._has_player_values(player_info):
+            # Report what actually went wrong. Every failure used to come back
+            # as "wrong player tag", which sent people to check a tag that was
+            # perfectly fine while the real cause - an IP-locked token and a new
+            # address from the ISP - went unmentioned.
+            reason = INVALID_PLAYER_TAG_MESSAGE
+            code = "INVALID_PLAYER_TAG"
+            try:
+                from brawl_api import last_error
+
+                detail = last_error()
+                if detail:
+                    reason = detail
+                    code = "API_ERROR" if "not found" not in detail.lower() else code
+            except ImportError:
+                pass
             return {
                 "ok": False,
-                "message": INVALID_PLAYER_TAG_MESSAGE,
+                "message": reason,
                 "player_tag": clean_tag,
                 "stats": {},
-                "code": "INVALID_PLAYER_TAG",
+                "code": code,
             }
 
         stats = {}
