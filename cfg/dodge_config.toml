@@ -339,6 +339,27 @@ reaction_latency = 0.12
 # leave the bot walking sideways forever.
 escape_hold_extra = 0.25
 
+# How much a NEAR MISS is worth when nothing escapes cleanly.
+#
+# Impact is otherwise binary, so every losing direction scores the same and the
+# solver has no reason to prefer moving over standing still. Against a fast
+# shot that is most of the time - measured on a session, shots above 2000 px/s
+# were too late to escape 82% of the time - and the bot simply did not lean.
+#
+# It cannot always clear the hitbox. Bea's shot leaves 0.16 s and stepping out
+# of the way needs 0.37 s; nothing tunes that away, and a human does not manage
+# it either. But "cannot fully clear" is not "may as well stand there": a near
+# miss is a graze instead of a body hit, and it puts the bot somewhere other
+# than where the next shot is already aimed.
+#
+# Set to 0 to go back to standing still when the geometry is hopeless.
+near_miss_weight = 0.6
+
+# How much better the lean has to be before it is worth taking, in px. Without
+# a floor the bot would twitch for a couple of pixels of clearance it cannot
+# feel, which reads as jitter rather than evasion.
+lean_min_gain = 4.0
+
 # Once a dodge is committed to, hold it at least this long so the bot does not
 # jitter between two equally good escapes on consecutive frames.
 #

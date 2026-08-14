@@ -151,6 +151,8 @@ class DodgeConfig:
         # this much before the escape is solved.
         self.reaction_latency = max(0.0, _f(dodge, "reaction_latency", 0.12))
         self.escape_hold_extra = max(0.0, _f(dodge, "escape_hold_extra", 0.25))
+        self.near_miss_weight = max(0.0, _f(dodge, "near_miss_weight", 0.6))
+        self.lean_min_gain = _f(dodge, "lean_min_gain", 4.0) * scale
 
         aim = raw.get("aim", {})
         self.aim_enabled = _b(aim, "enabled", True)

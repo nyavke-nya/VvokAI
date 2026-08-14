@@ -81,6 +81,24 @@ def _impact_time(rel_x, rel_y, rel_vx, rel_vy, radius, horizon):
     return t
 
 
+def _closest_approach(rel_x, rel_y, rel_vx, rel_vy, horizon):
+    """Smallest distance between the two paths within the horizon.
+
+    Used to rank directions that all get hit anyway. Without it every losing
+    option scores identically and the solver has no reason to move at all,
+    which is how the bot came to stand perfectly still while being shot by
+    something it could never have fully escaped.
+    """
+    speed_sq = rel_vx * rel_vx + rel_vy * rel_vy
+    if speed_sq < 1e-9:
+        return math.hypot(rel_x, rel_y)
+
+    # Time of closest approach, clamped into the window we care about.
+    t = -(rel_x * rel_vx + rel_y * rel_vy) / speed_sq
+    t = min(max(t, 0.0), horizon)
+    return math.hypot(rel_x + rel_vx * t, rel_y + rel_vy * t)
+
+
 class DodgeSolver:
     def __init__(self, config):
         self.config = config
@@ -175,6 +193,11 @@ class DodgeSolver:
         best_score = float("inf")
         best_hits = 0
         stay_score = None
+        # Best clearance among moving directions, and the clearance of doing
+        # nothing, for the lean fallback.
+        stay_clearance = None
+        lean_vector = None
+        lean_clearance = None
         breakdown = [] if collect_analysis else None
 
         for direction in self._directions:
@@ -185,17 +208,17 @@ class DodgeSolver:
 
             score = 0.0
             hits = 0
+            # Worst clearance across all threats: how close the nearest shot
+            # comes to the hitbox edge. Negative means it lands.
+            clearance = float("inf")
             for threat in threats:
                 projectile = threat.projectile
                 total_radius = radius + projectile.radius
-                t = _impact_time(
-                    projectile.x - player_center[0],
-                    projectile.y - player_center[1],
-                    projectile.vx - move_vx,
-                    projectile.vy - move_vy,
-                    total_radius,
-                    config.horizon,
-                )
+                rel_x = projectile.x - player_center[0]
+                rel_y = projectile.y - player_center[1]
+                rel_vx = projectile.vx - move_vx
+                rel_vy = projectile.vy - move_vy
+                t = _impact_time(rel_x, rel_y, rel_vx, rel_vy, total_radius, config.horizon)
                 if t is None:
                     continue
                 hits += 1
@@ -204,9 +227,16 @@ class DodgeSolver:
                 urgency_weight = 1.0 + 2.0 * (1.0 - t / config.horizon)
                 score += projectile.confidence * urgency_weight
 
+                # How close this direction comes to missing. Used only to rank
+                # directions that all get hit anyway - see the lean fallback
+                # below - so it does not disturb the ordinary scoring.
+                miss = _closest_approach(rel_x, rel_y, rel_vx, rel_vy, config.horizon)
+                clearance = min(clearance, miss - total_radius)
+
             is_stay = direction == (0.0, 0.0)
             if is_stay:
                 stay_score = score
+                stay_clearance = clearance
             else:
                 candidate = (direction[0] * joystick_scale, direction[1] * joystick_scale)
                 walled = bool(is_blocked is not None and is_blocked(candidate))
@@ -264,6 +294,12 @@ class DodgeSolver:
                     "edge": hit_edge,
                 })
 
+            if not is_stay and not hit_wall and not hit_edge:
+                if lean_clearance is None or clearance > lean_clearance:
+                    lean_clearance = clearance
+                    lean_vector = (direction[0] * joystick_scale,
+                                   direction[1] * joystick_scale)
+
             if score < best_score:
                 best_score = score
                 best_hits = hits
@@ -275,7 +311,30 @@ class DodgeSolver:
         analysis = self._build_analysis(breakdown, stay_score)
 
         if stay_score is not None and best_score >= stay_score - 1e-6:
-            # Moving does not beat standing still. Do not fake a dodge.
+            # No direction escapes. That is the common case against a fast
+            # shot - measured on a session, shots above 2000 px/s were too late
+            # to escape 82% of the time - and answering it by standing
+            # perfectly still is how the bot ate two Bea shots without moving.
+            #
+            # It genuinely cannot clear: her shot leaves 0.16 s and stepping
+            # the hitbox out of the way needs 0.37 s. Nothing tunes that away
+            # and a human does not manage it either. But "cannot fully clear"
+            # is not "may as well stand there" - leaning turns a body hit into
+            # a graze, and it puts the bot somewhere other than where the next
+            # shot is already aimed.
+            #
+            # So: take whichever free direction the shot passes furthest from,
+            # but only if it is a real improvement over doing nothing.
+            if (config.near_miss_weight > 0 and lean_vector is not None
+                    and stay_clearance is not None and lean_clearance is not None
+                    and lean_clearance > stay_clearance + config.lean_min_gain):
+                self._escape_vector = lean_vector
+                self._escape_ids = {t.projectile.id for t in incoming}
+                self._escape_expires = now + config.horizon + config.escape_hold_extra
+                urgency = "critical" if soonest <= config.critical_time else "soft"
+                return DodgeDecision(lean_vector, urgency, soonest, threats,
+                                     best_hits, best_score, analysis)
+
             self._committed_vector = None
             return DodgeDecision(None, "none", soonest, threats, best_hits, best_score, analysis)
 

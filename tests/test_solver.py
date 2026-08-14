@@ -129,6 +129,26 @@ def main():
         report.at_most("a walled direction never costs more than staying",
                        round(worst - stay, 2), 0.01)
 
+    report.section("a shot that cannot be escaped must still be leaned away from")
+    # Bea, measured off a real session: her shot arrives in about 0.16 s, and
+    # stepping the hitbox clear takes about 0.37 s. There is no escape and
+    # there never was - but the solver used to answer that by standing
+    # perfectly still, which is how the bot ate two of them without moving.
+    hopeless = Shot(0.0, speed=3040.0, eta=0.16)
+    decision = solve(shots=[hopeless])
+    report.check("it still moves", decision.active, True)
+    report.at_least("and admits it expects to be hit", decision.hit_count, 1)
+
+    if decision.vector:
+        # Leaning across the shot beats leaning into it.
+        along = (decision.vector[0] * hopeless.vx + decision.vector[1] * hopeless.vy)
+        report.at_most("it does not step into the shot", round(along), 0)
+
+    report.section("near-miss ranking must not override a real escape")
+    # A shot with room to spare: the clean direction must still win outright.
+    decision = solve(shots=[Shot(0.0, eta=0.7)])
+    report.check("a clean escape is still preferred", decision.hit_count, 0)
+
     check_gas_veto(report)
     return report.finish()
 
