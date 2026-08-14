@@ -148,6 +148,7 @@ class Play:
         self.dodge_service = None
         self.health_reader = None
         self.health_readings = {}
+        self.last_gas_reading = None
         self._stage_times = {}
         self._stage_iterations = 0
         self._stage_reported = time.perf_counter()
@@ -445,6 +446,13 @@ class Play:
         return closest_teammate, closest_distance
 
     def is_there_poison_gas(self, player_data, threshold=7000, area_from_player_checked=1.5):
+        reading = self._measure_poison_gas(player_data, threshold, area_from_player_checked)
+        # Kept so the dodge service's emergency path can veto an escape without
+        # re-scanning the frame from another thread.
+        self.last_gas_reading = reading
+        return reading
+
+    def _measure_poison_gas(self, player_data, threshold=7000, area_from_player_checked=1.5):
         actual_player_box = self.get_actual_player_box(player_data) or player_data
         px1, py1, px2, py2 = actual_player_box
         player_width = max(px2 - px1, 1)
@@ -647,6 +655,36 @@ class Play:
         # on screen it was about a third of this function.
         if self.dodge_config.debug_overlay:
             record(data.get('teammate'), False, "t")
+
+    def escape_leads_into_gas(self, vector):
+        """Would sidestepping this way put the brawler in poison?
+
+        Handed to the dodge service so its emergency path can refuse. That path
+        exists precisely to skip the playstyle when a shot is seconds from
+        landing, which also skips the playstyle's own gas veto - and poison is
+        the one thing that is unambiguously worse than the shot. A projectile
+        takes a chunk of health once; standing in gas takes one every tick,
+        and the bot would have walked in on purpose.
+
+        Read from the gas measurement the playstyle already made this
+        iteration, so this costs nothing beyond a dictionary lookup.
+        """
+        reading = self.last_gas_reading
+        if not reading or not vector:
+            return False
+
+        x, y = vector[0], vector[1]
+        # The reading is pixel counts per side of the player. Any side the
+        # escape has a real component toward, that is showing gas, vetoes it.
+        if x > 1e-6 and reading.get("right"):
+            return True
+        if x < -1e-6 and reading.get("left"):
+            return True
+        if y > 1e-6 and reading.get("down"):
+            return True
+        if y < -1e-6 and reading.get("up"):
+            return True
+        return False
 
     def health_of(self, box, hostile=None):
         """Health fraction for a box, or None when it could not be read.
@@ -868,6 +906,7 @@ class Play:
                 vector,
                 is_blocked=lambda candidate, box=self.last_player_box,
                 walls=data['wall']: self.is_path_blocked(box, candidate, walls),
+                gas_veto=self.escape_leads_into_gas,
             )
 
         if vector is None:

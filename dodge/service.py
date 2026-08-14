@@ -46,6 +46,7 @@ class DodgeService:
         self._player_radius = 53.0 * scale
         self._tactical_vector = None
         self._is_blocked = None
+        self._gas_veto = None
 
         self._projectiles = []
         self._decision = None
@@ -165,12 +166,19 @@ class DodgeService:
         """Map-boundary and stall state measured from the camera."""
         return self.tracker.motion
 
-    def set_tactical_intent(self, vector, is_blocked=None):
-        """Tell the emergency path what the playstyle currently wants to do."""
+    def set_tactical_intent(self, vector, is_blocked=None, gas_veto=None):
+        """Tell the emergency path what the playstyle currently wants to do.
+
+        `gas_veto` takes a joystick vector and returns True if it leads into
+        poison. The emergency path bypasses the playstyle entirely - that is
+        the point of it - so without this it could sidestep a shot straight
+        into the gas, which costs far more health than the shot would have.
+        """
         with self._lock:
             self._tactical_vector = vector
             if is_blocked is not None:
                 self._is_blocked = is_blocked
+            self._gas_veto = gas_veto
 
     def get_projectiles(self):
         with self._lock:
@@ -230,6 +238,7 @@ class DodgeService:
             player_radius = self._player_radius
             tactical = self._tactical_vector
             is_blocked = self._is_blocked
+            gas_veto = self._gas_veto
 
         aged_context = context.shift_by(shift[0], shift[1]) if any(shift) else context
         projectiles, frame_shift = self.tracker.update(frame, aged_context, stamp)
@@ -272,8 +281,18 @@ class DodgeService:
             # (halving the game's framerate) and kept the joystick under
             # priority almost continuously, which starved ordinary movement -
             # the bot stopped walking to its teammate entirely.
-            self._apply_emergency(decision.vector)
-            applied = decision.vector
+            # Poison outranks a projectile. One shot is a chunk of health;
+            # standing in gas is a chunk every tick until you leave, and the
+            # bot walked in there deliberately. The playstyle refuses these
+            # too, but the whole point of this path is that it does not wait
+            # for the playstyle.
+            if gas_veto is not None and gas_veto(decision.vector):
+                self.log.log_note("dodge_refused_gas",
+                                  vector=[round(decision.vector[0], 1),
+                                          round(decision.vector[1], 1)])
+            else:
+                self._apply_emergency(decision.vector)
+                applied = decision.vector
 
         if decision is not None and player_center is not None:
             self.log.log_decision(

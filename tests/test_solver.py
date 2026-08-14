@@ -129,7 +129,64 @@ def main():
         report.at_most("a walled direction never costs more than staying",
                        round(worst - stay, 2), 0.01)
 
+    check_gas_veto(report)
     return report.finish()
+
+
+def check_gas_veto(report):
+    """Poison must outrank a projectile, even on the emergency path.
+
+    That path exists to skip the playstyle when a shot is milliseconds away,
+    which also skips the playstyle's own gas veto. A shot costs a chunk of
+    health once; standing in gas costs a chunk every tick, and the bot would
+    have walked in on purpose.
+    """
+    import play as play_module
+
+    report.section("an escape into poison must be refused")
+
+    reader = play_module.Play.escape_leads_into_gas
+
+    class Stub:
+        pass
+
+    stub = Stub()
+    stub.last_gas_reading = {"up": 9000, "down": 0, "left": 0, "right": 0}
+    report.check("north, with gas to the north", reader(stub, (0.0, -100.0)), True)
+    report.check("south, away from it", reader(stub, (0.0, 100.0)), False)
+    report.check("east, unaffected", reader(stub, (100.0, 0.0)), False)
+    report.check("north-east still touches it", reader(stub, (70.0, -70.0)), True)
+
+    stub.last_gas_reading = {"up": 0, "down": 0, "left": 0, "right": 0}
+    report.check("no gas anywhere, nothing refused", reader(stub, (0.0, -100.0)), False)
+
+    stub.last_gas_reading = None
+    report.check("no reading yet, nothing refused", reader(stub, (0.0, -100.0)), False)
+
+    # And the service must consult it rather than firing regardless.
+    from dodge.config import DodgeConfig
+    from dodge.service import DodgeService
+
+    class Controller:
+        scale_factor = 1.0
+
+        def __init__(self):
+            self.moves = []
+
+        def move_with_priority(self, x, y, hold=None):
+            self.moves.append((x, y))
+
+        def get_latest_frame(self):
+            return None, 0.0
+
+    cfg = config()
+    cfg.threaded = False
+    cfg.log_enabled = False
+    controller = Controller()
+    service = DodgeService(controller, config=cfg)
+    service._apply_emergency((0.0, -100.0))
+    report.check("the emergency path can move the stick at all",
+                 len(controller.moves), 1)
 
 
 if __name__ == "__main__":

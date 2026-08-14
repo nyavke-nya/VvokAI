@@ -772,7 +772,11 @@ def interpret_pyla_code(pyla_code, context):
         frames = traceback.extract_tb(e.__traceback__)
         where = ""
         for frame in frames:
-            if frame.filename == "<string>":
+            # play.py compiles the script as "<pyla_script>" up front; this
+            # module compiles it as "<string>" when handed raw source. Match
+            # both, or the line number silently disappears depending on which
+            # path loaded the playstyle.
+            if frame.filename in ("<string>", "<pyla_script>"):
                 where = f" at playstyle line {frame.lineno}"
         interpret_pyla_code.last_error = f"{type(e).__name__}: {e}{where}"
         interpret_pyla_code.error_count = getattr(interpret_pyla_code, "error_count", 0) + 1

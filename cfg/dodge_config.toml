@@ -268,13 +268,24 @@ max_radius = 46.0
 # usually changed the situation anyway.
 horizon = 0.55
 
-# Impacts sooner than this are "critical": the emergency path grabs the joystick
-# directly instead of waiting for the next bot iteration.
+# Impacts sooner than this are "critical": the tracker thread pushes the escape
+# to the joystick immediately instead of waiting for the next bot iteration.
 #
 # Must be at least as large as the time needed to walk clear of a hitbox
-# (~81 px / ~330 px/s = 0.25 s), otherwise the takeover fires only once the
+# (~83 px / ~300 px/s = 0.28 s), otherwise the takeover fires only once the
 # dodge is already unwinnable.
-critical_time = 0.32
+#
+# Raised from 0.32 after measuring the real distribution of time-to-impact over
+# a session: 73% of decisions were already under 0.32 s, but another 18% sat
+# between 0.32 and 0.45 and were handed to the bot loop instead - waiting up to
+# a full iteration, 25-40 ms, on a shot with barely 0.4 s of flight left.
+# At 0.45 that share takes the immediate path too, covering 91% of decisions.
+#
+# The cost is real and is why this is not simply set to the horizon: each
+# takeover holds the joystick under priority for `commit_time`, during which
+# ordinary movement is locked out. Push it too high and the bot spends a
+# firefight evading instead of playing.
+critical_time = 0.45
 
 # Candidate escape directions evaluated per frame, evenly spread over 360
 # degrees. 16 gives 22.5 degree resolution, which is finer than the joystick.
