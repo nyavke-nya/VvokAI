@@ -120,7 +120,9 @@ def _fetch(tag, token, allow_refresh):
             import brawl_token
 
             if brawl_token.is_configured():
-                fresh = brawl_token.refresh()
+                # The rejected token goes in so the refresher can tell "somebody
+                # else already replaced this" from "this is the dead one".
+                fresh = brawl_token.refresh(previous=token)
                 if fresh:
                     # One retry only. If the reissued token is refused too, the
                     # problem is not the address and looping would not help.
@@ -128,13 +130,26 @@ def _fetch(tag, token, allow_refresh):
                 _last_error = brawl_token.last_error() or _last_error
                 return None
 
-        _last_error = (
-            "API rejected the token (403). Tokens are locked to the IP address "
-            "they were created for, and yours has changed. Either create a key "
-            "at developer.brawlstars.com for the range 0.0.0.0/0, or add "
-            "brawl_api_email and brawl_api_password to cfg/general_config.toml "
-            "and the bot will reissue it by itself."
-        )
+        import brawl_token
+
+        if brawl_token.is_configured():
+            # Telling somebody to add credentials they can see they have added
+            # sends them off to re-check the one thing that is already right.
+            _last_error = (
+                "API rejected the token (403) even after reissuing it for this "
+                "address. If you are on a VPN or mobile connection the address "
+                "may be changing faster than the key can be replaced; a key made "
+                "by hand at developer.brawlstars.com with Allowed IP Ranges set "
+                "to 0.0.0.0/0 works from anywhere and needs no credentials."
+            )
+        else:
+            _last_error = (
+                "API rejected the token (403). Tokens are locked to the IP address "
+                "they were created for, and yours has changed. Either create a key "
+                "at developer.brawlstars.com for the range 0.0.0.0/0, or add "
+                "brawl_api_email and brawl_api_password to cfg/general_config.toml "
+                "and the bot will reissue it by itself."
+            )
     elif response.status_code == 429:
         _last_error = "Rate limited by the Brawl Stars API. Try again shortly."
     else:

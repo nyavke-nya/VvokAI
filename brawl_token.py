@@ -137,12 +137,35 @@ def _create(session, address):
         return None
 
 
-def refresh(force=False):
+def _works(token):
+    """Whether the API accepts this token from this machine, right now.
+
+    The portal happily reports a key as bound to the current address while the
+    token actually saved here belongs to some older key - the config and the
+    account drift apart, and the only symptom is a 403 that reads as if the
+    address were wrong. Checking costs one request on a path that runs rarely,
+    and it is the difference between fixing the problem and writing another
+    broken token over the last one. /brawlers needs no player tag and is
+    refused the same way when the address does not match.
+    """
+    try:
+        response = requests.get(
+            "https://api.brawlstars.com/v1/brawlers",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=TIMEOUT,
+        )
+    except requests.RequestException:
+        return True  # Network trouble is not the token's fault; do not discard it.
+    return response.status_code == 200
+
+
+def refresh(previous=None, force=False):
     """Re-issue the API token for this machine's current address.
 
-    Returns the new token, or None with the reason in last_error(). Safe to
-    call from several threads: only one refresh runs at a time, and the others
-    simply use whatever it produced.
+    Pass the token that was just rejected as `previous`. Returns the new token,
+    or None with the reason in last_error(). Safe to call from several threads:
+    only one refresh runs at a time, and the others simply use whatever it
+    produced.
     """
     global _last_error
 
@@ -163,10 +186,14 @@ def refresh(force=False):
             return None
 
         config = load_toml_as_dict("cfg/general_config.toml")
-        if not force and config.get("_brawl_api_token_ip") == address:
-            # Another thread already reissued for this address while this one
-            # waited on the lock.
-            return str(config.get("brawl_api_token", "")).strip() or None
+        stored = str(config.get("brawl_api_token", "")).strip()
+        # Only skip the work if somebody else genuinely replaced the token while
+        # this call waited on the lock. Deciding that by address instead - "the
+        # last reissue was for this same IP, so nothing to do" - hands back the
+        # very token that was just rejected, the retry fails identically, and
+        # the bot reports that automatic refresh is not set up when it is.
+        if not force and stored and previous is not None and stored != previous:
+            return stored
 
         session = requests.Session()
         try:
@@ -198,6 +225,15 @@ def refresh(force=False):
             token = _create(session, address)
             if not token:
                 _last_error = "The developer portal refused to create a new key."
+                return None
+            if not _works(token):
+                _last_error = (
+                    "The developer portal issued a key for " + address + " but the "
+                    "API still refuses it. If you are behind a VPN or a mobile "
+                    "connection the address may have changed again; otherwise "
+                    "create a key by hand at developer.brawlstars.com with the "
+                    "Allowed IP Ranges box set to 0.0.0.0/0."
+                )
                 return None
         except requests.RequestException as exc:
             _last_error = f"Could not reach the developer portal: {exc}"
