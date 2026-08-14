@@ -30,17 +30,7 @@ if not exist "tools\installer.py" (
 :: publish Windows builds only up to 3.12; on 3.13 pip falls back to compiling
 :: them and stops at "Microsoft Visual C++ 14.0 or greater is required", which
 :: sounds like a missing compiler and is really a Python that is too new.
-set "PYTHON_CMD="
-call :TRY_PYTHON "py" "-3.11"
-call :TRY_PYTHON "py" "-3.12"
-call :TRY_PYTHON "py" "-3.10"
-call :TRY_PYTHON "python"
-call :TRY_PYTHON "%LocalAppData%\Programs\Python\Python311\python.exe"
-call :TRY_PYTHON "%ProgramFiles%\Python311\python.exe"
-call :TRY_PYTHON "%LocalAppData%\Programs\Python\Python312\python.exe"
-call :TRY_PYTHON "%ProgramFiles%\Python312\python.exe"
-call :TRY_PYTHON "%LocalAppData%\Programs\Python\Python310\python.exe"
-if defined PYTHON_CMD goto :HAVE_PYTHON
+
 
 :: ------------------------------------------------------------ install Python
 echo [INFO] No suitable Python found. This project needs 3.10, 3.11 or 3.12.
