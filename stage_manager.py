@@ -14,12 +14,14 @@ except (ImportError, ModuleNotFoundError):
     early_access = False
 
 
-    def get_brawler_stats(_player_info, _brawler_name, _power_level=False):
-        return None, None
+    def get_brawler_stats(player_info, brawler_name, _power_level=False):
+        from brawl_api import get_brawler_stats as _stats
+        return _stats(player_info, brawler_name)
 
 
-    def get_player_info(_tag):
-        return None
+    def get_player_info(tag):
+        from brawl_api import get_player_info as _info
+        return _info(tag)
 
 
 def load_image(image_path, scale_factor):
@@ -138,7 +140,7 @@ class StageManager:
                 screenshot = self.window_controller.screenshot()
                 notify_user("completed", screenshot, self)
                 print("Bot stopping: all targets completed with no more brawlers.")
-                self.window_controller.release_movement()
+                self.window_controller.release_movement(priority=True)
                 self.window_controller.close()
                 sys.exit(0)
             ping_when_target_is_reached = load_toml_as_dict("cfg/webhook_config.toml")["ping_when_target_is_reached"]
@@ -184,7 +186,7 @@ class StageManager:
 
         if self._should_stop() or self._should_pause():
             return
-        self.window_controller.release_movement()
+        self.window_controller.release_movement(priority=True)
         self.window_controller.press("proceed")
         print("Pressed to start a match")
         time.sleep(2)

@@ -100,7 +100,7 @@ class WindowController:
 
             self.frame_lock = threading.Lock()
             self.max_ips = max_ips
-            self.scrcpy_client = scrcpy.Client(device=self.device, max_width=0, bitrate=4000000) if self.max_ips == "auto" else scrcpy.Client(device=self.device, max_width=0, bitrate=4000000, max_fps=self.max_ips)
+            self.scrcpy_client = self.build_scrcpy_client()
             self.last_frame = None
             self.last_frame_time = 0.0
             self.last_joystick_pos = (None, None)
@@ -127,6 +127,53 @@ class WindowController:
         self.are_we_moving = False
         self.PID_JOYSTICK = 1
         self.PID_ATTACK = 2
+        # The dodge tracker runs on its own thread and can grab the joystick
+        # mid-iteration, so every joystick touch is serialised and the bot loop
+        # is locked out for a short window after an emergency dodge.
+        self.joystick_lock = threading.RLock()
+        self.joystick_priority_until = 0.0
+
+    def build_scrcpy_client(self):
+        """Create the screen-capture client.
+
+        The capture settings matter far more than they look. scrcpy makes the
+        *device* grab and H.264-encode its screen in real time, and an emulator
+        usually has no hardware encoder, so that work competes directly with
+        rendering the game. Left uncapped on a 120 FPS emulator the encoder was
+        pushed to 120 frames of 1080p per second and the game itself dropped to
+        ~20 FPS - while the host sat at 45% CPU and 74% GPU, because the
+        bottleneck was never on the host at all.
+
+        Capture rate is deliberately separate from max_ips: the bot loop and
+        the video stream have no reason to be tied together.
+        """
+        config = load_toml_as_dict("cfg/general_config.toml")
+
+        def as_int(key, default):
+            try:
+                return int(config.get(key, default))
+            except (TypeError, ValueError):
+                return default
+
+        capture_fps = as_int("capture_fps", 60)
+        max_width = as_int("capture_max_width", 0)
+        bitrate = as_int("capture_bitrate", 4000000)
+
+        # An explicit max_ips still caps capture, since asking for more frames
+        # than the bot can consume only burdens the encoder.
+        if self.max_ips and self.max_ips != "auto":
+            capture_fps = min(capture_fps, int(self.max_ips)) if capture_fps else int(self.max_ips)
+
+        kwargs = {"device": self.device, "max_width": max_width, "bitrate": bitrate}
+        if capture_fps > 0:
+            kwargs["max_fps"] = capture_fps
+
+        print(
+            f"Screen capture: {capture_fps or 'uncapped'} FPS, "
+            f"{'native width' if not max_width else str(max_width) + 'px wide'}, "
+            f"{bitrate // 1000} kbps"
+        )
+        return scrcpy.Client(**kwargs)
 
     def get_latest_frame(self):
         with self.frame_lock:
@@ -180,7 +227,7 @@ class WindowController:
                         self.last_frame_time = time.time()
 
             try:
-                self.scrcpy_client = scrcpy.Client(device=self.device, max_width=0, bitrate=4000000) if self.max_ips == "auto" else scrcpy.Client(device=self.device, max_width=0, bitrate=4000000, max_fps=self.max_ips)
+                self.scrcpy_client = self.build_scrcpy_client()
                 self.scrcpy_client.add_listener(scrcpy.EVENT_FRAME, on_frame)
                 self.scrcpy_client.start(threaded=True)
             except Exception as e:
@@ -292,27 +339,45 @@ class WindowController:
                 except Exception as e2:
                     print(f"Retry after reconnect failed during touch_up at ({x}, {y}) with pointer_id {pointer_id}: {e2}")
 
-    def move(self, x, y):
-        target_x = self.joystick_x + x
-        target_y = self.joystick_y + y
-        if not self.are_we_moving:
-            self.touch_down(self.joystick_x, self.joystick_y, pointer_id=self.PID_JOYSTICK)
+    def move(self, x, y, priority=False):
+        with self.joystick_lock:
+            if not priority and time.time() < self.joystick_priority_until:
+                return
+
+            target_x = self.joystick_x + x
+            target_y = self.joystick_y + y
+            if not self.are_we_moving:
+                self.touch_down(self.joystick_x, self.joystick_y, pointer_id=self.PID_JOYSTICK)
+                self.touch_move(target_x, target_y, pointer_id=self.PID_JOYSTICK)
+                self.are_we_moving = True
+                self.last_joystick_pos = (target_x, target_y)
+                return
+
+            if not self.re_apply_movement and self.last_joystick_pos == (target_x, target_y):
+                return
+
             self.touch_move(target_x, target_y, pointer_id=self.PID_JOYSTICK)
-            self.are_we_moving = True
             self.last_joystick_pos = (target_x, target_y)
-            return
 
-        if not self.re_apply_movement and self.last_joystick_pos == (target_x, target_y):
-            return
+    def move_with_priority(self, x, y, hold=0.1):
+        """Take the joystick for `hold` seconds, locking out the bot loop.
 
-        self.touch_move(target_x, target_y, pointer_id=self.PID_JOYSTICK)
-        self.last_joystick_pos = (target_x, target_y)
+        Used by the dodge thread when an impact is closer than one bot
+        iteration: by the time the main loop next ran, the shot would have
+        landed.
+        """
+        with self.joystick_lock:
+            self.joystick_priority_until = time.time() + max(hold, 0.0)
+            self.move(x, y, priority=True)
 
-    def release_movement(self):
-        if self.are_we_moving:
-            self.touch_up(self.joystick_x, self.joystick_y, pointer_id=self.PID_JOYSTICK)
-            self.are_we_moving = False
-            self.last_joystick_pos = (None, None)
+    def release_movement(self, priority=False):
+        with self.joystick_lock:
+            if not priority and time.time() < self.joystick_priority_until:
+                return
+            if self.are_we_moving:
+                self.touch_up(self.joystick_x, self.joystick_y, pointer_id=self.PID_JOYSTICK)
+                self.are_we_moving = False
+                self.last_joystick_pos = (None, None)
 
     def click(self, x: int, y: int, delay=0.02, already_include_ratio=True, touch_up=True, touch_down=True):
         if not already_include_ratio:
@@ -329,6 +394,40 @@ class WindowController:
         target_x = x * self.width_ratio
         target_y = y * self.height_ratio
         self.click(target_x, target_y, delay, touch_up=touch_up, touch_down=touch_down)
+
+    def aimed_attack(self, dx, dy, radius=130.0, hold=0.02, button="attack"):
+        """Fire in a specific direction by dragging the attack stick.
+
+        Tapping the attack control hands the shot to the game's auto-aim, which
+        targets where the enemy currently is. Dragging it aims manually, which
+        is the only way to lead a moving target.
+
+        `dx, dy` is a direction in screen space; its length does not matter.
+        """
+        if button not in press_coords_dict:
+            return False
+
+        length = math.hypot(dx, dy)
+        if length < 1e-6:
+            return False
+
+        x, y = press_coords_dict[button]
+        center_x = x * self.width_ratio
+        center_y = y * self.height_ratio
+        # `radius` arrives already scaled to this screen by DodgeConfig.
+        target_x = center_x + dx / length * radius
+        target_y = center_y + dy / length * radius
+
+        self.touch_down(center_x, center_y, pointer_id=self.PID_ATTACK)
+        # One intermediate point: releasing straight after touch_down is
+        # sometimes read as a tap, which would silently fall back to auto-aim.
+        self.touch_move((center_x + target_x) / 2, (center_y + target_y) / 2,
+                        pointer_id=self.PID_ATTACK)
+        self.touch_move(target_x, target_y, pointer_id=self.PID_ATTACK)
+        if hold > 0:
+            time.sleep(hold)
+        self.touch_up(target_x, target_y, pointer_id=self.PID_ATTACK)
+        return True
 
     def swipe(self, start_x, start_y, end_x, end_y, duration=0.2):
         dist_x = end_x - start_x

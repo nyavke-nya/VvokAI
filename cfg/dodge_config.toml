@@ -1,0 +1,486 @@
+# ============================================================================
+#  Projectile dodging + movement feel
+#  Every value here is expressed for a 1920x1080 frame and is rescaled
+#  automatically when the emulator runs at a different resolution.
+# ============================================================================
+
+[general]
+# Master switch. When false the tracker never starts and the playstyle simply
+# sees an empty projectile list, so it falls back to plain combat movement.
+enabled = true
+
+# Run the tracker in its own thread, consuming scrcpy frames at full framerate
+# instead of only once per bot iteration. This is what makes the reaction feel
+# instant: tracking runs at 30-60 Hz even when YOLO only manages 12 IPS.
+threaded = true
+
+# Publish projectile tracks / predicted paths to the debug view overlay.
+debug_overlay = true
+
+# Also draw the raw detector output, so the signal-to-noise ratio is visible
+# instead of assumed. Three tiers appear:
+#   grey circles   - every blob that passed the size/shape filter (candidates)
+#   amber circles  - tracks with history that are not confirmed yet
+#   magenta + line - confirmed projectiles and their predicted path
+# If grey is crowded, raise vision.motion_threshold. If amber never turns
+# magenta, the origin or straightness gates are too strict.
+debug_show_candidates = true
+
+# Cap on how many frames per second the tracker processes. It costs ~3.3 ms a
+# frame, so on a 120 FPS emulator an uncapped tracker eats a third of a core
+# that the game would rather use to render.
+#
+# Uncapped on purpose now. A cap here does not just limit the rate, it ALIASES
+# against the capture rate: a frame arriving 16.6 ms after the last processed
+# one gets skipped, and the next is 33 ms later, so the effective interval
+# jumps. Measured on a real session the tracker ran at a 33 ms median but an
+# 83 ms 90th percentile - and at 83 ms a fast shot moves 125 px between
+# samples, which is more than the association gate can bridge.
+#
+# Every frame is ~3.3 ms, so uncapped costs ~20% of one core at 60 FPS.
+# Set back to 60 if the emulator needs that core more than the tracker does.
+tracker_max_fps = 0
+
+# Print a one-line summary every second: tracked blobs, confirmed projectiles,
+# rejected candidates and the time the tracker spent per frame.
+log_stats = false
+
+
+[logging]
+# Forensic log of every dodge decision, written as JSON Lines. This is what
+# answers "why did it get hit" after the fact: each entry carries the verdict
+# (NOT_DETECTED / DETECTED_TOO_LATE / IMPOSSIBLE / BLOCKED / OVERRULED /
+# DODGED) plus the numbers behind it.
+#
+# Read it back with:  python tools/dodge_report.py
+enabled = true
+path = "debug_frames/dodge_log.jsonl"
+
+# Also record the score of every candidate direction, not just the chosen one.
+# Much more informative and noticeably larger; leave on while tuning.
+include_candidates = true
+
+# Rotate the file once it passes this size, in megabytes.
+max_megabytes = 32
+
+
+[vision]
+# Frames are processed at (width / downscale). 3 -> 640x360, which keeps a
+# 20 px projectile at ~7 px: still plenty for a centroid, ~8x cheaper than 1080p.
+downscale = 3
+
+# Per-pixel grayscale delta that counts as motion, 0-255.
+# Lower  = catches dim projectiles, more noise.
+# Higher = only bright/high-contrast projectiles.
+# Measured on the synthetic bench: 10-18 all detect a 900 px/s shot with zero
+# false positives while the camera pans; 20 misses it entirely. 12 gives the
+# lowest latency (4 frames) with headroom on both sides.
+motion_threshold = 12
+
+# Blob area limits in FULL-frame pixels. A Colt bullet is ~600 px, a Dynamike
+# barrel ~4000 px, a bouncing Rico shot ~500 px. Brawlers are >15000 px.
+min_blob_area = 250
+max_blob_area = 9000
+
+# Reject blobs whose bounding box is more elongated than this. Projectiles are
+# compact; camera-seam artefacts along walls are long thin slivers.
+max_blob_aspect = 4.5
+
+# Erase one pixel of border noise before labelling. Costs ~0.2 ms, removes a
+# large amount of single-pixel shimmer.
+morph_open = true
+
+
+[camera]
+# Global camera translation is estimated with phase correlation, which is what
+# removes the "everything moves when I move" noise that kills naive detectors.
+enabled = true
+
+# The estimate is taken over four off-centre patches (see CAMERA_PATCHES in
+# dodge/tracker.py) and reduced with a median. Measuring over the centre of the
+# screen does NOT work: the player sprite sits there and does not move with the
+# world, so it drags the estimate toward zero. On the bench that mistake turned
+# a true pan of -9,-6 px into -6.3,-1.7 and left several pixels of background
+# motion behind - the exact noise this stage exists to remove.
+
+# Reduce the frames further before correlating. 2 is ~25% cheaper but noticeably
+# less accurate on fine textures, and it narrows the usable motion_threshold
+# range from 10-18 down to 10-12. Leave at 1 unless you are short on CPU.
+estimate_downscale = 1
+
+# Phase-correlation confidence below which the shift is considered unreliable
+# (scene cut, death screen, heavy particle cover). The frame is then skipped
+# for detection rather than trusted.
+min_response = 0.03
+
+# Shifts larger than this (full-frame px per frame) are treated as a scene cut.
+max_shift = 400.0
+
+
+[palette]
+# Colour gating built on the observation that Brawl Stars maps use a small,
+# stable palette: sand/rock/wood in the warm hues, grass and cactus in green,
+# water in blue. Projectiles are the bright, saturated things that are NOT
+# those hues.
+#
+#   "off"   - colour is ignored entirely, motion + origin gating only
+#   "soft"  - colour never rejects a blob, it only raises/lowers its score
+#   "hard"  - blobs made mostly of terrain colour are dropped outright
+#
+# "soft" is the default on purpose: Colt's yellow bullets over desert sand are
+# genuinely close in hue, and "hard" would blind the bot to them.
+mode = "soft"
+
+# Learn the dominant hues of the current map from the frame itself and treat
+# them as terrain. Works on maps whose palette is not in the static list below.
+# Terrain covers most of the screen, so the top hue bins are terrain by
+# construction.
+adaptive = true
+adaptive_top_bins = 6
+adaptive_smoothing = 0.9
+
+# Static terrain hue bands, OpenCV HSV (H: 0-179). Measured off real frames.
+#   sand / rock / wood / dry bushes
+warm_h = [0, 27]
+#   grass tiles / cactus / hedges
+green_h = [30, 76]
+#   water
+water_h = [92, 114]
+
+# A pixel only counts as terrain if it is at least this saturated. Dark shadows
+# and near-grey UI are excluded from the terrain model rather than mislabelled.
+terrain_min_saturation = 55
+
+# Pixels brighter than this with low saturation are treated as glow/muzzle
+# flash and always count as non-terrain, whatever their hue.
+glow_min_value = 232
+glow_max_saturation = 45
+
+
+[origin]
+# The strongest filter in the whole pipeline, and the reason this fork does not
+# drown in noise: a track is only born if it first appears near an enemy box
+# and is travelling AWAY from that enemy.
+require_enemy_origin = true
+
+# How far from an enemy box edge a blob may appear and still count as "fired by
+# that enemy", in tiles.
+#
+# Sized from real logs rather than guessed. A shot leaves the enemy mask about
+# 85-120 px out; the enemy boxes themselves arrive at the bot-loop rate, so they
+# can be ~100 ms stale, during which a 1085 px/s shot travels another ~110 px.
+# At 3.2 tiles (173 px) only 10% of shots were credited to an enemy and the rest
+# fell back to the slow 5-frame path, costing ~86 ms of dodging time each.
+spawn_radius_tiles = 5.5
+
+# Minimum cosine between (blob - enemy) and the blob's velocity. 0.25 ~= 75
+# degrees, so a shot merely passing near an enemy is not credited to them.
+# Loosened along with spawn_radius: a stale enemy box skews this angle too.
+min_outward_cosine = 0.25
+
+# Escape hatch for shots from enemies the model did not detect (off-screen,
+# in a bush, behind a wall). Such tracks are accepted only if they are heading
+# at the player and survive a longer confirmation.
+allow_unknown_origin = true
+unknown_origin_confirm_hits = 3
+unknown_origin_max_aim_error_deg = 26.0
+
+# Blobs inside these boxes are ignored: brawlers, their healthbars and names
+# all move and would otherwise be tracked as huge projectiles. Boxes are
+# inflated by this many tiles before masking.
+#
+# This directly sets how far a shot must fly before it becomes visible at all.
+# At 0.55 tiles a shot had to clear ~85-115 px from the enemy centre, costing
+# ~0.15 s at typical speeds - a third of the total reaction budget, on a shot
+# that only has ~0.5 s of flight time to begin with.
+entity_mask_inflate_tiles = 0.3
+# Walls block most shots and are a hotspot for parallax seams.
+wall_mask_inflate_tiles = 0.15
+
+
+[tracking]
+# Detections needed before a track is trusted enough to dodge.
+#
+# Measured on a full session: only 34% of shots were seen with enough time left
+# to physically clear the hitbox. Every frame spent confirming is ~17 ms off
+# that budget. Two is the minimum that still allows a direction check; the
+# enemy-origin gate carries most of the noise rejection anyway.
+min_confirm_hits = 2
+
+# Frames a track may go unmatched before it is dropped.
+max_missed_frames = 3
+
+# Speed window in full-frame px/s. Below the minimum it is a drifting particle
+# or a walking brawler; above the maximum it is a matching error.
+min_speed = 260.0
+max_speed = 4200.0
+
+# Association gate: a blob matches a track if it is within
+# (gate_base + speed * dt * gate_slack) px of the predicted position.
+#
+# Assignment is global and best-first, not per-track greedy, so a wide gate no
+# longer means a noise track can steal a blob from a track that predicted it
+# properly - the better-scoring pairing simply wins.
+gate_base_tiles = 0.9
+gate_slack = 0.6
+
+# Search radius for a track's SECOND sample, expressed as the fastest shot
+# worth picking up (full-frame px/s). A one-frame-old track has no measured
+# velocity, so nothing else can size its gate.
+#
+# This was the single biggest hole in the tracker: it used gate_base alone,
+# i.e. ~49 px, while at the 12-30 FPS this really runs at a fast shot covers
+# 50-125 px per frame. Those shots could never acquire a second sample, so they
+# sat on screen as amber circles that never became tracks, and the bot never
+# dodged them. Measured across a session: the median confirmed track survived
+# TWO frames before being torn apart and re-seeded under a new id.
+seed_speed = 2600.0
+
+# Tracks closer than this with matching velocity are the same shot seen twice
+# (morphology splitting one blob, or a stolen-and-re-seeded track). Merged so
+# the solver holds its escape against one stable id.
+merge_radius_tiles = 0.55
+
+# Cosine required between a two-sample track's velocity and the direction it
+# left the enemy, before it may confirm on the fast path. Two blobs in a row is
+# also what shimmering grass looks like; requiring the shot to fly the way the
+# enemy was pointing separates them. Tracks that fail this simply wait for the
+# third sample and the straightness test.
+seed_agreement = 0.65
+
+# Velocity is fitted by least squares over this many recent samples, which is
+# far steadier than a two-point difference at 30 FPS.
+velocity_window = 5
+
+# Minimum cosine between the first and last leg of the track. Real projectiles
+# fly straight; noise wanders. This single test removes most survivors of the
+# earlier stages.
+min_straightness = 0.90
+
+# Projectile collision radius in full-frame px, derived from blob size and
+# clamped into this range.
+min_radius = 14.0
+max_radius = 46.0
+
+
+[dodge]
+# How far ahead impacts are predicted, in seconds. Beyond ~0.6 s the enemy has
+# usually changed the situation anyway.
+horizon = 0.55
+
+# Impacts sooner than this are "critical": the emergency path grabs the joystick
+# directly instead of waiting for the next bot iteration.
+#
+# Must be at least as large as the time needed to walk clear of a hitbox
+# (~81 px / ~330 px/s = 0.25 s), otherwise the takeover fires only once the
+# dodge is already unwinnable.
+critical_time = 0.32
+
+# Candidate escape directions evaluated per frame, evenly spread over 360
+# degrees. 16 gives 22.5 degree resolution, which is finer than the joystick.
+candidate_directions = 16
+
+# Extra clearance added to (player radius + projectile radius) so the bot
+# leaves a margin instead of shaving the hitbox.
+safety_margin = 12.0
+
+# Fallback player speed in full-frame px/s, used until the tracker has measured
+# the real one from camera displacement.
+default_player_speed = 330.0
+
+# Weight of "keep doing what the playstyle wanted" when scoring escapes.
+# 0 = dodge with no regard for tactics, 1 = strongly prefer the tactical vector.
+# Lowered from 0.35: while walking at an enemy the tactical vector points
+# straight down the incoming line of fire, and 0.35 was enough to out-vote
+# sidestepping - the bot "did not dodge while approaching".
+tactical_weight = 0.20
+
+# Cost added to an escape direction that walks into a wall.
+wall_penalty = 2.5
+
+# Round-trip lag between what the bot sees and when its joystick command takes
+# effect, in seconds: the device encodes the frame, streams it, we decode and
+# analyse it, then the touch event travels back over ADB.
+#
+# Shots are extrapolated forward by this much before the escape is solved.
+# Without it the bot dodges where the shot WAS: in a real duel it picked a
+# mathematically clean direction 89% of the time and still ate every round,
+# because by the time the stick moved the shot had already arrived.
+#
+# Too low and it reacts late; too high and it dodges shots that will pass
+# behind it. If the bot now swerves too early, lower toward 0.08.
+reaction_latency = 0.12
+
+# Safety margin on how long an escape is held after the shot that triggered it
+# should have arrived, in seconds. The escape itself is released as soon as the
+# tracker stops seeing the shot; this is only a backstop so a lost track cannot
+# leave the bot walking sideways forever.
+escape_hold_extra = 0.25
+
+# Once a dodge is committed to, hold it at least this long so the bot does not
+# jitter between two equally good escapes on consecutive frames.
+#
+# Kept short: under sustained fire the next shot arrives before a long
+# commitment expires, and the bot would still be walking away from the previous
+# one. 0.08 is enough to stop frame-to-frame flip-flopping without locking in.
+commit_time = 0.12
+
+
+[aim]
+# Aimed shots. The attack control is a stick, not a button: dragging it fires
+# where you dragged, while tapping it uses the game's auto-aim, which shoots at
+# where the enemy IS rather than where they will be.
+enabled = true
+
+# Projectile speed in full-frame px/s, used to derive the flight time for the
+# interception solve. Brawl Stars shots are not all the same speed, so this is
+# a compromise: too high under-leads, too low over-leads.
+#   ~1800  slow lobs (Barley, Dynamike, Tick)
+#   ~2600  most brawlers
+#   ~3400  fast bullets (Colt, Piper, Brock)
+projectile_speed = 2600.0
+
+# Clamp on the computed lead. Beyond ~0.45 s the target has usually changed
+# direction anyway, so leading further does more harm than good.
+min_lead = 0.0
+max_lead = 0.45
+
+# Frames of tracking before an enemy's velocity is trusted. Until then the bot
+# aims straight at them, which is what auto-aim would have done anyway.
+min_samples = 3
+
+# Enemy velocities above this (full-frame px/s) are treated as a tracking
+# mismatch between two different enemies rather than real movement.
+max_enemy_speed = 900.0
+
+# Association gate for matching enemy boxes between frames, in tiles.
+match_gate_tiles = 2.0
+max_missed = 3
+
+# How far the attack stick is dragged, in full-frame px. Brawl Stars registers
+# direction from the drag angle, so this only has to clear the dead zone.
+swipe_radius = 130.0
+swipe_hold = 0.02
+
+# Skip the aimed shot and just tap when the lead is smaller than this many
+# pixels: a stationary target does not need a drag, and tapping is faster.
+min_lead_distance = 18.0
+
+
+[health]
+# Reading health bars straight off the screen.
+#
+# The detection model has no health-bar class, but it does not need one: a
+# health bar is a saturated coloured strip in a known place relative to a
+# brawler, on a background that is never that colour. Same idea as the
+# projectile palette, easier target.
+#
+# What it unlocks: retreating when the trade is already lost, pushing when the
+# enemy is the one who is nearly dead, and shooting whoever can actually be
+# finished rather than whoever happens to be closest.
+#
+# Turn this off if it misreads on your device - the playstyle falls back to
+# distance-only tactics, which is what it did before.
+enabled = true
+
+# Where to look, as fractions of the detection box height above its top edge.
+# The bar sits just above the sprite; the band is deliberately generous
+# because the box tightens and loosens as the brawler animates.
+band_top = 0.55
+band_bottom = 0.05
+
+# Widen the search sideways by this fraction of the box width. A brawler
+# turned side-on has a narrow box and a full-width bar.
+search_pad = 0.25
+
+# Shorter coloured runs than this (in 1080p px) are grass, not health.
+min_bar_pixels = 14
+
+# Roughly how wide a full bar is relative to the box, used only for scoring
+# confidence - not for the measurement itself.
+expected_width = 0.9
+
+# Readings below this confidence are reported as unknown instead of guessed.
+# The playstyle ignores unknown readings and falls back to distance.
+min_confidence = 0.35
+
+# How fast a reading is allowed to move UPWARD. Damage is believed instantly;
+# recovery is eased in, because a single clipped frame claiming the brawler is
+# healthy again is far more dangerous than one claiming it is hurt.
+recover_blend = 0.3
+
+# HSV bands, OpenCV convention (H: 0-179). Green is the player and teammates,
+# red is enemies; red wraps the hue circle so it is given as a half-width.
+green_hue = [38, 92]
+red_hue = 12
+
+# The filled part of the bar is bright and saturated.
+saturation_min = 120
+value_min = 110
+
+# The spent part is the same strip, darkened. Measured together with the
+# filled part to get the denominator.
+spent_saturation_min = 40
+spent_value_min = 20
+spent_value_max = 110
+
+# ---- structure ------------------------------------------------------------
+# Colour on its own does not work, and the bench says so plainly: with only the
+# hue/saturation gates above, 25 of 40 patches of ordinary map grass were read
+# as full health bars, all of them at 100% and at full confidence. Green grass
+# on a green track is simply not separable by colour.
+#
+# What IS separable is the shape. Brawl Stars draws every bar inside a
+# near-black outline and only a few pixels tall. Scenery has neither property.
+
+# Pixels darker than this count as the bar's outline.
+outline_value_max = 70
+
+# Fraction of the strip's width that must be dark on the row above AND below
+# it. This one test removed every false positive on the bench.
+outline_coverage = 0.5
+
+# Maximum strip thickness as a fraction of the box height. A bar is thin; a
+# bush is not. Anything taller is deleted from the strip before runs are
+# measured, so a bush touching the bar cannot merge with it.
+max_thickness = 0.22
+
+# Floor on the above, in 1080p px. A distant brawler has a small box but the
+# bar does not shrink proportionally, and without this floor the far half of
+# the map reads as having no health bars at all.
+min_thickness_px = 14
+
+# How many candidate rows to test before giving up. Only matters when several
+# bars are stacked in the search band - two brawlers standing in a column.
+row_candidates = 8
+
+
+[movement]
+# Default feel: glide. The joystick vector is eased toward the target instead
+# of snapping, so the bot reads as a human holding a stick rather than a
+# machine flicking between 8 directions.
+smoothing_enabled = true
+
+# Time constant of the easing, in seconds. Larger = smoother and lazier.
+# 0.26 reads as a person leaning the stick over rather than flicking it.
+smooth_tau = 0.05
+
+# Hard cap on how fast the movement vector may rotate, degrees per second.
+# This is what turns sharp corners into arcs, and it is the main dial for
+# "walking must never look twitchy".
+#
+# 520 still allowed a full reversal in a third of a second, which reads as a
+# snap. At 220 a 180-degree turn takes ~0.8 s - a walk, not a flick. The dodge
+# path bypasses this entirely, so evasion stays instant.
+max_turn_rate = 1100.0
+
+# While dodging, all of the above is bypassed and the joystick snaps to the
+# escape vector in a single frame. This is the intentional contrast: smooth
+# normally, violent under fire.
+sharp_on_dodge = true
+
+# After a dodge ends, ease back into smooth movement over this long instead of
+# jumping straight back to the tactical vector. During this window the easing
+# is somewhat quicker than normal so the bot does not coast on the escape
+# vector - but not so quick that the return itself looks like a second snap.
+recover_time = 0.18

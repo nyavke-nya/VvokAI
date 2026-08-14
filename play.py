@@ -6,6 +6,11 @@ import numpy as np
 import os
 
 from detect import Detect
+from dodge.config import DodgeConfig
+from dodge.service import DodgeService
+from dodge.smoothing import MovementShaper
+from dodge.solver import DodgeSolver
+from dodge.vitals import HealthReader, entity_key
 try:
     from early_access.early_access import add_advanced_visuals
     early_access = True
@@ -25,6 +30,18 @@ hypercharge_crop_area = load_toml_as_dict("./cfg/lobby_config.toml")['pixel_coun
 POISON_LOW_HSV = np.array((30, 90, 221), dtype=np.uint8)
 POISON_HIGH_HSV = np.array((57, 114, 235), dtype=np.uint8)
 PLAYER_HIT_CIRCLE_RADIUS = 53
+
+# Wall collision is NOT the same circle as the projectile hitbox.
+#
+# A brawler's damage hitbox is roughly a tile wide, but its movement collision
+# is much smaller - in game they walk through one-tile gaps without touching
+# the sides. Using the 53 px hit radius for pathing meant a two-tile corridor
+# (108 px) had to fit a 106 px circle, so the bot declared it blocked and
+# refused to enter.
+#
+# 24 px leaves 6 px of clearance in a single-tile gap and passes a two-tile gap
+# comfortably. Raise it if the bot starts clipping wall corners.
+PLAYER_COLLISION_RADIUS = 24
 
 class Play:
 
@@ -58,6 +75,13 @@ class Play:
         self.is_super_ready = False
         self.window_controller = window_controller
         self.TILE_SIZE = bot_config.get("perceived_tile_size", 54)
+        # Configurable so a different emulator resolution or a map with tighter
+        # geometry can be tuned without editing code.
+        try:
+            self.collision_radius = float(
+                bot_config.get("player_collision_radius", PLAYER_COLLISION_RADIUS))
+        except (TypeError, ValueError):
+            self.collision_radius = float(PLAYER_COLLISION_RADIUS)
         self.centered_wall_detection = config_bool(bot_config.get("centered_wall_detection"), False)
         self.centered_wall_crop_size = 640
 
@@ -111,6 +135,20 @@ class Play:
             self.pyla_code = pyla_code
         self.context = None
         self.frame = None
+
+        # Dodging needs the window controller's scale factor, which only exists
+        # after the first frame arrives, so the service is built lazily.
+        self.dodge_service = None
+        self.health_reader = None
+        self.health_readings = {}
+        self.dodge_config = None
+        self.dodge_solver = None
+        self.movement_shaper = None
+        self.last_pyla_globals = {}
+        self.last_player_box = None
+        self.last_dodge_decision = None
+        self.last_aim_solution = None
+        self.was_dodging = False
 
     @staticmethod
     def get_entity_pos(entity):
@@ -474,12 +512,15 @@ class Play:
 
         dx = movement[0] / magnitude * distance
         dy = movement[1] / magnitude * distance
-        hit_circle_center, hit_circle_radius = self.get_player_hit_circle(player_box)
+        hit_circle_center, _ = self.get_player_hit_circle(player_box)
         if hit_circle_center is None:
             return False
 
+        # Movement uses the collision radius, not the projectile hitbox: the
+        # latter is nearly a tile wide and made two-tile gaps look impassable.
+        radius = self.collision_radius
         new_pos = (hit_circle_center[0] + dx, hit_circle_center[1] + dy)
-        return self.walls_block_swept_circle(hit_circle_center, new_pos, hit_circle_radius, walls)
+        return self.walls_block_swept_circle(hit_circle_center, new_pos, radius, walls)
 
     @staticmethod
     def validate_game_data(data):
@@ -529,8 +570,226 @@ class Play:
         target_y = clamp(y, -JOYSTICK_RADIUS*self.window_controller.height_ratio, JOYSTICK_RADIUS*self.window_controller.height_ratio)
         return target_x, target_y
 
+    def ensure_dodge_service(self):
+        if self.dodge_service is not None:
+            return self.dodge_service
+        if not self.window_controller.scale_factor:
+            return None
+
+        self.dodge_config = DodgeConfig.load(
+            scale_factor=self.window_controller.scale_factor,
+            tile_size=self.TILE_SIZE,
+        )
+        self.movement_shaper = MovementShaper(self.dodge_config)
+        # A second solver instance, so the playstyle calling solve_dodge() does
+        # not fight the tracker thread over the shared commitment state.
+        self.dodge_solver = DodgeSolver(self.dodge_config)
+        self.dodge_service = DodgeService(
+            self.window_controller,
+            config=self.dodge_config,
+            tile_size=self.TILE_SIZE,
+        )
+        self.dodge_service.start()
+        self.health_reader = HealthReader(self.dodge_config)
+        self.health_readings = {}
+        if not self.dodge_config.enabled:
+            print("Dodge tracker disabled in cfg/dodge_config.toml.")
+        return self.dodge_service
+
+    def read_vitals(self, data):
+        """Health for every brawler on screen, keyed by where it is.
+
+        Read once per bot iteration rather than per tracker frame: health moves
+        in visible chunks and the decisions it feeds - disengage, push, pick a
+        target - are made at the playstyle's rate anyway.
+        """
+        self.health_readings = {}
+        config = self.dodge_config
+        if self.health_reader is None or not config or not config.health_enabled:
+            return
+        frame = self.frame
+        if frame is None:
+            return
+
+        def record(boxes, hostile, salt):
+            for box in boxes or []:
+                if len(box) < 4:
+                    continue
+                key = entity_key(box, salt)
+                reading = self.health_reader.read_tracked(frame, box, hostile, key)
+                if reading.known:
+                    self.health_readings[key] = reading
+
+        record(data.get('player'), False, "p")
+        record(data.get('teammate'), False, "t")
+        record(data.get('enemy'), True, "e")
+
+    def health_of(self, box, hostile=None):
+        """Health fraction for a box, or None when it could not be read.
+
+        The playstyle is expected to treat None as "no information" and fall
+        back to distance, rather than assuming full health - guessing here
+        would make the bot commit to fights on the strength of a reading that
+        never happened.
+        """
+        if not box or len(box) < 4:
+            return None
+        for salt in (("e",) if hostile else ("p", "t") if hostile is False else ("p", "t", "e")):
+            reading = self.health_readings.get(entity_key(box, salt))
+            if reading is not None:
+                return reading.fraction
+        return None
+
+    def get_projectiles(self):
+        if self.dodge_service is None or not self.dodge_service.enabled:
+            return []
+        return self.dodge_service.get_projectiles()
+
+    def solve_dodge(self, tactical_movement=None, projectiles=None):
+        """Playstyle entry point: where should I go to not get hit?
+
+        Returns None when nothing is incoming, so a playstyle can simply write
+        `decision = solve_dodge(movement)` and check for None.
+        """
+        if self.dodge_service is None or not self.dodge_service.enabled:
+            return None
+        if self.dodge_solver is None or not self.last_player_box:
+            return None
+
+        center, radius = self.get_player_hit_circle(self.last_player_box)
+        if center is None:
+            return None
+
+        if projectiles is None:
+            projectiles = self.dodge_service.get_projectiles()
+        if not projectiles:
+            return None
+
+        walls = (self.context or {}).get('walls') or self.last_walls_data
+        player_box = self.last_player_box
+
+        def blocked(vector):
+            return self.is_path_blocked(player_box, vector, walls)
+
+        decision = self.dodge_solver.solve(
+            projectiles,
+            center,
+            radius,
+            tactical_movement,
+            blocked,
+            player_speed=self.dodge_service.player_speed,
+            motion=self.dodge_service.motion,
+        )
+        self.last_dodge_decision = decision
+        return decision
+
+    def predict_aim(self, target_pos, projectile_speed=None):
+        """Where to aim to hit a moving target, without firing."""
+        if self.dodge_service is None or not self.dodge_service.config.aim_enabled:
+            return None
+        if not self.last_player_box:
+            return None
+
+        center, _ = self.get_player_hit_circle(self.last_player_box)
+        if center is None:
+            return None
+        return self.dodge_service.aim_at(center, target_pos, projectile_speed)
+
+    def aimed_attack(self, target_pos, projectile_speed=None, fallback=True):
+        """Fire at where the target will be, by dragging the attack stick.
+
+        Falls back to a plain tap (the game's auto-aim) when the target is not
+        moving enough to be worth leading, or when aiming is unavailable.
+        Returns True if the shot was actually aimed.
+        """
+        solution = self.predict_aim(target_pos, projectile_speed)
+        config = self.dodge_config
+
+        if solution is None or config is None or solution.lead_distance < config.aim_min_lead_distance:
+            if fallback:
+                self.attack()
+            return False
+
+        aimed = self.window_controller.aimed_attack(
+            solution.direction[0],
+            solution.direction[1],
+            radius=config.aim_swipe_radius,
+            hold=config.aim_swipe_hold,
+        )
+        self.last_aim_solution = solution
+        if not aimed and fallback:
+            self.attack()
+        return aimed
+
+    def publish_dodge_context(self, data):
+        service = self.dodge_service
+        if service is None or not service.enabled:
+            return
+
+        player_box = data['player'][0] if data.get('player') else None
+        center, radius = self.get_player_hit_circle(player_box) if player_box else (None, None)
+        # The vector actually being held, not the one the playstyle asked for:
+        # map-boundary detection compares commanded movement against measured
+        # camera pan, so it has to be the command that is really in effect.
+        held = self.movement_shaper.current if self.movement_shaper else None
+        service.update_context(
+            player_box=player_box,
+            enemies=data.get('enemy'),
+            teammates=data.get('teammate'),
+            walls=data.get('wall'),
+            player_center=center,
+            player_radius=radius,
+            joystick_active=self.window_controller.are_we_moving,
+            joystick_vector=held,
+        )
+
     def loop(self, brawler, data, current_time):
+        self.last_player_box = data['player'][0]
+        self.read_vitals(data)
+        projectiles = self.get_projectiles()
+        player_center, player_radius = self.get_player_hit_circle(self.last_player_box)
+        service = self.dodge_service
+        motion = service.motion if service else None
         self.context = {
+                'projectiles': projectiles,
+                'solve_dodge': self.solve_dodge,
+                'dodge_enabled': bool(service and service.enabled),
+                'player_speed': service.player_speed if service else 0.0,
+                'PLAYER_RADIUS': player_radius,
+                'player_center': player_center,
+                # The playstyle sets this to True on the frame it wants the
+                # joystick to snap instead of glide.
+                'sharp_movement': False,
+
+                # Aiming: lead a moving target instead of using the game's
+                # auto-aim, which fires at where the enemy already was.
+                'aim_enabled': bool(service and service.config.aim_enabled),
+                'aimed_attack': self.aimed_attack,
+                'predict_aim': self.predict_aim,
+                'tracked_enemies': service.tracked_enemies() if service else [],
+
+                # Map boundaries, measured from the camera rather than guessed
+                # from the wall model, which cannot see the edge of the arena.
+                'map_boundary': motion.boundary if motion else (0, 0),
+                'is_toward_boundary': motion.is_toward_boundary if motion else (lambda v, **k: False),
+                'is_direction_blocked': motion.is_direction_blocked if motion else (lambda v, **k: False),
+                'is_stuck': bool(motion.stuck) if motion else False,
+                'stuck_for': motion.stuck_for if motion else 0.0,
+                'movement_efficiency': motion.efficiency if motion else 1.0,
+                # World frame, accumulated from the camera pan. Add it to any
+                # on-screen coordinate to compare positions across time:
+                # screen coordinates alone cannot tell a teammate standing still
+                # apart from one the camera is sliding past.
+                'odometer': motion.odometer if motion else (0.0, 0.0),
+
+                # Health, read straight off the health bars. None means it
+                # could not be read - the playstyle must treat that as "no
+                # information" and fall back to distance, never as "full".
+                'player_health': self.health_of(self.last_player_box, hostile=False),
+                'health_of': self.health_of,
+                'health_enabled': bool(
+                    self.dodge_config and self.dodge_config.health_enabled
+                ),
                 'player_data': data['player'][0],
                 'enemy_data': data['enemy'],
                 'teammate_data': data['teammate'],
@@ -572,21 +831,55 @@ class Play:
                 'rotate_movement': self.rotate_movement
             }
         movement = self.get_movement()
-        if self.movement_to_vector(movement) is None:
-            self.window_controller.release_movement()
-            self.last_movement = ''
-            return None
-        movement = self.clamp_movement(movement)
+        sharp = bool(self.last_pyla_globals.get('sharp_movement'))
         current_time = time.time()
-        if movement != self.last_movement:
-            if current_time - self.last_movement_change_time >= self.minimum_movement_delay:
-                self.last_movement = movement
-                self.last_movement_change_time = current_time
-            else:
-                movement = self.last_movement
-        else:
+        vector = self.movement_to_vector(movement)
+
+        if self.dodge_service is not None:
+            self.dodge_service.set_tactical_intent(
+                vector,
+                is_blocked=lambda candidate, box=self.last_player_box,
+                walls=data['wall']: self.is_path_blocked(box, candidate, walls),
+            )
+
+        if vector is None:
+            # Ease the stick back to centre rather than dropping it, so a
+            # playstyle that returns nothing for one frame does not stutter.
+            coasting = self.movement_shaper.shape(None, now=current_time) if self.movement_shaper else None
+            if coasting is None:
+                self.window_controller.release_movement()
+                self.last_movement = ''
+                return None
+            return coasting
+
+        movement = self.clamp_movement(vector)
+
+        if sharp:
+            # Dodging: skip the rate limiter and the unstuck rotation, both of
+            # which exist to stop dithering and would blunt the escape.
+            self.last_movement = movement
             self.last_movement_change_time = current_time
-        movement = self.unstuck_movement_if_needed(movement, current_time)
+            self.time_since_different_movement = current_time
+            self.fix_movement_keys['toggled'] = False
+            self.fix_movement_keys['last_direction_key'] = self.movement_direction_key(movement)
+        else:
+            if movement != self.last_movement:
+                if current_time - self.last_movement_change_time >= self.minimum_movement_delay:
+                    self.last_movement = movement
+                    self.last_movement_change_time = current_time
+                else:
+                    movement = self.last_movement
+            else:
+                self.last_movement_change_time = current_time
+            movement = self.unstuck_movement_if_needed(movement, current_time)
+
+        self.was_dodging = sharp
+        if self.movement_shaper is not None:
+            movement = self.movement_shaper.shape(movement, sharp=sharp, now=current_time)
+            if movement is None:
+                self.window_controller.release_movement()
+                self.last_movement = ''
+                return None
         return movement
 
     def check_if_hypercharge_ready(self, frame):
@@ -684,7 +977,56 @@ class Play:
 
     def get_movement(self):
         movement, updated_globals = interpret_pyla_code(self.pyla_code, self.context)
+        # The playstyle communicates more than a vector now: `sharp_movement`
+        # tells the shaper whether to snap or glide.
+        self.last_pyla_globals = updated_globals or {}
         return movement
+
+    def build_advanced_visuals(self, debug_data):
+        """Fill in the hit circle, line-of-sight links and joystick sectors.
+
+        The debug viewer already knows how to draw all three - only the code
+        that computes them lived in the unavailable early_access module. Every
+        input is already on hand here, so this is a straightforward rewrite
+        rather than anything clever.
+        """
+        player_boxes = debug_data.get("player")
+        if not player_boxes:
+            return
+
+        player_box = player_boxes[0]
+        walls = self.last_walls_data
+        player_pos = self.get_entity_pos(player_box)
+
+        center, radius = self.get_player_hit_circle(player_box)
+        if center is not None:
+            debug_data["player_hit_circle"] = [int(center[0]), int(center[1]), int(radius)]
+
+        # A link is drawn only where the shot would actually connect, so the
+        # overlay shows reachability rather than mere proximity.
+        for key, target in (("enemy_los_lines", "enemy"), ("teammate_los_lines", "teammate")):
+            lines = []
+            for box in debug_data.get(target) or []:
+                position = self.get_entity_pos(box)
+                if not self.walls_block_line_of_sight(player_pos, position, walls):
+                    lines.append([
+                        int(player_pos[0]), int(player_pos[1]),
+                        int(position[0]), int(position[1]),
+                    ])
+            debug_data[key] = lines
+
+        # One sector per candidate direction, coloured by whether the player's
+        # hit circle can actually be swept that way.
+        sectors = []
+        count = 16
+        for index in range(count):
+            angle = 2.0 * math.pi * index / count
+            move = (math.cos(angle) * JOYSTICK_RADIUS, math.sin(angle) * JOYSTICK_RADIUS)
+            sectors.append({
+                "angle": round(math.degrees(angle), 1),
+                "blocked": bool(self.is_path_blocked(player_box, move, walls)),
+            })
+        debug_data["joystick_directions"] = sectors
 
     def publish_debug_view(self, frame, data, state, movement=None):
         if not hasattr(self.window_controller, "debug_view"):
@@ -709,7 +1051,71 @@ class Play:
             "enemy_los_lines": [],
             "teammate_los_lines": [],
             "player_hit_circle": None,
+            "projectiles": [],
+            "dodge": None,
         }
+
+        if self.dodge_service is not None and self.dodge_config and self.dodge_config.debug_overlay:
+            horizon = self.dodge_config.horizon
+            for projectile in self.dodge_service.get_projectiles():
+                end_x, end_y = projectile.position_at(horizon)
+                debug_data["projectiles"].append({
+                    "x": int(projectile.x),
+                    "y": int(projectile.y),
+                    "r": int(projectile.radius),
+                    "ex": int(end_x),
+                    "ey": int(end_y),
+                    "c": round(projectile.confidence, 2),
+                })
+            decision = self.last_dodge_decision or self.dodge_service.get_decision()
+            if decision is not None and decision.active and decision.vector:
+                debug_data["dodge"] = {
+                    "vector": [float(decision.vector[0]), float(decision.vector[1])],
+                    "urgency": decision.urgency,
+                    "tti": round(decision.time_to_impact or 0.0, 3),
+                }
+
+            # A crashing playstyle freezes the bot silently - no movement, no
+            # attacks, just a brawler standing still. Put it on the screen.
+            playstyle_error = getattr(interpret_pyla_code, "last_error", None)
+            if playstyle_error:
+                debug_data["playstyle_error"] = playstyle_error
+
+            # Health is a pixel heuristic, so it has to be visible: a number
+            # the bot acts on but nobody can check is worse than no number.
+            debug_data["health"] = [
+                {
+                    "bar": [int(v) for v in reading.bar],
+                    "pct": round(reading.fraction * 100),
+                    "conf": round(reading.confidence, 2),
+                    "hostile": key.startswith("e"),
+                }
+                for key, reading in self.health_readings.items()
+                if reading.bar is not None
+            ]
+
+            if self.dodge_config.debug_show_candidates:
+                snapshot = self.dodge_service.tracker.debug_snapshot()
+                debug_data["candidates"] = snapshot["blobs"]
+                debug_data["pending"] = snapshot["pending"]
+                debug_data["trails"] = snapshot["trails"]
+                debug_data["tracker_stats"] = snapshot["stats"]
+
+            motion = self.dodge_service.motion
+            debug_data["motion"] = {
+                "boundary": list(motion.boundary),
+                "stuck": bool(motion.stuck),
+                "efficiency": round(motion.efficiency, 2),
+                "drift": [int(motion.drift[0]), int(motion.drift[1])],
+            }
+
+            if self.last_aim_solution is not None:
+                debug_data["aim"] = {
+                    "point": [int(self.last_aim_solution.point[0]),
+                              int(self.last_aim_solution.point[1])],
+                    "lead": int(self.last_aim_solution.lead_distance),
+                    "flight": round(self.last_aim_solution.flight_time, 3),
+                }
 
         if data:
             for key in ["player", "enemy", "teammate", "wall"]:
@@ -725,8 +1131,9 @@ class Play:
                     debug_data["poison_gas"] = self.is_there_poison_gas(debug_data["player"][0])
                 except Exception:
                     pass
-                if advanced_visuals and early_access:
-                    add_advanced_visuals(self, debug_data)
+                if advanced_visuals:
+                    # Own implementation; works with or without early_access.
+                    self.build_advanced_visuals(debug_data)
 
         if movement is not None:
             debug_data["movement"] = [float(movement[0]), float(movement[1])]
@@ -736,6 +1143,7 @@ class Play:
     def main(self, frame, brawler, main):
         current_time = time.time()
         state = main.get_latest_state()
+        self.ensure_dodge_service()
         data = self.get_main_data(frame)
         if current_time - self.time_since_walls_checked > self.walls_treshold:
             tile_data = self.get_tile_data(frame, data.get("player"))
@@ -757,6 +1165,12 @@ class Play:
                 data = None
 
         if not data:
+            if self.dodge_service is not None:
+                # Out of the match, or the player is not visible: drop every
+                # track so stale velocities cannot trigger a phantom dodge.
+                self.dodge_service.reset()
+            if self.movement_shaper is not None:
+                self.movement_shaper.reset()
             if current_time - self.time_since_player_last_found > 1.0:
                 self.window_controller.release_movement()
             if current_time - self.time_since_last_proceeding > self.no_detection_proceed_delay:
@@ -782,6 +1196,9 @@ class Play:
             self.is_super_ready = self.check_if_super_ready(frame)
             self.time_since_super_checked = current_time
         self.frame = frame
+        self.publish_dodge_context(data)
+        if self.dodge_service is not None and not self.dodge_service.config.threaded:
+            self.dodge_service.process_frame(frame, current_time)
         movement = self.loop(brawler, data, current_time)
         self.publish_debug_view(frame, data, state, movement)
         if movement is not None:

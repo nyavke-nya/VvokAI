@@ -138,7 +138,9 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
                     notify_user("bot_is_stuck", screenshot, self.Stage_manager)
                     print("Bot got stuck. User notified.")
                 print("Shutting down.")
-                self.window_controller.release_movement()
+                if self.Play.dodge_service is not None:
+                    self.Play.dodge_service.stop()
+                self.window_controller.release_movement(priority=True)
                 self.window_controller.close()
                 discord_bot.set_window_controller(None)
                 sys.exit(1)
@@ -162,7 +164,11 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
         def stop_gracefully(self):
             cprint("Stop requested from UI - shutting down gracefully", "#AAE5A4")
             self.stop_state_checker()
-            self.window_controller.release_movement()
+            if self.Play.dodge_service is not None:
+                self.Play.dodge_service.stop()
+            # priority=True so a dodge that grabbed the joystick a moment ago
+            # cannot leave the stick held down after shutdown.
+            self.window_controller.release_movement(priority=True)
             self.window_controller.close()
             discord_bot.set_window_controller(None)
 
@@ -220,7 +226,9 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
             if not self.runtime_control:
                 return
 
-            self.window_controller.release_movement()
+            # priority so a dodge in flight cannot keep the stick held while
+            # the run is paused from the UI.
+            self.window_controller.release_movement(priority=True)
             self.runtime_control.mark_paused()
             cprint("Pyla is paused in the lobby. Waiting for Start to resume.", "#AAE5A4")
 
@@ -356,7 +364,7 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
                 _, last_ft = self.window_controller.get_latest_frame()
                 if last_ft > 0 and (t_now - last_ft) > self.window_controller.FRAME_STALE_TIMEOUT:
                     stale_age = t_now - last_ft
-                    self.Play.window_controller.release_movement()
+                    self.Play.window_controller.release_movement(priority=True)
                     if stale_age > 30:
                         print(f"Scrcpy feed stale for {stale_age:.0f}s -- attempting reconnect")
                         if not self.window_controller.reconnect_scrcpy():
@@ -415,11 +423,12 @@ def open_browser_later(local_url):
 
 
 if __name__ == "__main__":
-    print("Starting PylaAI, the best free and open source brawl stars bot")
-    print("The only official discord is", get_discord_link())
+    print("VvokAI - Brawl Stars bot with projectile dodging and aimed fire")
+    print("Telegram: https://t.me/nyavke")
+    print("Fork of PylaAI (ivanyordanovgt, AngelFireLA, awarzu), CC BY-NC 4.0")
     port = find_open_port()
     app = create_app(pyla_main, start_discord_bot=True)
     local_url = f"http://127.0.0.1:{port}"
-    print(f"Starting Pyla web UI at {local_url}")
+    print(f"VvokAI web UI: {local_url}")
     open_browser_later(local_url)
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)

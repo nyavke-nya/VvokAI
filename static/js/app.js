@@ -22,11 +22,11 @@ const AUTH_ERROR_COPY = {
     },
     MISSING_HWID: {
         title: "Device ID missing",
-        detail: "The app could not send this device ID. Restart PylaAI and check the Python logs if it repeats.",
+        detail: "The app could not send this device ID. Restart VvokAI and check the Python logs if it repeats.",
     },
     MISSING_BUILD_TIMESTAMP: {
         title: "Build timestamp missing",
-        detail: "The app could not build a complete auth request. Restart PylaAI and check the Python logs if it repeats.",
+        detail: "The app could not build a complete auth request. Restart VvokAI and check the Python logs if it repeats.",
     },
     INVALID_BUILD_TIMESTAMP: {
         title: "Build timestamp invalid",
@@ -34,7 +34,7 @@ const AUTH_ERROR_COPY = {
     },
     MISSING_BUILD_SIGNATURE: {
         title: "Build signature missing",
-        detail: "The app could not sign the auth request. Restart PylaAI and check the Python logs if it repeats.",
+        detail: "The app could not sign the auth request. Restart VvokAI and check the Python logs if it repeats.",
     },
     INVALID_API_KEY: {
         title: "API key not found",
@@ -78,7 +78,7 @@ const AUTH_ERROR_COPY = {
     },
     LOGIN_REQUEST_FAILED: {
         title: "Login request failed",
-        detail: "The browser could not reach the local PylaAI web UI login endpoint.",
+        detail: "The browser could not reach the local VvokAI web UI login endpoint.",
     },
 };
 
@@ -106,6 +106,7 @@ const state = {
 const SETTINGS_META = {
     general: [
         { key: "player_tag", label: "Player Tag", type: "text", placeholder: "#PLAYER", help: "Used to autofill live trophies and win streaks inside the brawler editor. Use your Brawl Stars player tag, not your Supercell ID." },
+        { key: "brawl_api_token", label: "Brawl Stars API Token", type: "text", placeholder: "eyJ0eXAiOiJKV1Qi...", help: "Free token from developer.brawlstars.com - enables live trophy sync and Push All. The token is locked to the IP you created it from; a 403 usually means your IP changed. Win streaks are not published by the API, so they are left as-is." },
         { key: "default_trophy_target", label: "Default Trophy Target", type: "number", help: "Default trophy target used when adding a new brawler to the queue." },
         { key: "run_for_minutes", label: "Run Time", type: "number", suffix: "min", help: "How long Pyla runs before cooldown logic takes over." },
         { key: "max_ips", label: "Max IPS", type: "text", help: "Processing cap. Use auto if you want Pyla to manage it." },
@@ -171,7 +172,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
         await bootstrap();
     } catch (error) {
-        showToast(error.message || "Unable to load the PylaAI UI.", "error");
+        showToast(error.message || "Unable to load the VvokAI UI.", "error");
     }
 });
 
@@ -415,7 +416,7 @@ function renderDashboard() {
                 : isPaused
                     ? "Pyla is paused in the lobby. Press Start to resume."
                     : canStart
-                        ? "Queue is ready. Start PylaAI from here."
+                        ? "Queue is ready. Start VvokAI from here."
                         : authBlockCopy
                             ? authBlockCopy
                             : queue.length
@@ -434,7 +435,7 @@ function renderDashboard() {
     if (["running", "pausing"].includes(runtime.state)) {
         runtimePanel = `
             <div class="runtime-live-shell">
-                <h3 class="runtime-live-title">${runtime.state === "pausing" ? "PylaAI is pausing" : "PylaAI is currently running"}</h3>
+                <h3 class="runtime-live-title">${runtime.state === "pausing" ? "VvokAI is pausing" : "VvokAI is currently running"}</h3>
                 <p class="runtime-note">${escapeHtml(statusCopy)}</p>
                 <div class="runtime-action-grid">
                     <button id="pauseRuntimeBtn" class="btn btn-primary btn-runtime-action ${runtime.state === "pausing" ? "is-disabled" : ""}">${iconMarkup("pause")} Pause</button>
@@ -445,7 +446,7 @@ function renderDashboard() {
     } else if (isPaused) {
         runtimePanel = `
             <div class="runtime-live-shell">
-                <h3 class="runtime-live-title">PylaAI is paused</h3>
+                <h3 class="runtime-live-title">VvokAI is paused</h3>
                 <p class="runtime-note">${escapeHtml(statusCopy)}</p>
                 <div class="runtime-action-grid">
                     <button id="resumeRuntimeBtn" class="btn btn-primary btn-runtime-action">${iconMarkup("play")} Start</button>
@@ -481,14 +482,14 @@ function renderDashboard() {
                 <div class="support-copy">
                     <div>
                         <p class="eyebrow">Community</p>
-                        <h3 class="panel-title support-title">Free, open-source, and actively updated</h3>
-                        <p class="support-lead">Join the Discord for support and news. Patreon is where early-access builds and upcoming versions land first.</p>
+                        <h3 class="panel-title support-title">VvokAI &mdash; projectile dodging, aimed fire, smooth movement</h3>
+                        <p class="support-lead">A fork of PylaAI with a camera-compensated projectile tracker, lead-solving aimed shots and map-boundary detection. Questions and builds on Telegram.</p>
                     </div>
                 </div>
 
                 <div class="link-row support-link-row">
-                    ${renderSupportLink(links.discord, "Discord", "Get help, announcements, and community discussion")}
-                    ${renderSupportLink(links.patreon, "Patreon", "Support PylaAI and get early access to newer versions")}
+                    ${renderSupportLink("https://t.me/nyavke", "Telegram @nyavke", "Questions, builds and updates", "telegram")}
+                    ${renderSupportLink("https://github.com/PylaAI/PylaAI", "Upstream PylaAI", "The original project this fork is built on (CC BY-NC 4.0)", "github")}
                 </div>
             </section>
         </div>
@@ -499,13 +500,19 @@ function renderDashboard() {
     bindRuntimeButtons();
 }
 
-function renderSupportLink(link, title, subtitle = "") {
+function renderSupportLink(url, title, subtitle = "", icon = "link") {
+    // Inline SVG rather than an <img>. The previous version took a link OBJECT
+    // and read link.url / link.icon_url from it; after the rebrand it was being
+    // called with a plain URL string, so both came back undefined - a dead href
+    // and a broken-image placeholder in every community row. Drawing the marks
+    // here also means they inherit the theme instead of shipping as bitmaps
+    // that have to be desaturated to fit.
     return `
-        <a class="hero-link" href="${escapeHtml(link.url)}" target="_blank" rel="noreferrer">
-            <img src="${escapeHtml(link.icon_url)}" alt="${escapeHtml(title)}">
+        <a class="hero-link" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">
+            <span class="hero-link-icon">${iconMarkup(icon)}</span>
             <div>
                 <h4>${escapeHtml(title)}</h4>
-                <span>${escapeHtml(subtitle || link.label)}</span>
+                <span>${escapeHtml(subtitle)}</span>
             </div>
         </a>
     `;
@@ -534,11 +541,11 @@ function formatSettingValue(field, value) {
 }
 
 function getPlayerPillState() {
-    if (!state.bootstrap?.auth?.early_access) {
+    if (!state.bootstrap?.auth?.player_api) {
         return {
             className: "early-access-locked",
-            title: "Early Access Required",
-            detail: "Get early access to sync live stats from Brawl Stars API.",
+            title: "API Token Required",
+            detail: "Add a free Brawl Stars API token in Settings to sync live stats.",
         };
     }
 
@@ -580,7 +587,7 @@ function renderQueue() {
     const playerPill = getPlayerPillState();
     const defaultTarget = Number(state.bootstrap.settings.general.default_trophy_target || 1000);
     const playOrder = state.bootstrap.settings.general.play_order || "in_order";
-    const pushAllButton = !state.bootstrap?.auth?.early_access
+    const pushAllButton = !state.bootstrap?.auth?.player_api
         ? `<button id="pushAllQueueLockedBtn" class="btn btn-locked ea-locked-action" type="button">${iconMarkup("queue")} Push All to ${defaultTarget} <span class="ea-lock-icon">🔒</span></button>`
         : hasValidPlayerInfo
             ? `<button id="pushAllQueueBtn" class="btn" type="button">${iconMarkup("queue")} Push All to ${defaultTarget}</button>`
@@ -607,9 +614,9 @@ function renderQueue() {
                             <span>Search Brawlers</span>
                             <input id="brawlerSearch" type="search" placeholder="Search by brawler name" value="${escapeHtml(state.brawlerSearch)}">
                         </label>
-                        <label class="input-group ${!state.bootstrap?.auth?.early_access ? "disabled-early-access" : ""}">
-                            <span>Player Tag ${!state.bootstrap?.auth?.early_access ? `<span class="ea-badge">Early Access</span>` : ""}</span>
-                            <input id="playerTagInput" type="text" placeholder="${!state.bootstrap?.auth?.early_access ? "Locked - Early Access Only" : "#PLAYER"}" value="${!state.bootstrap?.auth?.early_access ? "" : escapeHtml(formatPlayerTagInput(state.bootstrap.settings.general.player_tag || ""))}" ${!state.bootstrap?.auth?.early_access ? "disabled" : ""}>
+                        <label class="input-group ${!state.bootstrap?.auth?.player_api ? "disabled-early-access" : ""}">
+                            <span>Player Tag ${!state.bootstrap?.auth?.player_api ? `<span class="ea-badge">Needs API token</span>` : ""}</span>
+                            <input id="playerTagInput" type="text" placeholder="${!state.bootstrap?.auth?.player_api ? "Add a Brawl Stars API token in Settings" : "#PLAYER"}" value="${!state.bootstrap?.auth?.player_api ? "" : escapeHtml(formatPlayerTagInput(state.bootstrap.settings.general.player_tag || ""))}" ${!state.bootstrap?.auth?.player_api ? "disabled" : ""}>
                         </label>
                     </div>
                     <div class="queue-toolbar-bottom">
@@ -1294,7 +1301,10 @@ function renderSettingField(section, field, value) {
     }
 
     if (field.type === "checkbox") {
-        const isEarlyAccessLocked = !state.bootstrap?.auth?.early_access && field.key === "advanced_debug_visuals";
+        // Advanced Debug Visuals used to be gated here because the drawing
+        // data came from the early_access module. This fork computes it in
+        // Play.build_advanced_visuals instead, so there is nothing to gate.
+        const isEarlyAccessLocked = false;
         return `
             <label class="setting-row check-card check-card-right ${isEarlyAccessLocked ? "setting-locked ea-locked-action" : ""}">
                 <span class="check-info">
@@ -1330,18 +1340,20 @@ function renderSettingField(section, field, value) {
         `;
     }
 
-    const isEarlyAccessLocked = !state.bootstrap?.auth?.early_access && field.key === "player_tag";
+    // Player Tag needs a working stats source, which is now the public
+    // Brawl Stars API rather than the early_access module.
+    const isEarlyAccessLocked = !state.bootstrap?.auth?.player_api && field.key === "player_tag";
     return `
         <div class="setting-row ${isEarlyAccessLocked ? "setting-locked ea-locked-action" : ""}">
             <div class="setting-copy">
                 <div class="setting-label">
-                    <strong>${escapeHtml(field.label)} ${isEarlyAccessLocked ? `<span class="ea-badge-inline">Early Access</span>` : ""}</strong>
+                    <strong>${escapeHtml(field.label)} ${isEarlyAccessLocked ? `<span class="ea-badge-inline">Needs API token</span>` : ""}</strong>
                     <span class="tooltip-anchor" data-tooltip="${escapeHtml(field.help)}">?</span>
                 </div>
                 <p class="help-text">${escapeHtml(field.help)}</p>
             </div>
             <div class="setting-input-wrap ${field.suffix ? "has-suffix" : ""}">
-                <input data-setting-section="${section}" data-setting-key="${field.key}" type="${field.type}" step="${field.step || "1"}" placeholder="${isEarlyAccessLocked ? "Locked - Early Access Only" : escapeHtml(field.placeholder || "")}" value="${isEarlyAccessLocked ? "" : escapeHtml(formatSettingValue(field, value))}" ${isEarlyAccessLocked ? "readonly" : ""}>
+                <input data-setting-section="${section}" data-setting-key="${field.key}" type="${field.type}" step="${field.step || "1"}" placeholder="${isEarlyAccessLocked ? "Set Brawl Stars API Token below first" : escapeHtml(field.placeholder || "")}" value="${isEarlyAccessLocked ? "" : escapeHtml(formatSettingValue(field, value))}" ${isEarlyAccessLocked ? "readonly" : ""}>
                 ${field.suffix ? `<span class="input-suffix">${escapeHtml(field.suffix)}</span>` : ""}
             </div>
         </div>
@@ -2293,6 +2305,11 @@ function iconMarkup(name) {
         close:      `<svg ${S}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`,
         logs:       `<svg ${S}><path d="M12 19h8"/><path d="m4 17 6-6-6-6"/></svg>`,
         copy:       `<svg ${S}><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`,
+        // Filled marks for the community rows: these read as logos rather than
+        // line icons, so they get their own fill rule in the stylesheet.
+        telegram:   `<svg ${S} class="icon-filled"><path d="M21.9 4.3 18.6 20c-.2 1.1-.9 1.4-1.8.9l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1 9.3-8.4c.4-.4-.1-.6-.6-.2L6.1 13.1l-4.9-1.5c-1.1-.3-1.1-1 .2-1.5l19.2-7.4c.9-.3 1.7.2 1.4 1.6z"/></svg>`,
+        github:     `<svg ${S} class="icon-filled"><path d="M12 2A10 10 0 0 0 8.84 21.5c.5.08.66-.23.66-.5v-1.7C6.73 19.91 6.14 18 6.14 18A2.7 2.7 0 0 0 5 16.5c-.91-.62.07-.6.07-.6a2.1 2.1 0 0 1 1.53 1.03 2.15 2.15 0 0 0 2.91.83c.05-.5.25-.83.45-1.02-2.55-.29-5.23-1.27-5.23-5.68a4.45 4.45 0 0 1 1.18-3.08 4.14 4.14 0 0 1 .11-3.04s.97-.31 3.18 1.18a10.9 10.9 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18a4.14 4.14 0 0 1 .12 3.04 4.44 4.44 0 0 1 1.18 3.08c0 4.42-2.69 5.39-5.25 5.67.28.24.52.68.52 1.38v2.04c0 .27.16.59.67.5A10 10 0 0 0 12 2z"/></svg>`,
+        link:       `<svg ${S}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
     };
 
     return icons[name] || "";

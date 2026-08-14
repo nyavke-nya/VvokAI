@@ -1,15 +1,29 @@
-minimum_movement_delay = 0.1
+minimum_movement_delay = 0.05
 unstuck_movement_delay = 2.4
 unstuck_movement_hold_time = 1.4
 perceived_tile_size = 54
+player_collision_radius = 24
 wall_model_classes = [ "wall", "bush", "close_bush",]
 gadget_pixels_minimum = 1300.0
 hypercharge_pixels_minimum = 1800.0
 super_pixels_minimum = 1800.0
 idle_pixels_minimum = 75000.0
+# false = run tileDetector over the whole screen.
+# true  = run closeTileDetector over a 640x640 crop centred on the player.
+#
+# Measured on real footage, same frame, same confidence: full-frame found 35
+# walls, the centred crop found 11 - and the 24 it missed were not marginal,
+# they were every raised block outside a 640 px box, which is 80% of the
+# screen. That box is only +-6 tiles, while attack range is ~9 tiles, so every
+# line-of-sight test to a distant enemy was being answered from terrain the
+# model had never looked at. The bot shot into walls and walked into blocks it
+# had no record of.
+#
+# It is also faster: 7.9 ms against 9.7 ms. Both paths feed the model the same
+# 640x640 tensor; the crop path just does more work getting there.
 centered_wall_detection = false
 wall_detection_confidence = 0.5
 entity_detection_confidence = 0.65
 seconds_to_hold_attack_after_reaching_max = 1.5
-play_again_on_win = "no"
-current_playstyle = "universal_smart_v5_Slarckvul_Eddition.pyla"
+play_again_on_win = "yes"
+current_playstyle = "unified_dodge.pyla"

@@ -22,11 +22,15 @@ try:
     from early_access.early_access import get_brawler_stats, get_player_info
     early_access = True
 except (ImportError, ModuleNotFoundError):
-    def get_brawler_stats(_player_info, _brawler_name):
-        return None, None
+    # Supercell's public API covers both of these. Imported lazily because
+    # brawl_api imports from this module.
+    def get_brawler_stats(player_info, brawler_name):
+        from brawl_api import get_brawler_stats as _stats
+        return _stats(player_info, brawler_name)
 
-    def get_player_info(_tag):
-        return None
+    def get_player_info(tag):
+        from brawl_api import get_player_info as _info
+        return _info(tag)
     early_access = False
 
 def extract_text_and_positions(image_path):
@@ -730,11 +734,34 @@ def interpret_pyla_code(pyla_code, context):
         if compiled_code is not None:
             exec(compiled_code, safe_globals)
     except Exception as e:
-        print(f"Error executing .pyla code")
+        # Record what broke as well as printing it.
+        #
+        # A crash in here is close to invisible from the outside: movement
+        # comes back None, play.py skips the joystick, and the bot simply
+        # stands there. It also stops attacking, because the attack calls live
+        # further down the same script. From the outside that reads as "the bot
+        # stopped shooting" with no error in sight - a traceback scrolling past
+        # in a console nobody is watching is not a symptom anyone connects to a
+        # brawler standing still in a match.
+        #
+        # So the last failure is kept here for the debug overlay to draw.
+        frames = traceback.extract_tb(e.__traceback__)
+        where = ""
+        for frame in frames:
+            if frame.filename == "<string>":
+                where = f" at playstyle line {frame.lineno}"
+        interpret_pyla_code.last_error = f"{type(e).__name__}: {e}{where}"
+        interpret_pyla_code.error_count = getattr(interpret_pyla_code, "error_count", 0) + 1
+        print(f"Error executing .pyla code{where}")
         traceback.print_exc()
         return None, safe_globals
 
+    interpret_pyla_code.last_error = None
     return safe_globals.get('movement', None), safe_globals
+
+
+interpret_pyla_code.last_error = None
+interpret_pyla_code.error_count = 0
 
 
 def load_pyla_script(filename):

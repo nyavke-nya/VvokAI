@@ -1,5 +1,4 @@
 aiohttp~=3.13
-opencv-python~=4.11
 numpy~=2.3
 onnxruntime-directml~=1.24
 requests~=2.32
@@ -16,3 +15,11 @@ av~=12.3
 Flask~=3.1
 pycryptodome~=3.21
 pandas~=3.0
+
+# Last on purpose. easyocr depends on opencv-python-headless, and both packages
+# unpack into the same cv2/ folder - so whichever pip installs last is the one
+# that actually runs. When headless wins, every OpenCV GUI call raises "the
+# function is not implemented" and the debug window can never open, with no
+# error anywhere obvious. Listing it after easyocr makes the GUI build land
+# last on a fresh install.
+opencv-python~=4.11

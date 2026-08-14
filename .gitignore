@@ -17,3 +17,24 @@ test2.py
 scrcpy.zip
 pyla-v0.8.13.zip
 ADDTOGITINORE.txt
+
+# ---------------------------------------------------------------------------
+# Credentials and personal data.
+#
+# This repository is public. general_config.toml holds a Brawl Stars API token
+# and a player tag, login.toml and webhook_config.toml hold keys, and
+# match_history.csv is a record of somebody's actual matches. Templates for the
+# config files are committed as *.example.toml instead.
+# ---------------------------------------------------------------------------
+cfg/general_config.toml
+cfg/login.toml
+cfg/webhook_config.toml
+cfg/match_history.csv
+debug_view_worker.log
+
+# Gameplay recordings used by tools/dodge_tune.py. Hundreds of megabytes each,
+# three of them over GitHub's 100 MB hard limit, and none of them source.
+tools/*.mp4
+tools/*.mkv
+tools/*.avi
+

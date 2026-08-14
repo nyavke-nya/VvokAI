@@ -1,68 +1,154 @@
-# PylaAI
+# VvokAI
 
-[![CC BY-NC 4.0 License](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
-[![Discord](https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/pylaai)
-[![Trello](https://img.shields.io/badge/Trello-0079BF?logo=trello&logoColor=white)](https://trello.com/b/SAz9J6AA/public-pyla-trello)
+Бот для Brawl Stars, который **уворачивается от снарядов**, **стреляет с упреждением** и **двигается как человек**.
 
-> [!WARNING]
-> **Warning**: There are two versions of PylaAI, you are currently browsing the source code for developers. Please visit our [Discord](https://discord.gg/pylaai) to use the compiled version, which comes as a ready-to-use `.exe`.
+Форк [PylaAI](https://github.com/PylaAI/PylaAI). Оригинал выполнял полторы функции из трёх: ходил, стрелял автоприцелом и никак не реагировал на летящие в него снаряды. Здесь добавлены недостающие полторы.
 
-PylaAI is currently the best external Brawl Stars bot.
+**Telegram: [@nyavke](https://t.me/nyavke)**
 
-## Requirements
+---
 
-- **NVIDIA GPUs**
-  - Automatically installs compatible **CUDA + PyTorch**
-  - Optimized for **GTX 10-series → RTX 50-series**
+## Чем отличается от оригинала
 
-- **AMD GPUs**
-  - Native **ROCm** support for Radeon / Ryzen GPUs
+| Функция | PylaAI | VvokAI |
+|---|---|---|
+| Уворот от снарядов | нет | детект + предсказание траекторий + выбор направления |
+| Атака | автоприцел (бьёт где враг **был**) | решение уравнения перехвата |
+| Движение | рывками по 8 направлениям | плавное скольжение, резкое только в уворот |
+| Границы карты | не определяются | измеряются по поведению камеры |
+| Здоровье | не читается вообще | своё и чужое, прямо с полосок |
+| Выбор цели | ближайший | тот, кого можно добить |
+| Простой | стоит рядом с AFK-союзником до конца матча | через 5 секунд уходит к центру |
+| Разбор полётов | нет | лог с вердиктом на каждое попадание |
+| Тесты | нет | 79 проверок, `tests\run.py` |
 
-- **Intel / Generic GPUs**
-  - Uses **DirectML** acceleration on Windows
-  - Works well with integrated graphics
+Плюс: рабочая CUDA (в оригинале молча падала на CPU), статистика игрока через официальный API вместо платного модуля, ЧБ-интерфейс.
 
-## Installation
+---
 
-You will need [Python 3.11.9](https://www.python.org/downloads/release/python-3119/).
+## Установка
 
-### Windows
-
-```sh
-python setup.py install
-```
-
-### Other Platforms
-
-The official PylaAI does **NOT** support other platforms such as Linux or Mac, but you can visit [Unofficial Ports](https://github.com/4D1-TooFarGone/Pyla-Ports) for cross-platform support.
-
-## Using PylaAI
-
-> [!NOTE]
-> **Note**: This open-source version runs in localhost mode. The cloud features have been disabled by default.
-
-Run the bot:
+Нужен [Python 3.11.9](https://www.python.org/downloads/release/python-3119/).
 
 ```sh
-python main.py
+start_pyla.bat
 ```
 
+Лаунчер сам создаст venv, поставит зависимости и откроет веб-интерфейс.
 
-## License
+### CUDA
 
-This project is **not permitted to be sold or monetized** under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/).
+Если у тебя NVIDIA, поставь CUDA-сборку onnxruntime — это ускоряет распознавание в 3.7 раза (5.6 мс против 20.8 мс на RTX 3080 Ti):
 
-## Maintainer
+```sh
+venv\Scripts\python.exe -m pip install "onnxruntime-gpu[cuda,cudnn]==1.28.0"
+venv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+```
 
-### Developers
+Вторая строка обязательна: CUDA-сборка PyTorch везёт **свой** набор cuDNN, который конфликтует с onnxruntime. В боте torch нужен ровно для одной строки, поэтому CPU-версии достаточно.
 
-- **ivanyordanovgt**
-- **AngelFireLA**
-- **awarzu**
+### Если не открывается отладочное окно
 
-### Contributors
+`easyocr` тянет за собой `opencv-python-headless`, а он распаковывается в ту же
+папку `cv2/`, что и обычный `opencv-python`. Кто встал последним — тот и
+работает, и если это headless, то у OpenCV нет графики вообще: любое окно
+падает с «the function is not implemented», а бот при этом продолжает играть.
 
-- **Maayan080**
-- **simonrejzek**
-- **bocchi-the-cat**
-- **Ariko842**
+```sh
+venv\Scripts\python.exe -m pip uninstall -y opencv-python-headless opencv-python
+venv\Scripts\python.exe -m pip install "opencv-python~=4.11"
+```
+
+В `requirements.txt` строка с `opencv-python` стоит последней именно поэтому.
+Причина падения воркера теперь всегда пишется в `debug_view_worker.log` и
+выводится в консоль — раньше при запуске из исходников она терялась.
+
+---
+
+## Уворот
+
+Как это устроено и почему не тонет в шуме — подробно в **[DODGE.md](DODGE.md)**.
+
+Коротко: камера в Brawl Stars едет за игроком, поэтому при ходьбе весь фон выглядит как движение — на этом ломаются наивные детекторы. Здесь шум режут пять независимых фильтров: компенсация сдвига камеры по четырём патчам, трёхкадровая разность, палитра карты, происхождение от бокса врага и проверка прямолинейности.
+
+Замер на синтетическом стенде: **0 ложных срабатываний** при панорамировании камеры, ошибка скорости 0.2%, задержка обнаружения 100 мс, 3.3 мс на кадр.
+
+### Настройка
+
+Всё в [cfg/dodge_config.toml](cfg/dodge_config.toml), каждый параметр с объяснением. Главные:
+
+| Параметр | Смысл |
+|---|---|
+| `reaction_latency` | компенсация задержки видеопотока — **самый важный** |
+| `motion_threshold` | чувствительность детектора |
+| `max_turn_rate` | резкость поворотов при обычной ходьбе |
+| `HOLD_RANGE_NEAR/FAR` | дистанция боя (в шапке плейстайла) |
+
+### Инструменты
+
+```sh
+venv\Scripts\python.exe tools\dodge_report.py --detail
+```
+
+Разбирает лог и говорит, **почему** по боту попали: не увидел вовремя, не было выхода, упёрся в стену или тактика перевесила. Каждый вердикт лечится по-своему.
+
+```sh
+venv\Scripts\python.exe tools\dodge_tune.py запись.mp4 --sweep vision.motion_threshold=8,12,16,20
+```
+
+Прогоняет детектор по записи и печатает таблицу «шум против сигнала» — можно подобрать порог по данным, а не на глаз.
+
+---
+
+## Здоровье
+
+Оригинал не читал HP вообще — бот дрался одинаково на 100% и на 15%. Это была
+главная причина смертей: не промахи, а продолжение боя, который уже проигран.
+
+Модель на полоски здоровья не обучена и переобучать её не пришлось. Полоска —
+это насыщенная цветная лента в известном месте над бойцом, и её достаточно
+найти по структуре: тонкая, обведённая почти чёрным контуром. Одним только
+цветом это не решается — на стенде трава давала 25 ложных срабатываний из 40,
+все со 100% здоровья и полной уверенностью. Проверка контура убрала их все.
+
+Что бот теперь делает: уходит из боя ниже 32%, перестаёт сближаться ниже 55%,
+дожимает раненого врага и стреляет в того, кого можно добить, а не в ближайшего.
+Если полоску прочитать не удалось — значение `None`, и вся тактика откатывается
+к прежней, дистанционной. «Не прочитал» никогда не означает «полное здоровье».
+
+Настройки — секция `[health]` в [cfg/dodge_config.toml](cfg/dodge_config.toml),
+выключается одной строкой. Каждое измерение рисуется в отладочном окне: рамка
+вокруг найденной полоски и процент рядом. Пиксельная эвристика, на которую бот
+опирается, но которую нельзя проверить глазами, хуже, чем её отсутствие.
+
+---
+
+## Тесты
+
+```sh
+venv\Scripts\python.exe tests\run.py
+```
+
+79 проверок: непрерывность треков снарядов на разных скоростях и частотах кадров,
+точность чтения полосок здоровья и отсутствие ложных срабатываний на траве,
+тактические решения плейстайла и то, что все имена в нём разрешаются — песочница
+`.pyla` не имеет встроенных функций, поэтому пропавший ключ контекста это не
+ошибка при старте, а NameError посреди матча.
+
+---
+
+## Плейстайл
+
+`playstyles/unified_dodge.pyla` объединяет все четыре официальных плейстайла (боевое дерево, следование за союзниками, ротация к центру, архетипы) и добавляет уворот.
+
+Вся тактика — в одном файле, настройки в шапке. Движок даёт только «глаза»: список снарядов, скорости врагов, границы карты.
+
+---
+
+## Лицензия и происхождение
+
+Форк **[PylaAI](https://github.com/PylaAI/PylaAI)** — авторы **ivanyordanovgt**, **AngelFireLA**, **awarzu**.
+
+Распространяется под [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/), как и оригинал: **продавать и монетизировать нельзя**.
+
+Модуль `early_access` в форк не входит и не воспроизводится — это платная разработка авторов оригинала. Функции, которые от него зависели, написаны здесь с нуля поверх открытых источников: расширенная отладочная отрисовка и статистика игрока через официальный [Brawl Stars API](https://developer.brawlstars.com).

@@ -37,11 +37,9 @@ try:
     early_access = True
 
 except (ImportError, ModuleNotFoundError):
-    def get_brawler_stats(_player_info, _brawler_name):
-        return None, None
-
-    def get_player_info(_tag):
-        return None
+    # Player stats come from Supercell's own public API instead. Same two
+    # functions, same signatures, no paid module involved.
+    from brawl_api import get_brawler_stats, get_player_info
 
     def validate_early_access_login(_api_key):
         return {
@@ -90,6 +88,7 @@ class WebDataService:
     GENERAL_FIELDS: dict[str, tuple[str, Any]] = {
         "run_for_minutes": ("int", 0),
         "player_tag": ("str", ""),
+        "brawl_api_token": ("str", ""),
         "default_trophy_target": ("int", 1000),
         "play_order": ("play_order", "in_order"),
         "max_ips": ("auto_int", "auto"),
@@ -599,6 +598,15 @@ class WebDataService:
             if key not in queued_keys:
                 updated_queue.append(item)
 
+        # Lowest trophies first. Brawlers near the bottom climb fastest - the
+        # trophy road is cheapest at low counts - so pushing them first reaches
+        # the target across the whole roster sooner than working alphabetically,
+        # which is the order the catalogue happens to come in.
+        updated_queue.sort(key=lambda entry: (
+            int(entry.get("trophies", 0) or 0),
+            str(entry.get("brawler", "")).lower(),
+        ))
+
         self.save_queue_data(updated_queue)
         return {"items": self.get_queue_data(), "added_count": len(below_target)}
 
@@ -995,9 +1003,16 @@ class WebDataService:
         discord_link = get_discord_link()
         auth_payload = self.get_auth_state()
         auth_payload["early_access"] = early_access
+        # Player stats work whenever a Brawl Stars API token is configured -
+        # independently of early_access, which no longer supplies them.
+        try:
+            from brawl_api import is_available as _player_api_available
+            auth_payload["player_api"] = early_access or _player_api_available()
+        except Exception:
+            auth_payload["player_api"] = early_access
         return {
             "app": {
-                "name": "PylaAI",
+                "name": "VvokAI",
                 "version": self.get_current_version(),
                 "latest_version": self.get_latest_version_safe(),
                 "warnings": self.get_warnings(),

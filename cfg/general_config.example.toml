@@ -1,0 +1,37 @@
+# Copy this file to cfg/general_config.toml and fill it in.
+#
+# The real file is git-ignored on purpose: it holds a Brawl Stars API token and
+# your player tag, and this repository is public.
+
+cpu_or_gpu = "auto"
+max_ips = "auto"
+trophies_multiplier = 1
+run_for_minutes = 0
+emulator_port = 5037
+api_base_url = "default"
+brawl_stars_package = "bsd.suitcase.release"
+ocr_scale_down_factor = 0.8
+used_threads = "auto"
+default_trophy_target = 1200
+auto_load_queue_on_startup = true
+play_order = "in_order"
+
+# Screen capture. The device encodes H.264 itself and an emulator usually has
+# no hardware encoder, so this competes with rendering the game - uncapped on a
+# 120 FPS emulator the game dropped to ~20 FPS.
+capture_fps = 90
+capture_max_width = 0
+capture_bitrate = 4000000
+
+# ---------------------------------------------------------------------------
+# Personal. Leave blank unless you want player statistics in the web interface.
+# ---------------------------------------------------------------------------
+
+# Your in-game tag, e.g. "#ABC123".
+player_tag = ""
+
+# Brawl Stars API token from https://developer.brawlstars.com
+#
+# The token is bound to the IP address you created it for, so it will not work
+# from anywhere else - but it is still a credential. Never commit it.
+brawl_api_token = ""
