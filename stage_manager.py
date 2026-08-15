@@ -242,7 +242,6 @@ class StageManager:
         screenshot = self.window_controller.screenshot()
 
         current_state = get_state(screenshot)
-        button_pressed = False
         end_screen_time = time.time()
         parsed_result = None
         while current_state.startswith("end") and time.time() - end_screen_time < 35:
@@ -266,9 +265,28 @@ class StageManager:
                 self.brawlers_pick_data[0]['win_streak'] = self.Trophy_observer.win_streak
                 save_brawler_data(self.brawlers_pick_data)
 
-            if not button_pressed and self.play_again_on_win and parsed_result and parsed_result.result == MatchResult.VICTORY and not self._should_pause() and not self._should_stop():
+            wants_rematch = (self.play_again_on_win and parsed_result
+                             and parsed_result.result == MatchResult.VICTORY
+                             and not self._should_pause() and not self._should_stop())
+
+            if wants_rematch:
+                # Keep asking for the rematch for as long as the end screen is
+                # still up, and never fall through to "proceed" here.
+                #
+                # This used to press play_again once and then, because the flag
+                # was set, take the else branch on every following pass - so
+                # three seconds after asking for a rematch it pressed proceed
+                # and cancelled it. Whether that happened came down to how fast
+                # the end screen cleared: quick enough and the loop had already
+                # exited, slow enough and the rematch was thrown away, the wait
+                # below then timed out with no match, and the game restarted.
+                # Same setting, same build, working for one person and hanging
+                # for another for twenty seconds.
+                #
+                # Repeating the press also covers the button simply not being
+                # ready for the first one. The loop is capped at 35 seconds and
+                # the screen is re-read every pass, so this cannot spin.
                 self.window_controller.press("play_again")
-                button_pressed = True
             else:
                 print("Game has ended, proceeding")
                 self.window_controller.press("proceed")
