@@ -10,7 +10,10 @@ venv/
 main.spec
 PylaAI.zip
 start.bat
-run.py
+# Anchored: an unanchored "run.py" also matched tests/run.py, which quietly
+# kept the test runner out of the repository - the suite was published without
+# the one file that runs it.
+/run.py
 stuff_to_copy_paste/
 test2.py
 /cfgs_and_internal
@@ -41,3 +44,8 @@ tools/*.avi
 
 # Written by the installer on every run.
 install_log.txt
+
+# Written by tools/updater.py: the commit this folder is currently at, and the
+# copies it takes of anything it replaces.
+.vvok_version
+backup_before_update/
