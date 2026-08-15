@@ -1213,9 +1213,17 @@ if is_stuck and stuck_for > BREAK_OUT_AFTER:
         if alternative is not None:
             movement = alternative
 
-    # Break out briskly - this is the one non-combat case where a sharp
-    # movement is warranted, because gentle easing is what kept us pinned.
-    sharp_movement = True
+    # NOT sharp, despite the temptation. In the engine `sharp` means "this is a
+    # dodge": it skips the rate limiter AND unstuck_movement_if_needed, which is
+    # the routine that actually frees a wedged brawler by committing to one
+    # direction for unstuck_movement_hold_time and rotating if that fails.
+    #
+    # So marking the break-out sharp switched off the one mechanism built for
+    # exactly this situation, leaving nothing but the sweep below. A log of one
+    # session shows what that costs: 22 and 23 second stalls with the stick
+    # cycling through all eight headings and world displacement staying at
+    # 0.00 the entire time - the bot was twitching, not walking.
+    sharp_movement = False
 
     if debug:
         print("breaking out, stuck for", round(stuck_for, 1), "s toward", target)
