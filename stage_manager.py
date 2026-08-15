@@ -152,13 +152,23 @@ class StageManager:
             next_brawler_name = self.brawlers_pick_data[0]['brawler']
             if self.brawlers_pick_data[0]["automatically_pick"]:
                 select_brawler = self.Lobby_automation.select_brawler(next_brawler_name, self.get_latest_state, runtime_control=self.runtime_control)
-                while select_brawler in ["failed", "error"]:
+                # Bounded for the same reason as in main.py: rotating a queue of
+                # one hands back the brawler that just failed, and the loop
+                # never ends. Every entry gets one turn, then the bot carries on
+                # rather than sitting in the lobby forever.
+                attempts_left = max(1, len(self.brawlers_pick_data))
+                while select_brawler in ["failed", "error"] and attempts_left > 0:
                     if self.ping_when_stuck:
                         screenshot = self.window_controller.screenshot()
                         notify_user("bot_failed_brawler_selection", screenshot, self)
                         print(f"Skipping {select_brawler}")
                     if self._should_stop() or self._should_pause():
                         return
+                    attempts_left -= 1
+                    if attempts_left <= 0:
+                        print("No queued brawler could be selected. Playing with "
+                              "whichever brawler the game has selected.")
+                        break
                     current_brawler = self.brawlers_pick_data.pop(0)
                     self.brawlers_pick_data.append(current_brawler)
                     next_brawler_name = self.brawlers_pick_data[0]['brawler']

@@ -320,11 +320,23 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
                             self.runtime_control.mark_running()
                         select_brawler = self.lobby_automator.select_brawler(next_brawler_name, self.get_latest_state, runtime_control=self.runtime_control)
 
-                        while select_brawler in ["failed", "error"]:
+                        # Rotating the queue and trying the next one only helps
+                        # while there IS a next one. With a single brawler
+                        # queued, the rotation hands back the same brawler and
+                        # this loops until somebody closes the window - which is
+                        # exactly what a one-brawler queue looks like in the
+                        # wild. Give every entry one turn, then get on with it.
+                        attempts_left = max(1, len(self.Stage_manager.brawlers_pick_data))
+                        while select_brawler in ["failed", "error"] and attempts_left > 0:
                             print("Automatic brawler selection failed.")
                             if self.ping_when_stuck:
                                 screenshot = self.window_controller.screenshot()
                                 notify_user("bot_failed_brawler_selection", screenshot, self.Stage_manager)
+                            attempts_left -= 1
+                            if attempts_left <= 0:
+                                print("No queued brawler could be selected. Playing "
+                                      "with whichever brawler the game has selected.")
+                                break
                             failed_brawler = self.Stage_manager.brawlers_pick_data.pop(0)
                             self.Stage_manager.brawlers_pick_data.append(failed_brawler)
                             next_brawler_name = self.Stage_manager.brawlers_pick_data[0]['brawler']

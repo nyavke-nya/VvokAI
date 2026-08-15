@@ -46,6 +46,41 @@ class LobbyAutomation:
             time.sleep(min(poll_interval, max(end_time - time.time(), 0)))
         return False
 
+    # The list is long, so a scan that starts at the top needs room to reach the
+    # bottom - but not 100 screens of room. Anything past this is not scrolling,
+    # it is stuck, and grinding through it costs minutes before anyone is told.
+    MAX_SCANS = 40
+
+    # Swipes to get back to the top. More than the list is tall, because a swipe
+    # that lands while the view is still gliding does nothing.
+    SCROLL_TOP_SWIPES = 14
+
+    def _scroll_to_list_top(self, runtime_control=None, stop_event=None):
+        """Put the brawler list back at the top before searching it.
+
+        The menu opens wherever the currently selected brawler is. That is
+        normally fine, and quietly wrong after a reward unlocks a new brawler:
+        the game switches to it, it sits near the bottom of the list, and every
+        brawler above it - Shelly, who is first of all of them - is off-screen
+        upward. Searching by scrolling down from there walks away from the
+        target and never comes back, so the scan ran its full length and gave
+        up, over and over, on a brawler that was three swipes above it.
+
+        Starting from the top makes the search cover the whole list whatever
+        the game had selected when the menu opened.
+        """
+        wr = self.window_controller.width_ratio
+        hr = self.window_controller.height_ratio
+        for _ in range(self.SCROLL_TOP_SWIPES):
+            if self._should_interrupt(runtime_control, stop_event):
+                return True
+            # Finger downward, which moves the list up.
+            self.window_controller.swipe(int(1700 * wr), int(650 * hr),
+                                         int(1700 * wr), int(1000 * hr), duration=0.25)
+            time.sleep(0.15)
+        # Let the overscroll bounce settle, or the first OCR reads a blur.
+        return self._sleep_interruptible(1.0, runtime_control, stop_event)
+
     def select_brawler(self, brawler, get_latest_state, stop_event=None, runtime_control=None):
         self.window_controller.screenshot()
         wr = self.window_controller.width_ratio
@@ -57,10 +92,17 @@ class LobbyAutomation:
         x, y = load_toml_as_dict("cfg/buttons_config.toml")["brawlers_menu"]
         self.window_controller.click(x, y, already_include_ratio=False)
         time.sleep(0.5)
-        c = 0
         print("Automatic brawler selection started for", brawler)
+        if self._scroll_to_list_top(runtime_control, stop_event):
+            print("Brawler selection aborted by user.")
+            return "aborted"
+
+        c = 0
         shop_counter = 0
-        for i in range(100):
+        # What the previous screen read, to notice when scrolling stops moving.
+        seen_before = None
+        stalled = 0
+        for i in range(self.MAX_SCANS):
             if self._should_interrupt(runtime_control, stop_event):
                 print("Brawler selection aborted by user.")
                 return "aborted"
@@ -101,8 +143,13 @@ class LobbyAutomation:
                 matched_key = brawler
             else:
                 matched_key = None
+                # .get, not [], because a brawler released after this copy of
+                # the name table was written is not in it - and the reward that
+                # hands somebody a brand new brawler is exactly the moment the
+                # bot goes looking. A KeyError here took the whole bot down.
+                aliases = self.all_brawlers_names.get(brawler) or []
                 for detected_name in clean_results.keys():
-                    if detected_name in self.all_brawlers_names[brawler]:
+                    if detected_name in aliases:
                         matched_key = detected_name
                         print(f"Matched detected name '{detected_name}' to brawler '{brawler}' using alias list.")
                         break
@@ -133,6 +180,23 @@ class LobbyAutomation:
                 return "success"
             else:
                 print("Brawler name not found on screen, scrolling down to load more brawlers...")
+
+            # The bottom of the list looks exactly like a swipe that did not
+            # register, so it has to be recognised rather than waited out: two
+            # identical screens in a row means the list is not moving and the
+            # brawler is genuinely not in it.
+            names = frozenset(clean_results.keys())
+            if names and names == seen_before:
+                stalled += 1
+                if stalled >= 2:
+                    print(f"Reached the end of the brawler list without finding "
+                          f"'{brawler}'. It may be spelled differently in game, "
+                          f"or not unlocked on this account.")
+                    return "failed"
+            else:
+                stalled = 0
+            seen_before = names
+
             if c == 0:
                 wr = self.window_controller.width_ratio
                 hr = self.window_controller.height_ratio
@@ -148,5 +212,6 @@ class LobbyAutomation:
                 print("Brawler selection aborted by user.")
                 return "aborted"
 
-        print(f"WARNING: Brawler '{brawler}' was not found after 100 scroll attempts.")
+        print(f"WARNING: Brawler '{brawler}' was not found after {self.MAX_SCANS} "
+              f"scroll attempts.")
         return "failed"
