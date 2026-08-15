@@ -32,6 +32,7 @@ reason to fail to start.
 
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -64,6 +65,56 @@ PROTECTED = (
 
 # Nothing in here is ours to overwrite even if the archive carries it.
 SKIP_NAMES = {".gitignore", ".gitattributes"}
+
+# Config files are protected as whole files, because they hold API tokens, the
+# brawler queue and everything else somebody set for themselves. But some of
+# what lives in them is not preference at all - it is calibration. How sure the
+# wall model has to be, how big a tile reads on screen, how much of the area
+# beside the player has to look like gas. Those are measurements of how the
+# game renders, they are the same for everyone, and when they improve here they
+# should improve everywhere rather than only for people who reinstall.
+#
+# So these two rules apply to the files below, and to nothing else:
+#
+#   * a key listed here is updated to the shipped value
+#   * a key the file does not have yet is added, whatever it is
+#
+# Everything else the file contains is left exactly as it was found. Adding
+# missing keys matters as much as updating listed ones: a setting introduced
+# after somebody installed would otherwise never reach them, and they would
+# silently run on the code default while the config that documents it sits
+# unread on someone else's machine.
+TUNING = {
+    "cfg/bot_config.toml": (
+        "perceived_tile_size",
+        "player_collision_radius",
+        "wall_model_classes",
+        "wall_detection_confidence",
+        "entity_detection_confidence",
+        "centered_wall_detection",
+        "poison_gas_fraction",
+        "gadget_pixels_minimum",
+        "hypercharge_pixels_minimum",
+        "super_pixels_minimum",
+        "idle_pixels_minimum",
+    ),
+    "cfg/time_tresholds.toml": (
+        "state_check",
+        "wall_detection",
+        "no_detections",
+        "no_detection_proceed",
+        "check_if_brawl_stars_crashed",
+        "gadget",
+        "hypercharge",
+        "super",
+        "idle",
+    ),
+    # Every value in the dodge config is calibration; there is nothing personal
+    # in the file. Listing no keys means "add anything new, change nothing" -
+    # deliberately conservative, because anyone who has tuned their dodging has
+    # tuned it against their own machine.
+    "cfg/dodge_config.toml": (),
+}
 
 
 def say(message):
@@ -118,6 +169,63 @@ def download(sha):
     return holding, roots[0]
 
 
+KEY_LINE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=")
+
+
+def _keys_in(text):
+    """{key: line} for a flat TOML file, in the order they appear.
+
+    Line-based on purpose. This runs on whatever Python is on the machine,
+    before the venv exists, so there is no TOML writer available - and none is
+    needed: every file this touches is a flat list of key = value. Anything
+    with a [section] header is left alone rather than guessed at.
+    """
+    found = {}
+    for line in text.splitlines():
+        if line.lstrip().startswith("["):
+            return None
+        match = KEY_LINE.match(line)
+        if match:
+            found[match.group(1)] = line
+    return found
+
+
+def merge_settings(shipped_text, current_text, tuning_keys):
+    """The user's file, with calibration updated and new keys added.
+
+    Returns None when nothing needs to change, so an update that touches no
+    settings does not rewrite the file or take a backup of it.
+    """
+    shipped = _keys_in(shipped_text)
+    current = _keys_in(current_text)
+    if shipped is None or current is None:
+        return None
+
+    lines = current_text.splitlines()
+    changed = False
+
+    # Update in place, so the file keeps the order and the spacing it had.
+    for index, line in enumerate(lines):
+        match = KEY_LINE.match(line)
+        if not match:
+            continue
+        key = match.group(1)
+        if key in tuning_keys and key in shipped and shipped[key] != line:
+            lines[index] = shipped[key]
+            changed = True
+
+    # Then anything the file has never heard of, in the order the shipped file
+    # lists it, so a new setting arrives rather than waiting for a reinstall.
+    for key, line in shipped.items():
+        if key not in current:
+            lines.append(line)
+            changed = True
+
+    if not changed:
+        return None
+    return "\n".join(lines) + "\n"
+
+
 def apply(source):
     """Copy the new files in. Returns how many actually changed."""
     changed = 0
@@ -125,10 +233,40 @@ def apply(source):
         if not incoming.is_file():
             continue
         relative = incoming.relative_to(source)
+        target = ROOT / relative
+
+        tuning = TUNING.get(relative.as_posix().lower())
+        if tuning is not None:
+            # A config with calibration in it: merged key by key rather than
+            # replaced, so the token, the queue and the chosen playstyle stay
+            # exactly as they were.
+            if not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(incoming, target)
+                changed += 1
+                say(f"  {relative.as_posix()} (new)")
+                continue
+            try:
+                merged = merge_settings(
+                    incoming.read_text(encoding="utf-8"),
+                    target.read_text(encoding="utf-8"),
+                    set(tuning),
+                )
+            except (OSError, UnicodeDecodeError):
+                continue
+            if merged is None:
+                continue
+            keep = BACKUP / relative
+            keep.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(target, keep)
+            target.write_text(merged, encoding="utf-8")
+            changed += 1
+            say(f"  {relative.as_posix()} (settings merged)")
+            continue
+
         if protected(relative):
             continue
 
-        target = ROOT / relative
         if target.exists() and target.read_bytes() == incoming.read_bytes():
             continue
 

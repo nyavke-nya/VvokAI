@@ -31,6 +31,20 @@ POISON_LOW_HSV = np.array((30, 90, 221), dtype=np.uint8)
 POISON_HIGH_HSV = np.array((57, 114, 235), dtype=np.uint8)
 PLAYER_HIT_CIRCLE_RADIUS = 53
 
+# How much of the region beside the player must match the gas colour before the
+# bot treats that direction as gassed.
+#
+# A fraction of the region's area, and it has to be, because the region is
+# measured in screen pixels and therefore scales with the square of the
+# emulator resolution. The old absolute count of 7000 was tuned at 1920x1080,
+# where it is 7.8% of the area searched. The identical code on a 1280x720
+# emulator demands 17.5% of a smaller cloud, and at 960x540 it demands 31% -
+# so the same build, on the same game, walked into gas on one machine and
+# avoided it on another, which is exactly the report this came from.
+#
+# 0.078 reproduces the old behaviour at 1920x1080 and fixes every other size.
+POISON_GAS_FRACTION = 0.078
+
 # Wall collision is NOT the same circle as the projectile hitbox.
 #
 # A brawler's damage hitbox is roughly a tile wide, but its movement collision
@@ -91,6 +105,13 @@ class Play:
             self.collision_radius = float(PLAYER_COLLISION_RADIUS)
         self.centered_wall_detection = config_bool(bot_config.get("centered_wall_detection"), False)
         self.centered_wall_crop_size = 640
+        # How much of the area beside the player has to look like gas before it
+        # counts. A FRACTION, not a pixel count - see _measure_poison_gas.
+        try:
+            self.poison_gas_fraction = float(
+                bot_config.get("poison_gas_fraction", POISON_GAS_FRACTION))
+        except (TypeError, ValueError):
+            self.poison_gas_fraction = POISON_GAS_FRACTION
 
         bot_config = load_toml_as_dict("cfg/bot_config.toml")
         time_config = load_toml_as_dict("cfg/time_tresholds.toml")
@@ -446,7 +467,11 @@ class Play:
                 closest_teammate = teammate_pos
         return closest_teammate, closest_distance
 
-    def is_there_poison_gas(self, player_data, threshold=7000, area_from_player_checked=1.5):
+    def is_there_poison_gas(self, player_data, threshold=None, area_from_player_checked=1.5):
+        # None means "use the configured fraction". An explicit value is still
+        # a fraction of the area, never the pixel count this used to take.
+        if threshold is None:
+            threshold = self.poison_gas_fraction
         reading = self._measure_poison_gas(player_data, threshold, area_from_player_checked)
         # Kept so the dodge service's emergency path can veto an escape without
         # re-scanning the frame from another thread.
@@ -455,7 +480,8 @@ class Play:
         self.last_gas_center = self.get_entity_pos(box) if box else None
         return reading
 
-    def _measure_poison_gas(self, player_data, threshold=7000, area_from_player_checked=1.5):
+    def _measure_poison_gas(self, player_data, threshold=POISON_GAS_FRACTION,
+                            area_from_player_checked=1.5):
         actual_player_box = self.get_actual_player_box(player_data) or player_data
         px1, py1, px2, py2 = actual_player_box
         player_width = max(px2 - px1, 1)
@@ -490,13 +516,24 @@ class Play:
             "right": count_mask_pixels(mask, local_px, 0, roi_w, roi_h),
         }
 
+        # Each direction is judged against its own area. They are not equal -
+        # the player is rarely dead centre, and near the edge of the map the
+        # region is clipped - so one shared number would be a different
+        # standard for each of the four.
+        areas = {
+            "up": roi_w * local_py,
+            "down": roi_w * max(roi_h - local_py, 0),
+            "left": local_px * roi_h,
+            "right": max(roi_w - local_px, 0) * roi_h,
+        }
         result = {
-            direction: count if count > threshold else 0
+            direction: count if count > threshold * areas[direction] else 0
             for direction, count in counts.items()
         }
 
         if self.verbose_debug:
             print("Poison gas pixels:", counts)
+            print("  needed:", {d: int(threshold * a) for d, a in areas.items()})
 
             ts = int(time.time())
 

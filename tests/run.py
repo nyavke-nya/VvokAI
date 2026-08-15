@@ -13,7 +13,7 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-FILES = ["test_tracker.py", "test_health.py", "test_solver.py", "test_hazards.py", "test_aim.py", "test_playstyle.py", "test_api.py"]
+FILES = ["test_tracker.py", "test_health.py", "test_solver.py", "test_hazards.py", "test_aim.py", "test_playstyle.py", "test_api.py", "test_updater.py"]
 
 
 def main():
