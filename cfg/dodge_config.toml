@@ -222,8 +222,25 @@ min_confirm_hits = 2
 # all still checked, and min_confirm_hits is still the floor - this makes
 # confirmation earlier, not looser.
 #
-# Set to false to go back to always waiting for the full evidence.
-urgent_confirm = true
+# OFF, because a session of real data says it does not pay.
+#
+# The reasoning above is sound and the measurement that motivated it was real.
+# What it missed is WHICH tracks are short of hits when a shot is close. A
+# track that came off a visible enemy already confirms on two samples, so it is
+# never waiting; the ones waiting are the tracks with no credible shooter,
+# which wait precisely because they are unreliable. Being near the player is
+# not evidence about those - it is the one condition a stray blob beside the
+# player always meets.
+#
+# So 99.3% of what this admitted had no enemy behind it, and 74% of those were
+# still too late to dodge anyway. The bot got the phantom threats and not the
+# saved shots: dodging 90.6% -> 87.7%, impossible 7.9% -> 10.1%, overruled
+# 0.3% -> 1.3%, and stuck 15% -> 26% of movement samples.
+#
+# Kept, not deleted, because the underlying point stands: confirmation that
+# arrives after the shot is wasted. If it is ever turned back on, the tracker
+# now also requires a visible shooter before fast-tracking anything.
+urgent_confirm = false
 
 # Slack, in frame intervals, added to the time needed to step clear before a
 # track counts as urgent. 0 is the strictest reading - act only when the next

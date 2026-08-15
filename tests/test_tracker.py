@@ -150,6 +150,10 @@ def check_urgency(report):
     report.check("a fast one still has time for the same shot",
                  urgency(distance=420, speed=800, player_speed=900), False)
 
+    report.section("shipped off, because on real data it lost dodges")
+    config = DodgeConfig(load_toml_as_dict("cfg/dodge_config.toml"), 1.0, 54.0)
+    report.check("the config ships it disabled", config.urgent_confirm, False)
+
     report.section("it can be turned off, and it respects the floor")
     report.check("disabled in config, nothing is ever urgent",
                  urgency(distance=200, speed=800, enabled=False), False)

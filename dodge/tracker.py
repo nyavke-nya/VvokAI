@@ -1119,12 +1119,28 @@ class ProjectileTracker:
                 rejects["origin"] += 1
                 continue
             if track.hits < required_hits:
-                # Short of the evidence normally wanted. Take it anyway if the
-                # shot lands before the next sample could be used - the choice
-                # there is between acting on what is known and being hit while
-                # certain. Never below min_confirm_hits: one blob is not a
-                # trajectory, and nothing here can invent one.
-                if not (track.hits >= config.min_confirm_hits
+                # Short of the evidence normally wanted. Taking it anyway is
+                # only defensible when the track has a visible shooter behind
+                # it, and that restriction is not caution - it is what a
+                # session of real data forced.
+                #
+                # Without it, 99.3% of what this path admitted had no credible
+                # origin at all: 61% had no enemy within spawn range, 32% had
+                # no enemy on screen, 7% were flying back TOWARD the brawler
+                # supposedly firing them. Only 0.7% came off an enemy, against
+                # 64.7% of ordinary confirmations. That is not a coincidence -
+                # the extra samples demanded of an unknown-origin track are
+                # demanded precisely because such tracks are unreliable, and
+                # "it is close to the player" is the condition a stray blob
+                # near the player meets by definition.
+                #
+                # The cost was real and the benefit was not: 74% of them were
+                # still too late to dodge, while the solver spent the session
+                # being handed phantom threats. Dodging fell 90.6% -> 87.7%,
+                # impossible situations rose 7.9% -> 10.1%, and the bot spent
+                # 26% of its movement samples stuck against 15% before.
+                if not (track.origin_reason == "enemy"
+                        and track.hits >= config.min_confirm_hits
                         and self._waiting_is_fatal(track, velocity, speed, context, stamp)):
                     rejects["origin"] += 1
                     continue

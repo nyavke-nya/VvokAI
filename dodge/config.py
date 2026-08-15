@@ -137,19 +137,15 @@ class DodgeConfig:
         self.min_radius = _f(tracking, "min_radius", 14.0) * scale
         self.max_radius = _f(tracking, "max_radius", 46.0) * scale
 
-        # Waiting for another sample is only free while there is time to spare.
-        # On real logs 822 shots were missed by a median of 39 ms while their
-        # confirmation had cost 88 ms - the evidence the tracker was still
-        # collecting arrived after the shot did. When a track is already that
-        # close, one more frame decides the outcome before the extra certainty
-        # can be used, so the remaining hit requirement is dropped and the track
-        # is taken on what is known.
-        #
-        # Only the hit COUNT is relaxed. Everything that decides whether a track
-        # is a shot at all - speed, straightness, and whether it came off an
-        # enemy heading our way - still has to pass, so this makes confirmation
-        # earlier rather than looser.
-        self.urgent_confirm = _b(tracking, "urgent_confirm", True)
+        # Take a track before it has the usual hits when the shot would land
+        # first. Off, because a session with it on says it costs more than it
+        # gives - see cfg/dodge_config.toml for the numbers. The premise was
+        # right (confirmation arriving after the shot is wasted) and the
+        # inference was wrong: the tracks still waiting for evidence when a
+        # shot is close are the ones with no visible shooter, which wait
+        # because they are unreliable, and being near the player is the one
+        # thing a stray blob beside the player is guaranteed to be.
+        self.urgent_confirm = _b(tracking, "urgent_confirm", False)
         # Slack, in frame intervals, on top of the time needed to step clear.
         # 0 means "only when the next frame is provably too late"; larger values
         # trade a few needless sidesteps for catching more real shots.
