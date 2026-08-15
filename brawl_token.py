@@ -19,11 +19,21 @@ Two things worth knowing before enabling it:
     password in a plain file is a password in a plain file - if that is not
     acceptable, leave this off and use the wildcard approach below instead.
 
-  * Supercell's portal accepts a CIDR range when a key is created. Creating one
-    by hand for 0.0.0.0/0 makes it work from any address with no credentials
-    stored anywhere and no code involved. That is the better answer when the
-    portal allows it; this exists for when it does not, and for people who
-    would rather not think about it again.
+  * The portal's WEB FORM takes a CIDR range, and a key made there by hand for
+    0.0.0.0/0 works from any address with no credentials stored anywhere and no
+    code involved. That is still the best answer for anyone willing to do it
+    once. Its API does not: every range tried through the endpoint used here -
+    a /24, a /16, 0.0.0.0/0 itself - is refused with HTTP 500
+    "ip-validation-failure", and only a bare address is accepted. So this
+    module cannot create the wildcard key on anyone's behalf; it can only keep
+    a single-address key pointed at the right address.
+
+    Which address that is comes from the API's own refusal, not from a
+    what-is-my-ip service. Those answer for their own connection and, on a
+    provider that rotates within a pool, answer with a number that is already
+    stale by the time the key exists: a key issued for 152.233.35.206 was wrong
+    at 152.233.35.233 a minute later. The 403 says "does not allow access from
+    IP x.x.x.x", and that is the address that actually needs a key.
 
 Only keys carrying KEY_MARKER in their description are ever deleted, so a key
 made by hand for something else is left alone.
@@ -31,6 +41,7 @@ made by hand for something else is left alone.
 
 import re
 import threading
+import time
 
 import requests
 
@@ -49,8 +60,20 @@ KEY_NAME = "VvokAI"
 # removed before a new one is made rather than accumulating.
 MAX_KEYS = 10
 
+# Reissues that failed in a row before the module stops trying, and how long it
+# then waits. A connection that leaves by a different address on every request
+# cannot be served by a key bound to one address: each reissue is correct for
+# the request that triggered it and wrong for the next one. Without this the
+# bot logs into the developer portal on every single API call, revoking and
+# creating keys forever, and the account is rate limited or locked for a
+# problem no amount of key-making can fix.
+GIVE_UP_AFTER = 2
+GIVE_UP_FOR = 1800
+
 _lock = threading.Lock()
 _last_error = None
+_failures = 0
+_quiet_until = 0.0
 
 
 def last_error():
@@ -118,13 +141,44 @@ def _revoke(session, key_id):
     session.post(f"{PORTAL}/apikey/revoke", json={"id": key_id}, timeout=TIMEOUT)
 
 
-def _create(session, address):
+def network_for(address, bits):
+    """The address as a CIDR range, widened by `bits`.
+
+    Kept, and left at a single address by default, because the portal's API
+    will not take anything wider. Every range tried - the surrounding /24, a
+    /16, even the 0.0.0.0/0 that the portal's own web form accepts - comes back
+    HTTP 500 "ip-validation-failure". Only a bare address is accepted there.
+
+    Which makes getting that one address right the whole job, and it is not
+    ipify's answer: that reports the address ipify was contacted from, which on
+    a provider that rotates within a pool is a different number by the time the
+    key exists. The address in the API's own refusal is the one to use.
+    """
+    bits = max(0, min(32, int(bits)))
+    if bits >= 32:
+        return address
+    if bits == 0:
+        return "0.0.0.0/0"
+    try:
+        octets = [int(part) for part in address.split(".")]
+    except ValueError:
+        return address
+    if len(octets) != 4:
+        return address
+    value = (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]
+    masked = value & ((0xFFFFFFFF << (32 - bits)) & 0xFFFFFFFF)
+    return (f"{(masked >> 24) & 255}.{(masked >> 16) & 255}."
+            f"{(masked >> 8) & 255}.{masked & 255}/{bits}")
+
+
+def _create(session, address, cidr_bits):
+    scope = network_for(address, cidr_bits)
     response = session.post(
         f"{PORTAL}/apikey/create",
         json={
             "name": KEY_NAME,
-            "description": f"{KEY_MARKER} - reissued automatically for {address}",
-            "cidrRanges": [address],
+            "description": f"{KEY_MARKER} - reissued automatically for {scope}",
+            "cidrRanges": [scope],
             "scopes": ["brawlstars"],
         },
         timeout=TIMEOUT,
@@ -137,29 +191,67 @@ def _create(session, address):
         return None
 
 
-def _works(token):
-    """Whether the API accepts this token from this machine, right now.
+_GIVE_UP_MESSAGE = "\n\n".join((
+    "Automatic key reissue has been stopped: this connection does not keep one "
+    "address. Every request leaves by a different one - a VPN or proxy that "
+    "rotates its exits does this - so a key bound to a single address is "
+    "already wrong for the next request, and making more of them only floods "
+    "the developer portal.",
 
-    The portal happily reports a key as bound to the current address while the
-    token actually saved here belongs to some older key - the config and the
-    account drift apart, and the only symptom is a 403 that reads as if the
-    address were wrong. Checking costs one request on a path that runs rarely,
-    and it is the difference between fixing the problem and writing another
-    broken token over the last one. /brawlers needs no player tag and is
-    refused the same way when the address does not match.
+    "The fix takes two minutes and is permanent: go to "
+    "developer.brawlstars.com, delete the VvokAI keys, create one with Allowed "
+    "IP Ranges set to 0.0.0.0/0, and paste it into Settings. That key works "
+    "from any address, so nothing has to chase it. The website accepts "
+    "0.0.0.0/0 even though the portal API this bot uses refuses it, which is "
+    "why this cannot be done for you.",
+
+    "You can also clear the developer-portal email and password in Settings - "
+    "with a 0.0.0.0/0 key they are not needed.",
+))
+
+
+# A key does not start working the instant the portal hands it over - it has to
+# reach the API servers first, which takes a little under a minute. Checking it
+# straight away therefore says "broken" about a key that is perfectly good, so
+# the check waits it out rather than believing the first answer.
+VERIFY_ATTEMPTS = 6
+VERIFY_GAP = 8
+
+
+def _works(token, attempts=VERIFY_ATTEMPTS):
+    """Whether the API accepts this token from this machine.
+
+    /brawlers needs no player tag and is refused the same way when the address
+    does not match, so it is the cheapest thing to ask.
+
+    The retries are the point. A key read back immediately after being created
+    is routinely refused for the first half-minute or so while it propagates,
+    and the first version of this check took that at face value: it declared a
+    correct key broken, refused to save it, and left the dead one in the config
+    for the bot to fail with again next time.
     """
-    try:
-        response = requests.get(
-            "https://api.brawlstars.com/v1/brawlers",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=TIMEOUT,
-        )
-    except requests.RequestException:
-        return True  # Network trouble is not the token's fault; do not discard it.
-    return response.status_code == 200
+    for attempt in range(max(1, attempts)):
+        try:
+            response = requests.get(
+                "https://api.brawlstars.com/v1/brawlers",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=TIMEOUT,
+            )
+        except requests.RequestException:
+            return True  # Network trouble is not the token's fault; do not discard it.
+        if response.status_code == 200:
+            return True
+        if response.status_code != 403:
+            # Rate limiting or an outage: says nothing about this key.
+            return True
+        if attempt + 1 < max(1, attempts):
+            print(f"New API key not active yet, waiting "
+                  f"({attempt + 1}/{attempts})...")
+            time.sleep(VERIFY_GAP)
+    return False
 
 
-def refresh(previous=None, force=False):
+def refresh(previous=None, force=False, seen_ip=None):
     """Re-issue the API token for this machine's current address.
 
     Pass the token that was just rejected as `previous`. Returns the new token,
@@ -167,7 +259,13 @@ def refresh(previous=None, force=False):
     only one refresh runs at a time, and the others simply use whatever it
     produced.
     """
-    global _last_error
+    global _last_error, _failures, _quiet_until
+
+    if time.time() < _quiet_until:
+        # Already established that key-making cannot fix this connection.
+        # Repeating it would only hammer the portal.
+        _last_error = _GIVE_UP_MESSAGE
+        return None
 
     email, password = credentials()
     if not email or not password:
@@ -180,7 +278,12 @@ def refresh(previous=None, force=False):
         return None
 
     with _lock:
-        address = current_ip()
+        # seen_ip comes from the API's own refusal - "does not allow access
+        # from IP x.x.x.x" - and is therefore the address that actually needs a
+        # key, as observed by the server doing the refusing. Asking a
+        # what-is-my-ip service is the fallback, not the primary: it answers
+        # for its own connection, and on a rotating address it answers late.
+        address = seen_ip or current_ip()
         if not address:
             _last_error = "Could not determine this machine's public IP address."
             return None
@@ -222,30 +325,62 @@ def refresh(previous=None, force=False):
                 )
                 return None
 
-            token = _create(session, address)
+            # A single address: the portal rejects every wider range. Left
+            # configurable so it costs nothing to widen if Supercell ever
+            # starts accepting ranges here.
+            cidr_bits = config.get("brawl_api_cidr_bits", 32)
+            token = _create(session, address, cidr_bits)
             if not token:
                 _last_error = "The developer portal refused to create a new key."
                 return None
-            if not _works(token):
-                _last_error = (
-                    "The developer portal issued a key for " + address + " but the "
-                    "API still refuses it. If you are behind a VPN or a mobile "
-                    "connection the address may have changed again; otherwise "
-                    "create a key by hand at developer.brawlstars.com with the "
-                    "Allowed IP Ranges box set to 0.0.0.0/0."
-                )
-                return None
+            accepted = _works(token)
         except requests.RequestException as exc:
             _last_error = f"Could not reach the developer portal: {exc}"
             return None
         finally:
             session.close()
 
+        # Saved whether or not the API has started accepting it yet. The key is
+        # freshly issued for this exact address, which makes it strictly better
+        # than whatever it replaces; throwing it away on a failed check left the
+        # dead token in place and guaranteed the same failure next time. If it
+        # is merely still propagating it will simply start working.
         config["brawl_api_token"] = token
         # Remembered so a second 403 from the same address does not send the
         # bot round this loop again - that would be a login storm, not a fix.
         config["_brawl_api_token_ip"] = address
         save_dict_as_toml(config, "cfg/general_config.toml")
+
+        if accepted:
+            _failures = 0
+        else:
+            _failures += 1
+            if _failures >= GIVE_UP_AFTER:
+                _quiet_until = time.time() + GIVE_UP_FOR
+                _last_error = _GIVE_UP_MESSAGE
+                print("Brawl Stars API: giving up on automatic key reissue - "
+                      "this connection needs a 0.0.0.0/0 key made by hand.")
+                return None
+
+        if not accepted:
+            # Deliberately not compared against current_ip() here. On the
+            # connection this was debugged on, the API saw 195.181.175.176
+            # while a what-is-my-ip service reported 152.233.35.233 at the same
+            # moment - different destinations, different exits. Reporting that
+            # as "your address changed" blamed the wrong thing entirely.
+            _last_error = (
+                f"A new key was issued for {address} and saved, but the API is "
+                "not accepting it yet. Usually that is a new key still "
+                "propagating and it starts working within a minute or two on "
+                "its own. It also happens on a VPN whose traffic leaves by "
+                "several addresses, where a key can only ever match some of "
+                "the requests. The permanent fix for that is a key made by "
+                "hand at developer.brawlstars.com with Allowed IP Ranges set "
+                "to 0.0.0.0/0 - the website accepts it even though the portal "
+                "API this bot uses will not, so it cannot be done for you."
+            )
+            print(f"Brawl Stars API key reissued for {address}, not active yet.")
+            return None
 
         _last_error = None
         print(f"Brawl Stars API token reissued for {address}.")

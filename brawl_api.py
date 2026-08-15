@@ -21,6 +21,7 @@ the current address and the request is retried once; see that module for the
 credential-free alternative.
 """
 
+import re
 import threading
 import time
 
@@ -30,6 +31,14 @@ from utils import load_toml_as_dict, normalize_brawler_filename
 
 API_ROOT = "https://api.brawlstars.com/v1"
 REQUEST_TIMEOUT = 10
+
+# Extra attempts when the API refuses the key because of the address it saw.
+# Small on purpose: this covers a connection that leaves by more than one exit,
+# where the next request is likely to arrive from the address the key was made
+# for. If several in a row are refused, the key really is for the wrong address
+# and reissuing it is the answer.
+IP_MISMATCH_RETRIES = 2
+IP_MISMATCH_GAP = 1.5
 
 # The API is rate limited and the UI asks for the same player repeatedly (the
 # queue view, the player pill, "push all"), so a short cache keeps one click
@@ -84,6 +93,21 @@ def get_player_info(tag):
     return _fetch(tag, token, allow_refresh=True)
 
 
+def _rejected_ip(response):
+    """The address the API says it saw, out of a 403 body.
+
+    Supercell answers an IP mismatch with "API key does not allow access from
+    IP 1.2.3.4". That number is authoritative in a way nothing else here is:
+    it is this connection, as the server that refused it sees it.
+    """
+    try:
+        message = str(response.json().get("message", ""))
+    except ValueError:
+        message = response.text or ""
+    found = re.search(r"from IP\s+(\d{1,3}(?:\.\d{1,3}){3})", message)
+    return found.group(1) if found else None
+
+
 def _fetch(tag, token, allow_refresh):
     global _last_error
 
@@ -113,16 +137,58 @@ def _fetch(tag, token, allow_refresh):
     if response.status_code == 404:
         _last_error = f"Player #{tag} not found."
     elif response.status_code == 403:
-        # By far the most common failure, and the message the API returns for
-        # it says nothing about the cause. The token is bound to an IP address
+        # By far the most common failure. The token is bound to an IP address
         # and the ISP changed it; nothing about the tag or the account is wrong.
+        #
+        # The refusal carries the address the API saw us arrive from, which is
+        # the only address that matters and the one thing no amount of asking
+        # elsewhere can establish. A public what-is-my-ip service answers for
+        # its own connection, not this one - different route, different egress,
+        # and on a provider that rotates within a pool it is a different number
+        # by the time the key exists. Taking it from the refusal itself means
+        # the key is issued for exactly the address that was just rejected.
+        seen_ip = _rejected_ip(response)
+
+        # Before concluding the key is wrong, ask again. A connection can leave
+        # by more than one address - a VPN with several exits, or a provider
+        # rotating a pool - and then the same key is refused and accepted from
+        # one request to the next. Measured on exactly such a connection: the
+        # API reported 152.233.35.206 for one call and accepted the very next
+        # one, issued seconds later, from 195.181.175.176.
+        #
+        # Retrying costs two requests. Not retrying means tearing down a
+        # perfectly good key and logging into the developer portal to replace
+        # it, every time a request happens to leave by the other exit - which
+        # is a login storm that fixes nothing, because the new key is bound to
+        # whichever exit answered last and will be refused just as often.
+        if seen_ip and allow_refresh:
+            for _ in range(IP_MISMATCH_RETRIES):
+                time.sleep(IP_MISMATCH_GAP)
+                try:
+                    retry = requests.get(
+                        f"{API_ROOT}/players/%23{tag}",
+                        headers={"Authorization": f"Bearer {token}",
+                                 "Accept": "application/json"},
+                        timeout=REQUEST_TIMEOUT,
+                    )
+                except requests.RequestException:
+                    break
+                if retry.status_code == 200:
+                    payload = retry.json()
+                    with _cache_lock:
+                        _cache[tag] = (time.time(), payload)
+                    _last_error = None
+                    return payload
+                if retry.status_code != 403:
+                    break
+
         if allow_refresh:
             import brawl_token
 
             if brawl_token.is_configured():
                 # The rejected token goes in so the refresher can tell "somebody
                 # else already replaced this" from "this is the dead one".
-                fresh = brawl_token.refresh(previous=token)
+                fresh = brawl_token.refresh(previous=token, seen_ip=seen_ip)
                 if fresh:
                     # One retry only. If the reissued token is refused too, the
                     # problem is not the address and looping would not help.
