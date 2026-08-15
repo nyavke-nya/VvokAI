@@ -45,7 +45,16 @@ IP_MISMATCH_GAP = 1.5
 # from becoming five requests.
 CACHE_SECONDS = 45
 
+# Failures are remembered too, and for a good reason: a failing call is far
+# more expensive than a succeeding one. It waits out two retries, and may log
+# into the developer portal and issue a key. Without this, every poll from the
+# open Settings page pays that again - so a wrong tag or an expired key turns
+# into a permanently sluggish interface and a stream of portal logins, rather
+# than one failure that is reported and left alone for a while.
+FAILURE_CACHE_SECONDS = 30
+
 _cache = {}
+_failures = {}
 _cache_lock = threading.Lock()
 _last_error = None
 
@@ -116,6 +125,14 @@ def _fetch(tag, token, allow_refresh):
         cached = _cache.get(tag)
         if cached and now - cached[0] < CACHE_SECONDS:
             return cached[1]
+        # Only the outermost call short-circuits on a remembered failure. The
+        # retry after a successful reissue passes allow_refresh=False and has
+        # to be allowed through, or the new key would never get to prove
+        # itself against the failure that was just recorded.
+        failed = _failures.get(tag) if allow_refresh else None
+        if failed and now - failed[0] < FAILURE_CACHE_SECONDS:
+            _last_error = failed[1]
+            return None
 
     try:
         response = requests.get(
@@ -131,6 +148,7 @@ def _fetch(tag, token, allow_refresh):
         payload = response.json()
         with _cache_lock:
             _cache[tag] = (now, payload)
+            _failures.pop(tag, None)
         _last_error = None
         return payload
 
@@ -177,6 +195,7 @@ def _fetch(tag, token, allow_refresh):
                     payload = retry.json()
                     with _cache_lock:
                         _cache[tag] = (time.time(), payload)
+                        _failures.pop(tag, None)
                     _last_error = None
                     return payload
                 if retry.status_code != 403:
@@ -194,6 +213,8 @@ def _fetch(tag, token, allow_refresh):
                     # problem is not the address and looping would not help.
                     return _fetch(tag, fresh, allow_refresh=False)
                 _last_error = brawl_token.last_error() or _last_error
+                with _cache_lock:
+                    _failures[tag] = (time.time(), _last_error)
                 return None
 
         import brawl_token
@@ -221,6 +242,9 @@ def _fetch(tag, token, allow_refresh):
     else:
         _last_error = f"Brawl Stars API returned {response.status_code}."
 
+    if allow_refresh and _last_error:
+        with _cache_lock:
+            _failures[tag] = (time.time(), _last_error)
     return None
 
 
@@ -261,3 +285,7 @@ def get_player_summary(tag):
 def clear_cache():
     with _cache_lock:
         _cache.clear()
+        # Remembered failures go too: this is called when the token or the tag
+        # has just been changed, which is exactly the moment somebody wants the
+        # previous failure retried rather than replayed at them.
+        _failures.clear()

@@ -211,11 +211,17 @@ _GIVE_UP_MESSAGE = "\n\n".join((
 
 
 # A key does not start working the instant the portal hands it over - it has to
-# reach the API servers first, which takes a little under a minute. Checking it
-# straight away therefore says "broken" about a key that is perfectly good, so
-# the check waits it out rather than believing the first answer.
-VERIFY_ATTEMPTS = 6
-VERIFY_GAP = 8
+# reach the API servers first - so one immediate check would call a perfectly
+# good key broken. A couple of attempts absorb that.
+#
+# Deliberately short. This runs on the thread that asked for player data, which
+# is a browser request from the Settings page as often as it is the bot between
+# matches, and waiting out the full propagation there would hang the interface
+# for the best part of a minute. It buys nothing either: the key is saved
+# whatever this returns, so a key that is merely still spreading will be picked
+# up by the next call. All this decides is which message to show.
+VERIFY_ATTEMPTS = 2
+VERIFY_GAP = 3
 
 
 def _works(token, attempts=VERIFY_ATTEMPTS):
