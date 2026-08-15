@@ -159,6 +159,51 @@ IDLE_MOVE_TILES = 1.5
 # rather than re-attaching to the same idle teammate the moment it steps away.
 IDLE_COMMIT = 6.0
 
+# -- Standing: how many of us are left, and how far in we are -------------
+# Showdown is not one game, it is two. Early, dying costs a placement nobody
+# was going to keep anyway and a kill is worth taking on thin odds. Late, with
+# the team gone, a single lost trade is the whole match - the placement already
+# banked is worth more than the kill on offer. The same fight is correct in the
+# first phase and wrong in the second, so aggression is scaled by both.
+
+# A teammate seen this recently still counts as alive. Nothing on screen says
+# "dead" - a teammate who walks into a bush, off the edge of the view, or
+# behind a wall vanishes exactly like one who died. Waiting a few seconds is
+# what separates the two, since a living one comes back and a dead one does
+# not. Too short and the bot plays the endgame while its team is standing
+# right there; too long and it charges in believing in a team it no longer has.
+MATES_MEMORY = 6.0
+
+# Trio showdown. Used to decide when "some are gone" becomes "all are gone".
+TEAM_SIZE = 3
+
+# The match clock, kept without a match clock: a gap this long between frames
+# means the last match ended and a new one has started.
+MATCH_RESET_GAP = 8.0
+
+# Seconds into a match. Showdown thins out on a schedule - teams meet, trade
+# and die at a fairly steady rate - so elapsed time is a usable stand-in for
+# the placement counter without reading the HUD every frame.
+LATE_AFTER = 75.0
+ENDGAME_AFTER = 135.0
+
+# Gas around the player says the endgame arrived early regardless of the clock:
+# the arena has closed to the point where it is reaching the bot.
+GAS_MEANS_ENDGAME = True
+
+# How much more cautious to be, per phase, alone versus with the team. 1.0 is
+# the tuning above, unchanged. Above 1 retreats sooner, holds further out and
+# chases less; below 1 takes more fights.
+#
+# The one the request was about is CAUTION_ENDGAME_ALONE: top few, team gone,
+# nothing to gain by winning a fight and everything to lose by taking one.
+CAUTION_EARLY_TEAM = 0.85
+CAUTION_EARLY_ALONE = 1.0
+CAUTION_LATE_TEAM = 1.0
+CAUTION_LATE_ALONE = 1.35
+CAUTION_ENDGAME_TEAM = 1.15
+CAUTION_ENDGAME_ALONE = 1.8
+
 
 # ─────────────────────────────────────────────────────────────────────
 #  SETUP
@@ -731,6 +776,79 @@ def enemy_health(enemy_coords):
     return health_of(nearest, True)
 
 
+def match_standing():
+    """(mates_alive, phase, caution) for the fight rules below.
+
+    Both figures are inferred rather than read. The placement counter and the
+    team portraits are on screen, but reading them costs a scan of the HUD on
+    every frame to answer a question that changes a handful of times a match -
+    and it would be one more thing to break when the interface moves. Time and
+    the teammates the bot can already see carry the same information well
+    enough to pick a posture, which is all this is used for.
+
+    Nothing here can fail into recklessness: an unreadable standing gives the
+    cautious answer, not the brave one.
+    """
+    now = time.time()
+    started = persistent_data.get("match_started_at")
+    last = persistent_data.get("standing_seen_at")
+
+    # A long gap between frames is the lobby. Start the clock over, and forget
+    # the previous match's team - carrying it across would have the bot open
+    # the next match believing it is already alone.
+    if started is None or last is None or now - last > MATCH_RESET_GAP:
+        started = now
+        persistent_data["match_started_at"] = now
+        persistent_data["mates_seen_at"] = 0.0
+        persistent_data["mates_seen_count"] = 0
+    persistent_data["standing_seen_at"] = now
+
+    visible = len(teammate_data)
+    if visible:
+        # Only ever revised upward while they are in sight. Two teammates one
+        # frame and one the next is the detector blinking, not a death.
+        persistent_data["mates_seen_at"] = now
+        persistent_data["mates_seen_count"] = max(
+            visible, persistent_data.get("mates_seen_count", 0)
+        )
+
+    since_seen = now - persistent_data.get("mates_seen_at", 0.0)
+    if since_seen <= MATES_MEMORY:
+        mates_alive = persistent_data.get("mates_seen_count", 0)
+    else:
+        # Long enough with nobody in sight to stop counting on them. This is
+        # the "no teammate left" case whether they are dead or simply gone.
+        mates_alive = 0
+    mates_alive = min(mates_alive, TEAM_SIZE - 1)
+
+    elapsed = now - started
+    # Read by key, like everywhere else in this file: the sandbox has no
+    # builtins, so any() is not available here.
+    gas_total = (gas_reading["up"] + gas_reading["down"]
+                 + gas_reading["left"] + gas_reading["right"])
+    gassed = GAS_MEANS_ENDGAME and gas_total > 0
+    if elapsed >= ENDGAME_AFTER or gassed:
+        phase = "endgame"
+    elif elapsed >= LATE_AFTER:
+        phase = "late"
+    else:
+        phase = "early"
+
+    alone = mates_alive == 0
+    caution = {
+        ("early", True): CAUTION_EARLY_ALONE,
+        ("early", False): CAUTION_EARLY_TEAM,
+        ("late", True): CAUTION_LATE_ALONE,
+        ("late", False): CAUTION_LATE_TEAM,
+        ("endgame", True): CAUTION_ENDGAME_ALONE,
+        ("endgame", False): CAUTION_ENDGAME_TEAM,
+    }[(phase, alone)]
+    return mates_alive, phase, caution
+
+
+mates_alive, match_phase, caution = match_standing()
+
+
 def assess_fight(enemy_distance, enemy_coords):
     """Decide whether this fight is worth taking.
 
@@ -746,16 +864,17 @@ def assess_fight(enemy_distance, enemy_coords):
     incoming fire would otherwise impose, and lets it keep fighting - a bot
     that hunts every wounded enemy dies to the second one standing behind them.
     """
+    _, _, caution = match_standing()
     mine = my_health()
     theirs = enemy_health(enemy_coords)
 
     if mine is not None:
-        if mine <= RETREAT_BELOW_HEALTH:
+        if mine <= RETREAT_BELOW_HEALTH * caution:
             # Nothing else matters. At this much health almost any exchange is
             # lethal, and the trade the bot is about to take is one it loses
             # even if it wins.
             return "retreat"
-        if mine <= CAUTIOUS_BELOW_HEALTH and (theirs is None or theirs > mine + 0.15):
+        if mine <= min(CAUTIOUS_BELOW_HEALTH * caution, 0.9) and (theirs is None or theirs > mine + 0.15):
             # Hurt, and not obviously ahead. Stop closing, keep shooting.
             return "hold"
 
@@ -772,15 +891,33 @@ def assess_fight(enemy_distance, enemy_coords):
         and enemies_near <= mates_near + 1
     )
 
-    # Outnumbered. Trading here loses by definition, regardless of aim.
+    # Outnumbered. Trading here loses by definition, regardless of aim. This
+    # one is deliberately NOT scaled by caution: tightening it to "any enemy
+    # nearby is too many" reads as retreat with nobody in the engage radius at
+    # all, and a bot that only ever runs gets chipped down and cornered by the
+    # gas. Declining the even fight is the final rule below; this stays the
+    # rule about being genuinely outgunned.
     if enemies_near > mates_near + OUTNUMBERED_BY and not finishable:
         return "retreat"
 
 
     # Chasing. Past this the bot walks out of its own team's cover and into
     # whatever the enemy is walking toward.
-    if enemy_distance > attack_range * NO_CHASE_BEYOND:
+    if enemy_distance > attack_range * (NO_CHASE_BEYOND / caution):
         return "hold"
+
+    # Everything says the fight is takeable. Whether to actually take it is the
+    # last question, and the answer is not the same in both halves of a match.
+    # Alone at the end, a fight that merely looks even is declined: standing
+    # off keeps the placement, and the enemy still has to come through the same
+    # open ground to reach the bot.
+    if caution >= CAUTION_ENDGAME_ALONE and not finishable:
+        winning = (
+            mine is not None and theirs is not None
+            and mine >= theirs + FINISH_HEALTH_LEAD
+        )
+        if not winning:
+            return "hold"
 
     return "fight"
 

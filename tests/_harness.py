@@ -144,6 +144,9 @@ def base_context(**overrides):
         "projectiles": [],
         "walls": [],
         "odometer": (0.0, 0.0),
+        # No gas anywhere near the player, which is what the engine reports for
+        # most of a match and for every mode that has none.
+        "gas_reading": {"up": 0, "down": 0, "left": 0, "right": 0},
         "persistent_data": {},
         "health_enabled": True,
         "player_health": None,

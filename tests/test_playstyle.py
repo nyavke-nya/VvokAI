@@ -128,11 +128,16 @@ def check_call_signatures(report, tree, play, label):
 # ---------------------------------------------------------------------------
 
 FIGHT_FUNCS = {"assess_fight", "my_health", "enemy_health", "count_within",
-               "pick_target", "health_of_at", "vec_len"}
+               "pick_target", "health_of_at", "vec_len", "match_standing"}
 FIGHT_CONSTS = {"RETREAT_BELOW_HEALTH", "CAUTIOUS_BELOW_HEALTH",
                 "FINISH_BELOW_HEALTH", "FINISH_HEALTH_LEAD",
                 "TARGET_WEAKEST_WITHIN", "ENGAGE_RADIUS_TILES", "OUTNUMBERED_BY",
-                "UNDER_FIRE_SHOTS", "NO_CHASE_BEYOND", "DODGE_MIN_CONFIDENCE"}
+                "UNDER_FIRE_SHOTS", "NO_CHASE_BEYOND", "DODGE_MIN_CONFIDENCE",
+                "MATES_MEMORY", "TEAM_SIZE", "MATCH_RESET_GAP", "LATE_AFTER",
+                "ENDGAME_AFTER", "GAS_MEANS_ENDGAME",
+                "CAUTION_EARLY_TEAM", "CAUTION_EARLY_ALONE",
+                "CAUTION_LATE_TEAM", "CAUTION_LATE_ALONE",
+                "CAUTION_ENDGAME_TEAM", "CAUTION_ENDGAME_ALONE"}
 
 
 class Shot:
@@ -140,8 +145,13 @@ class Shot:
         self.confidence = confidence
 
 
-def fight_context():
+def fight_context(clock=None):
     health = {}
+
+    class Clock:
+        @staticmethod
+        def time():
+            return clock[0] if clock else 1000.0
 
     def nearest_enemy(enemies, position, walls, mode):
         best = best_distance = None
@@ -155,6 +165,7 @@ def fight_context():
     context = base_context(
         find_closest_enemy=nearest_enemy,
         health_of=lambda b, hostile=None: health.get(tuple(b)),
+        time=Clock,
     )
     context["_health"] = health
     return lift(FIGHT_FUNCS, FIGHT_CONSTS, context)
@@ -221,6 +232,97 @@ def check_fight(report):
     situation(context, mine=0.10, enemies=[(1200, 500, 1.0)], mates=[(950, 520, None)])
     report.check("health disabled ignores it entirely", stance(), "fight")
     context["health_enabled"] = True
+
+
+def check_standing(report):
+    """Aggression follows the team you have left and how deep the match is."""
+    clock = [1000.0]
+    context = fight_context(clock)
+    stance = lambda: context["assess_fight"](300.0, (1200.0, 500.0))
+    standing = lambda: context["match_standing"]()
+    GAP = context["MATCH_RESET_GAP"]
+    ENDGAME = context["ENDGAME_AFTER"]
+    MEMORY = context["MATES_MEMORY"]
+
+    def play(seconds, mates=(), enemies=((1200, 500, 1.0),), mine=0.95):
+        """Advance the match one plausible frame gap at a time.
+
+        Stepping the clock in one jump would look like the lobby and silently
+        restart the match, which is exactly what the reset is there to catch.
+        """
+        left = seconds
+        while left > 0:
+            hop = min(GAP / 2.0, left)
+            clock[0] += hop
+            left -= hop
+            situation(context, mine=mine, enemies=list(enemies), mates=list(mates))
+            standing()
+
+    def reset():
+        context["persistent_data"] = {}
+        clock[0] = 1000.0
+
+    report.section("the team you can see is the team you count on")
+    reset()
+    play(10.0, mates=[(950, 520, None)])
+    report.check("a teammate in sight counts", standing()[0], 1)
+
+    play(MEMORY / 2.0, mates=[])
+    report.check("briefly out of sight is not dead", standing()[0], 1)
+
+    play(MEMORY * 2.0, mates=[])
+    report.check("gone long enough is gone", standing()[0], 0)
+
+    report.section("the match phase comes from the clock, and from the gas")
+    reset()
+    play(10.0, mates=[(950, 520, None)])
+    report.check("it opens early", standing()[1], "early")
+
+    play(ENDGAME, mates=[(950, 520, None)])
+    report.check("and ends in the endgame", standing()[1], "endgame")
+
+    reset()
+    play(10.0, mates=[(950, 520, None)])
+    context["gas_reading"] = {"up": 900, "down": 0, "left": 0, "right": 0}
+    report.check("gas reaching the player means endgame whatever the clock says",
+                 standing()[1], "endgame")
+    context["gas_reading"] = {"up": 0, "down": 0, "left": 0, "right": 0}
+
+    report.section("top few, team gone: take the placement, not the fight")
+    reset()
+    play(10.0, mates=[(950, 520, None)])
+    situation(context, mine=0.95, enemies=[(1200, 500, 1.0)], mates=[(950, 520, None)])
+    report.check("early with the team, an even 1v1 is on", stance(), "fight")
+
+    reset()
+    play(10.0, mates=[(950, 520, None)])
+    play(ENDGAME, mates=[])
+    situation(context, mine=0.95, enemies=[(1200, 500, 1.0)], mates=[])
+    report.check("alone at the end, the same fight is declined", stance(), "hold")
+
+    situation(context, mine=0.95, enemies=[(1200, 500, 0.15)], mates=[])
+    report.check("but a dying enemy is still worth finishing", stance(), "fight")
+
+    situation(context, mine=0.95, enemies=[(1200, 500, 1.0), (1260, 560, 1.0)], mates=[])
+    report.check("and two of them is still a retreat", stance(), "retreat")
+
+    report.section("having the team at the end keeps the bot in the fight")
+    reset()
+    play(10.0, mates=[(950, 520, None)])
+    play(ENDGAME, mates=[(950, 520, None)])
+    situation(context, mine=0.95, enemies=[(1200, 500, 1.0)], mates=[(950, 520, None)])
+    report.check("endgame with a teammate, the even 1v1 is back on", stance(), "fight")
+
+    report.section("a new match does not inherit the last one")
+    reset()
+    play(10.0, mates=[(950, 520, None)])
+    play(ENDGAME, mates=[])
+    report.check("ends alone in the endgame", standing()[1], "endgame")
+
+    clock[0] += GAP * 2.0
+    situation(context, mine=0.95, enemies=[(1200, 500, 1.0)], mates=[(950, 520, None)])
+    report.check("the next match opens early again", standing()[1], "early")
+    report.check("with its team counted", standing()[0], 1)
 
     report.section("shoot whoever is closest to dying, not closest")
     situation(context, mine=1.0, enemies=[(1000, 500, 0.9), (1200, 500, 0.15)])
@@ -510,6 +612,7 @@ def main():
     check_walls(report)
     check_breakout(report)
     check_fight(report)
+    check_standing(report)
     check_idle(report)
     return report.finish()
 
