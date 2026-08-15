@@ -133,6 +133,7 @@ FIGHT_CONSTS = {"RETREAT_BELOW_HEALTH", "CAUTIOUS_BELOW_HEALTH",
                 "FINISH_BELOW_HEALTH", "FINISH_HEALTH_LEAD",
                 "TARGET_WEAKEST_WITHIN", "ENGAGE_RADIUS_TILES", "OUTNUMBERED_BY",
                 "UNDER_FIRE_SHOTS", "NO_CHASE_BEYOND", "DODGE_MIN_CONFIDENCE",
+                "CAUTIOUS_CEILING",
                 "MATES_MEMORY", "TEAM_SIZE", "MATCH_RESET_GAP", "LATE_AFTER",
                 "ENDGAME_AFTER", "GAS_MEANS_ENDGAME",
                 "CAUTION_EARLY_TEAM", "CAUTION_EARLY_ALONE",
@@ -305,6 +306,26 @@ def check_standing(report):
 
     situation(context, mine=0.95, enemies=[(1200, 500, 1.0), (1260, 560, 1.0)], mates=[])
     report.check("and two of them is still a retreat", stance(), "retreat")
+
+    report.section("caution changes which fights are taken, it does not freeze")
+    # The first attempt at this pushed the "stop closing" threshold to 90%
+    # health, so the bot held position in nearly every exchange. Holding is
+    # strafing on the spot, it nets no displacement, and the stall detector
+    # then reports being stuck - 24% of in-match frames against 15% before.
+    ceiling = context["CAUTIOUS_CEILING"]
+    worst = max(context["CAUTION_ENDGAME_ALONE"], context["CAUTION_LATE_ALONE"])
+    report.check("even at its most cautious the hold threshold stays sane",
+                 min(context["CAUTIOUS_BELOW_HEALTH"] * worst, ceiling) <= 0.65,
+                 True)
+
+    reset()
+    play(10.0, mates=[(950, 520, None)])
+    play(ENDGAME, mates=[])
+    situation(context, mine=0.80, enemies=[(1200, 500, 1.0)], mates=[])
+    report.check("healthy enough, alone at the end, it still closes",
+                 stance() in ("fight", "hold"), True)
+    situation(context, mine=0.95, enemies=[(1200, 500, 0.55)], mates=[])
+    report.check("and a weaker enemy is still engaged", stance(), "fight")
 
     report.section("having the team at the end keeps the bot in the fight")
     reset()

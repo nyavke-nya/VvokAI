@@ -198,12 +198,24 @@ GAS_MEANS_ENDGAME = True
 #
 # The one the request was about is CAUTION_ENDGAME_ALONE: top few, team gone,
 # nothing to gain by winning a fight and everything to lose by taking one.
+# Measured after the first attempt at these: 1.8 alone in the endgame pushed
+# the "stop closing and hold" threshold to 90% health, so the bot held position
+# in almost every exchange. Holding means strafing on the spot, which nets no
+# displacement, which the stall detector reads as being stuck - 24% of in-match
+# frames against 15% before - and the break-out sweep then fought the tactical
+# vector for control. Overruled dodges went 0.3% -> 1.3% the same session.
+#
+# Caution should change WHICH fights are taken, not glue the bot in place.
 CAUTION_EARLY_TEAM = 0.85
 CAUTION_EARLY_ALONE = 1.0
 CAUTION_LATE_TEAM = 1.0
-CAUTION_LATE_ALONE = 1.35
-CAUTION_ENDGAME_TEAM = 1.15
-CAUTION_ENDGAME_ALONE = 1.8
+CAUTION_LATE_ALONE = 1.15
+CAUTION_ENDGAME_TEAM = 1.1
+CAUTION_ENDGAME_ALONE = 1.3
+
+# Ceiling on the scaled "stop closing" threshold. Without it, caution alone
+# decides the bot is too hurt to approach anything, at any health short of full.
+CAUTIOUS_CEILING = 0.62
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -876,7 +888,7 @@ def assess_fight(enemy_distance, enemy_coords):
             # lethal, and the trade the bot is about to take is one it loses
             # even if it wins.
             return "retreat"
-        if mine <= min(CAUTIOUS_BELOW_HEALTH * caution, 0.9) and (theirs is None or theirs > mine + 0.15):
+        if mine <= min(CAUTIOUS_BELOW_HEALTH * caution, CAUTIOUS_CEILING) and (theirs is None or theirs > mine + 0.15):
             # Hurt, and not obviously ahead. Stop closing, keep shooting.
             return "hold"
 
