@@ -145,6 +145,10 @@ class DodgeLog:
                 "verdict": "DETECTED_TOO_LATE" if too_late else "in_time",
                 "from_enemy": projectile.origin is not None,
                 "origin_reason": getattr(projectile, "origin_reason", "unknown"),
+                # Taken early because waiting would have cost the dodge. Worth
+                # separating in the report: if these are mostly still too late,
+                # the problem is capture rate rather than the confirmation gate.
+                "urgent": bool(getattr(projectile, "urgent", False)),
             })
 
     def log_decision(self, decision, player_center, player_speed, tactical, applied):

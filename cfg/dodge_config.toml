@@ -207,12 +207,37 @@ wall_mask_inflate_tiles = 0.15
 # enemy-origin gate carries most of the noise rejection anyway.
 min_confirm_hits = 2
 
+# Take a track before it has the hits above, when the shot would land first.
+#
+# Confirmation buys certainty with frames. That is worth doing while there is
+# still time to step aside afterwards, and pointless once there is not - the
+# evidence then arrives for a bot that has already been hit. On a full session
+# 822 shots were missed by a median of 39 ms while their confirmation had cost
+# a median of 88 ms: the tracker was still gathering proof after the shot had
+# gone past.
+#
+# So when the time left is already shorter than stepping clear takes, the
+# remaining hit requirement is dropped. Only the COUNT is relaxed. Speed,
+# straightness, and whether the track came off an enemy heading this way are
+# all still checked, and min_confirm_hits is still the floor - this makes
+# confirmation earlier, not looser.
+#
+# Set to false to go back to always waiting for the full evidence.
+urgent_confirm = true
+
+# Slack, in frame intervals, added to the time needed to step clear before a
+# track counts as urgent. 0 is the strictest reading - act only when the next
+# frame is provably too late. Raising it catches more real shots at the cost of
+# occasional sidesteps away from something that was not a threat; a sidestep
+# costs a moment of position, a hit costs a third of a health bar.
+urgent_confirm_slack = 1.0
+
 # Frames a track may go unmatched before it is dropped.
 max_missed_frames = 3
 
 # Speed window in full-frame px/s. Below the minimum it is a drifting particle
 # or a walking brawler; above the maximum it is a matching error.
-min_speed = 260.0
+min_speed = 100
 max_speed = 4200.0
 
 # Association gate: a blob matches a track if it is within
@@ -285,7 +310,7 @@ horizon = 0.55
 # takeover holds the joystick under priority for `commit_time`, during which
 # ordinary movement is locked out. Push it too high and the bot spends a
 # firefight evading instead of playing.
-critical_time = 0.45
+critical_time = 0.3
 
 # Candidate escape directions evaluated per frame, evenly spread over 360
 # degrees. 16 gives 22.5 degree resolution, which is finer than the joystick.

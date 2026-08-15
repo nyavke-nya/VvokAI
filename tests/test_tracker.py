@@ -92,8 +92,82 @@ def fly(speed, fps, noise_blobs, seed=3, seed_speed=None):
     }
 
 
+def urgency(distance, speed, player_speed=330.0, interval=1 / 30.0,
+            closing=True, hits=2, enabled=True, slack=1.0):
+    """Would the tracker take this track before it had the usual evidence?
+
+    Built directly rather than flown, so each input can be moved on its own.
+    """
+    config = DodgeConfig(load_toml_as_dict("cfg/dodge_config.toml"), 1.0, 54.0)
+    config.urgent_confirm = enabled
+    config.urgent_confirm_slack = slack
+    tracker = ProjectileTracker(config)
+    tracker._frame_interval = interval
+    tracker._player_speed = player_speed
+
+    player = (W / 2, H / 2)
+    context = FrameContext(
+        player_box=[player[0] - 40, player[1] - 55, player[0] + 40, player[1] + 55],
+        enemies=[],
+        stamp=0.0,
+    )
+
+    # Directly left of the player, flying right at it - or straight up past it.
+    x = player[0] - distance
+    y = player[1]
+    velocity = (speed, 0.0) if closing else (0.0, -speed)
+
+    track = tracker._new_track(1000.0, x, y, 16.0, 0.9, []) if hasattr(
+        tracker, "_new_track") else None
+    if track is None:
+        from dodge.tracker import _Track
+        track = _Track(1, 1000.0, x, y, 16.0, 0.9, [])
+    track.matched = hits
+    track.velocity = velocity
+
+    return tracker._waiting_is_fatal(track, velocity, speed, context, 1000.0)
+
+
+def check_urgency(report):
+    report.section("evidence is only worth waiting for while there is time")
+
+    # 330 px/s player, 55 px half-height + margin + 16 px shot: ~0.25 s to clear.
+    report.check("a shot 2 seconds away waits for the usual proof",
+                 urgency(distance=1600, speed=800), False)
+    report.check("the same shot close enough to land first is taken now",
+                 urgency(distance=200, speed=800), True)
+
+    report.section("it must not fire on things that are not coming at us")
+    report.check("a shot crossing in front is never urgent",
+                 urgency(distance=200, speed=800, closing=False), False)
+    report.check("and neither is a stationary blob",
+                 urgency(distance=200, speed=0.0), False)
+
+    report.section("urgency follows the bot, not a constant")
+    # A slower bot needs longer to clear, so the same shot becomes urgent sooner.
+    report.check("a slow bot treats a mid-range shot as urgent",
+                 urgency(distance=420, speed=800, player_speed=120), True)
+    report.check("a fast one still has time for the same shot",
+                 urgency(distance=420, speed=800, player_speed=900), False)
+
+    report.section("it can be turned off, and it respects the floor")
+    report.check("disabled in config, nothing is ever urgent",
+                 urgency(distance=200, speed=800, enabled=False), False)
+    report.check("no frame timing yet means no urgency either",
+                 urgency(distance=200, speed=800, interval=0.0), False)
+
+    # Stepping clear takes ~252 ms here, so at 800 px/s the cutoff is 228 px at
+    # 30 fps and 301 px at 8 fps. 270 px sits between the two.
+    report.section("a slower frame rate makes waiting cost more")
+    report.check("at 30 fps this shot can still wait",
+                 urgency(distance=270, speed=800, slack=0.0), False)
+    report.check("at 8 fps the next frame is already too late",
+                 urgency(distance=270, speed=800, interval=1 / 8.0, slack=0.0), True)
+
+
 def main():
     report = Failures("tracker association")
+    check_urgency(report)
 
     report.section("a shot must be followed as ONE track, at every speed and rate")
     for speed in (700, 1500, 2600):

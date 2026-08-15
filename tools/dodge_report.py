@@ -108,6 +108,41 @@ def main():
         print(f"  seen too late to dodge : {len(late)} ({len(late) / len(shots) * 100:.0f}%)")
         print(f"  traced to an enemy box : {from_enemy} ({from_enemy / len(shots) * 100:.0f}%)")
 
+        # Shots taken before the usual evidence had arrived, because waiting
+        # would have cost the dodge. If these are mostly still too late the
+        # confirmation gate was never the bottleneck - the capture rate is.
+        urgent = [s for s in shots if s.get("urgent")]
+        if urgent:
+            urgent_late = sum(1 for s in urgent if s.get("verdict") == "DETECTED_TOO_LATE")
+            saved = len(urgent) - urgent_late
+            print(f"  confirmed early to make it : {len(urgent)} "
+                  f"({len(urgent) / len(shots) * 100:.0f}%), "
+                  f"{saved} of them in time")
+
+        # How much of the deficit was the tracker's to give back. A shot that
+        # needed more time than confirmation cost was never winnable, however
+        # fast the detector runs; separating the two stops tuning effort going
+        # into shots that physics had already decided.
+        winnable = hopeless = 0
+        for shot in late:
+            clear = shot.get("time_to_clear_hitbox")
+            arrival = shot.get("time_to_reach")
+            age = shot.get("age_when_confirmed")
+            if clear is None or arrival is None or age is None:
+                continue
+            deficit = clear - arrival
+            if deficit <= 0:
+                continue
+            if deficit < age:
+                winnable += 1
+            else:
+                hopeless += 1
+        if winnable or hopeless:
+            print(f"    of those, winnable   : {winnable} "
+                  f"(faster confirmation would have saved them)")
+            print(f"    undodgeable anyway   : {hopeless} "
+                  f"(needed more time than detection ever costs)")
+
         # Crediting a shot to an enemy confirms it in 3 frames instead of 5.
         # When this ratio is low the bot is spending ~2 extra frames on every
         # shot, which is the difference between dodging and being hit.

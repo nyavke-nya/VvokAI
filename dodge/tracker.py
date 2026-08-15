@@ -74,10 +74,10 @@ class Projectile:
     """A confirmed incoming shot, in full-frame pixel coordinates."""
 
     __slots__ = ("id", "x", "y", "vx", "vy", "radius", "hits", "age", "origin",
-                 "confidence", "origin_reason")
+                 "confidence", "origin_reason", "urgent")
 
     def __init__(self, track_id, x, y, vx, vy, radius, hits, age, origin, confidence,
-                 origin_reason="unknown"):
+                 origin_reason="unknown", urgent=False):
         self.id = track_id
         self.x = x
         self.y = y
@@ -91,6 +91,10 @@ class Projectile:
         # Why this shot was or was not credited to an enemy box; drives the
         # 3-frame vs 5-frame confirmation path.
         self.origin_reason = origin_reason
+        # Taken before it had the usual evidence, because waiting for the rest
+        # would have cost more time than the dodge had left. Logged so the
+        # report can show how much of the dodging this is responsible for.
+        self.urgent = urgent
 
     @property
     def speed(self):
@@ -155,7 +159,8 @@ class FrameContext:
 class _Track:
     __slots__ = ("id", "samples", "missed", "radius", "colour_score",
                  "origin_enemies", "origin_pos", "confirmed", "born_at",
-                 "origin_reason", "velocity", "seed_dir", "matched", "peak_speed")
+                 "origin_reason", "velocity", "seed_dir", "matched", "peak_speed",
+                 "urgent_confirm")
 
     def __init__(self, track_id, stamp, x, y, radius, colour_score, enemies, seed_dir=None):
         self.id = track_id
@@ -170,6 +175,10 @@ class _Track:
         self.origin_enemies = enemies
         self.origin_pos = (x, y)
         self.confirmed = False
+        # Set when the track was taken before it had the hits normally wanted,
+        # because the shot would have landed first. Recorded so the log can
+        # separate these from ordinary confirmations.
+        self.urgent_confirm = False
         self.born_at = stamp
         self.origin_reason = "pending"
         self.velocity = (0.0, 0.0)
@@ -264,6 +273,9 @@ class ProjectileTracker:
         self._prev_gray_half = None
         self._prev_stamp = 0.0
         self._prev_shift = (0.0, 0.0)
+        # Smoothed gap between frames, i.e. what waiting for one more sample
+        # costs. Zero until two frames have been seen.
+        self._frame_interval = 0.0
         self._patches = None
         self._patch_shape = None
         self._static_mask = None
@@ -391,6 +403,14 @@ class ProjectileTracker:
         if self._prev_gray is None or self._prev_gray_half is None or dt <= 0 or dt > 0.5:
             self._roll(gray, gray_half, stamp, (0.0, 0.0))
             return [], (0.0, 0.0)
+
+        # What one more sample costs, measured rather than assumed - the rate
+        # swings with the emulator and with what is on screen. Smoothed, because
+        # a single long frame should not convince the confirmation gate that
+        # every shot is now urgent. Kept here so it does not depend on whether
+        # _collect happens to run before or after _roll.
+        self._frame_interval = (dt if not self._frame_interval
+                                else self._frame_interval * 0.7 + dt * 0.3)
 
         shift, reliable = self._estimate_camera_shift(self._prev_gray_half, gray_half)
         if not reliable:
@@ -1006,6 +1026,60 @@ class ProjectileTracker:
 
         return True, None, config.unknown_confirm_hits
 
+    def _waiting_is_fatal(self, track, velocity, speed, context, stamp):
+        """True when one more sample would arrive after the shot does.
+
+        The confirmation gate spends frames buying certainty. That is the right
+        trade while the shot is far enough away that the bot can still step
+        clear afterwards, and the wrong one the moment it is not: past that
+        point the extra evidence is delivered to a bot that has already been
+        hit. On a real session 822 shots were missed by a median of 39 ms with
+        88 ms of confirmation behind them - all of that certainty arrived too
+        late to be spent.
+
+        So the question asked here is not "is this definitely a shot" but "does
+        waiting still cost nothing". Time to reach us is compared against the
+        time needed to clear our own hitbox, plus the frame we would spend
+        waiting. When that is already lost, the caller stops requiring extra
+        hits - the checks on what the track IS are untouched.
+        """
+        config = self.config
+        if not config.urgent_confirm or speed <= 1e-6:
+            return False
+        interval = self._frame_interval
+        if interval <= 0.0:
+            return False
+
+        player_box = context.player_box
+        if not player_box or len(player_box) < 4:
+            return False
+        px = (player_box[0] + player_box[2]) * 0.5
+        py = (player_box[1] + player_box[3]) * 0.5
+
+        last_t, last_x, last_y = track.last
+        lead = max(stamp - last_t, 0.0)
+        x = last_x + velocity[0] * lead
+        y = last_y + velocity[1] * lead
+
+        dx, dy = px - x, py - y
+        distance = math.hypot(dx, dy)
+        if distance <= 1e-6:
+            return True
+        # Only the part of the velocity actually closing on us counts; a shot
+        # crossing in front is not getting closer however fast it travels.
+        closing = (dx * velocity[0] + dy * velocity[1]) / distance
+        if closing <= 1e-6:
+            return False
+
+        time_to_reach = distance / closing
+        # How long stepping out of the way takes, from what the bot is actually
+        # doing rather than a constant: its own measured speed, its own size.
+        half_height = max((player_box[3] - player_box[1]) * 0.5, 1.0)
+        clearance = half_height + config.safety_margin + track.radius
+        escape = clearance / max(self._player_speed, 1e-6)
+
+        return time_to_reach <= escape + interval * (1.0 + config.urgent_confirm_slack)
+
     def _collect(self, stamp, context):
         config = self.config
         projectiles = []
@@ -1041,9 +1115,20 @@ class ProjectileTracker:
             self._measure_own_shot(track, velocity, speed, context)
 
             accepted, origin, required_hits = self._check_origin(track, velocity, context)
-            if not accepted or track.hits < required_hits:
+            if not accepted:
                 rejects["origin"] += 1
                 continue
+            if track.hits < required_hits:
+                # Short of the evidence normally wanted. Take it anyway if the
+                # shot lands before the next sample could be used - the choice
+                # there is between acting on what is known and being hit while
+                # certain. Never below min_confirm_hits: one blob is not a
+                # trajectory, and nothing here can invent one.
+                if not (track.hits >= config.min_confirm_hits
+                        and self._waiting_is_fatal(track, velocity, speed, context, stamp)):
+                    rejects["origin"] += 1
+                    continue
+                track.urgent_confirm = True
 
             # Confirming on two samples buys ~35 ms of reaction time, which
             # matters: only a third of shots are ever seen with enough time to
@@ -1087,6 +1172,7 @@ class ProjectileTracker:
                 origin=origin,
                 confidence=confidence,
                 origin_reason=track.origin_reason,
+                urgent=track.urgent_confirm,
             ))
 
         self.stats["rejects"] = rejects
