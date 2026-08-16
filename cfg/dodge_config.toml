@@ -327,7 +327,7 @@ horizon = 0.55
 # takeover holds the joystick under priority for `commit_time`, during which
 # ordinary movement is locked out. Push it too high and the bot spends a
 # firefight evading instead of playing.
-critical_time = 0.3
+critical_time = 0.45
 
 # Candidate escape directions evaluated per frame, evenly spread over 360
 # degrees. 16 gives 22.5 degree resolution, which is finer than the joystick.
