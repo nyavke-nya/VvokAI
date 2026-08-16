@@ -558,8 +558,14 @@ def check_breakout(report):
     report.section("a wedged bot must not hold one heading forever")
     # Sampled finely: the sweep advances every BREAK_OUT_SWEEP seconds, so
     # coarse sampling can step straight over one of the headings.
-    seen = {heading_after(t / 10.0) for t in range(0, 60)}
-    report.at_least("the sweep covers several headings in six seconds",
+    #
+    # Thirteen seconds, not six. The sweep used to turn every 0.7s, which
+    # covered the circle quickly and escaped nothing: a session logged 22 and
+    # 23 second stalls with all eight headings tried and world displacement at
+    # 0.00 throughout. A heading has to be held long enough to walk before
+    # trying the next one is worth anything.
+    seen = {heading_after(t / 10.0) for t in range(0, 130)}
+    report.at_least("the sweep covers the circle within thirteen seconds",
                     len(seen), 6)
     report.check("straight at the target is tried first", heading_after(0.0), 0)
     report.check("and straight back is reached", 180 in seen or -180 in seen, True)
@@ -589,7 +595,7 @@ def check_breakout(report):
     # too and nothing ever tried anything else.
     away_from_edge = (-100.0, 0.0)
     swept = set()
-    for tenth in range(60):
+    for tenth in range(130):
         context["stuck_for"] = tenth / 10.0
         vector = context["sweep_from"](away_from_edge)
         swept.add(round(math.degrees(math.atan2(vector[1], vector[0]))))

@@ -68,8 +68,14 @@ BREAK_OUT_AFTER = 0.7
 # target sat on the far side of the wall, that meant leaning on the same spot
 # indefinitely: one session logged 44 seconds of held stick with the world not
 # moving a pixel. Sweeping guarantees the whole circle is tried within about
-# six seconds.
-BREAK_OUT_SWEEP = 0.7
+# twelve seconds.
+#
+# 0.7s per heading was tried and escaped nothing: a session logged 22 and 23
+# second stalls with all eight headings tried and world displacement at 0.00
+# throughout. Turning that fast is indistinguishable from spinning on the spot
+# - the game never gets a heading held long enough to accelerate. 1.5s lets
+# the brawler actually walk, and eight headings still cover the circle in 12s.
+BREAK_OUT_SWEEP = 1.5
 
 # ── Spacing, as fractions of the brawler's own attack range ──────────────
 # The bot holds the [NEAR, FAR] band: inside it, it strafes rather than closing,
@@ -494,7 +500,7 @@ def break_out_heading(target):
     logic could ever notice.
 
     The sweep widens and alternates sides, ending with straight back the way we
-    came, so the entire circle is covered in about six seconds.
+    came, so the entire circle is covered in about twelve seconds.
 
     Measured obstruction is the only filter used. The wall model is not
     consulted here on purpose - it is evidently wrong at this moment, or the
@@ -524,8 +530,8 @@ def sweep_from(straight):
     #
     # Time alone is stable by construction: one heading, held for
     # BREAK_OUT_SWEEP seconds, then the next. The whole circle is still covered
-    # in about six seconds, and a heading that happens to be blocked costs one
-    # step rather than the ability to hold any heading at all.
+    # in about twelve seconds, and a heading that happens to be blocked costs
+    # one step rather than the ability to hold any heading at all.
     return rotate_movement(straight, offsets[step])
 
 
