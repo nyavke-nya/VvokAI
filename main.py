@@ -85,6 +85,11 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
             self.runtime_control = runtime_control
             self.Stage_manager = StageManager(data, self.lobby_automator, self.window_controller, self.playstyle_info, self.get_latest_state, runtime_control=runtime_control)
             self.states_requiring_data = ["lobby"]
+            # Eight minutes, not thirty: this fires restart_brawl_stars() when
+            # the player model has not been seen for this long, and loading
+            # screens, matchmaking and brawler select all regularly exceed 30s
+            # without a detection. At 30 the bot restarts the game in the
+            # middle of perfectly normal waits.
             self.no_detections_action_threshold = 60 * 8
             self.state = None
             self.stop_event = stop_event
@@ -93,6 +98,8 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
             self.max_cached_state_age = 1.0
             self.state_checker_stop_event = threading.Event()
             self.state_checker_thread = None
+            self.crash_check_stop_event = threading.Event()
+            self.crash_check_thread = None
             self.update_trophy_observer()
 
             self.run_for_minutes = int(load_toml_as_dict("cfg/general_config.toml")['run_for_minutes'])
@@ -165,6 +172,7 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
         def stop_gracefully(self):
             cprint("Stop requested from UI - shutting down gracefully", "#AAE5A4")
             self.stop_state_checker()
+            self.stop_crash_watchdog()
             if self.Play.dodge_service is not None:
                 self.Play.dodge_service.stop()
             # priority=True so a dodge that grabbed the joystick a moment ago
@@ -273,23 +281,53 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
                 self.time_since_last_webhook_ping = current_time
                 print(f"Sent regular webhook ping after {self.webhook_ping_every_minutes} minutes.")
 
+        def start_crash_watchdog(self):
+            """Run the crash check on its own thread, not in the bot loop.
+
+            The check is a blocking ADB shell round-trip (app_current), which
+            can cost anywhere from a few to a few hundred milliseconds
+            depending on how busy the emulator is. Called inline, as it used
+            to be, it froze detection, playstyle and joystick output for that
+            long every 2.4 s - a periodic stutter visible as the bot briefly
+            ignoring everything, mid-fight included.
+            """
+            if self.crash_check_thread and self.crash_check_thread.is_alive():
+                return
+            self.crash_check_stop_event.clear()
+            self.crash_check_thread = threading.Thread(
+                target=self.crash_watchdog_loop,
+                daemon=True,
+                name="pyla-crash-watchdog"
+            )
+            self.crash_check_thread.start()
+
+        def stop_crash_watchdog(self):
+            self.crash_check_stop_event.set()
+            if self.crash_check_thread and self.crash_check_thread.is_alive():
+                self.crash_check_thread.join(timeout=1.0)
+
+        def crash_watchdog_loop(self):
+            while not self.crash_check_stop_event.is_set():
+                if self.should_stop():
+                    return
+                self.check_and_handle_brawl_stars_crash()
+                self.crash_check_stop_event.wait(self.check_if_brawl_stars_crashed_timer)
+
         def check_and_handle_brawl_stars_crash(self):
-            c_time = time.time()
-            if c_time - self.time_since_checked_if_brawl_stars_crashed > self.check_if_brawl_stars_crashed_timer:
-                try:
-                    opened_app = self.window_controller.device.app_current().package.strip()
-                    if not self.window_controller.is_brawl_stars_running():
-                        print(f"Brawl stars has crashed, {opened_app} is the app opened ! Restarting...")
-                        self.window_controller.device.app_start(self.window_controller.BRAWL_STARS_PACKAGE)
-                        time.sleep(3)
-                        self.time_since_checked_if_brawl_stars_crashed = time.time()
-                    else:
-                        self.time_since_checked_if_brawl_stars_crashed = c_time
-                except AdbError:
-                    print("There was an error checking if Brawl Stars is running. Attempting to reconnect scrcpy...")
-                    if not self.window_controller.reconnect_scrcpy():
-                        print("Reconnect failed -- restarting Brawl Stars")
-                        self.restart_brawl_stars()
+            try:
+                opened_app = self.window_controller.device.app_current().package.strip()
+                if not self.window_controller.is_brawl_stars_running():
+                    print(f"Brawl stars has crashed, {opened_app} is the app opened ! Restarting...")
+                    self.window_controller.device.app_start(self.window_controller.BRAWL_STARS_PACKAGE)
+                    time.sleep(3)
+                    self.time_since_checked_if_brawl_stars_crashed = time.time()
+                else:
+                    self.time_since_checked_if_brawl_stars_crashed = time.time()
+            except AdbError:
+                print("There was an error checking if Brawl Stars is running. Attempting to reconnect scrcpy...")
+                if not self.window_controller.reconnect_scrcpy():
+                    print("Reconnect failed -- restarting Brawl Stars")
+                    self.restart_brawl_stars()
 
         def main(self):
             s_time = time.time()
@@ -371,7 +409,7 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
                         print(f"{c / elapsed:.2f} IPS")
                     s_time = t_now
                     c = 0
-                self.check_and_handle_brawl_stars_crash()
+                self.start_crash_watchdog()
                 frame = self.window_controller.screenshot()
 
                 _, last_ft = self.window_controller.get_latest_frame()
