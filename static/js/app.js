@@ -1009,6 +1009,7 @@ function renderProfile() {
 
     if (!p || !p.matches) {
         view.innerHTML = `
+            <div class="profile-stack">
             <section class="panel">
                 <div class="panel-header">
                     <div>
@@ -1018,7 +1019,8 @@ function renderProfile() {
                         match history, so it fills in as the bot plays.</p>
                     </div>
                 </div>
-            </section>`;
+            </section>
+            </div>`;
         return;
     }
 
@@ -1030,6 +1032,7 @@ function renderProfile() {
         : "";
 
     view.innerHTML = `
+        <div class="profile-stack">
         <section class="panel profile-hero">
             <div class="panel-header">
                 <div>
@@ -1068,6 +1071,7 @@ function renderProfile() {
         ${profileTable("Brawlers", p.brawlers, "brawlers")}
         ${profileTable("Playstyles", p.playstyles, "playstyles")}
         ${profileTable("Gamemodes", p.gamemodes, "gamemodes")}
+        </div>
     `;
 }
 

@@ -1130,7 +1130,7 @@ textarea:focus {
        than the one above it and the block reads as ragged rather than as a
        grid. */
     grid-auto-rows: 1fr;
-    gap: 14px;
+    gap: 18px;
     padding: 4px 2px 2px;
 }
 
@@ -1220,7 +1220,11 @@ textarea:focus {
 .cyc-chart {
     display: flex;
     align-items: flex-end;
-    gap: 4px;
+    /* 4px between 34px columns was a seam, not a gap - the bars read as one
+       solid block with lines drawn on it. The correction overshot to a 21px
+       gap around an 18px bar, which is more air than data. Roughly two parts
+       bar to one part space is what a bar chart is supposed to look like. */
+    gap: 6px;
     height: 150px;
     padding: 4px 2px 0;
     overflow-x: auto;
@@ -1243,8 +1247,13 @@ textarea:focus {
 }
 
 .cyc-bar {
-    width: 100%;
-    border-radius: 5px 5px 0 0;
+    /* Narrower than its column, and centred, so the space between bars comes
+       from the bar itself rather than only from the gap. Twenty-four columns
+       across a panel leaves each one narrow; the bar has to give some of that
+       back or the chart is a wall. */
+    width: 78%;
+    margin: 0 auto;
+    border-radius: 6px 6px 0 0;
     background: var(--accent, #7aa2ff);
     min-height: 0;
 }
@@ -1263,7 +1272,7 @@ textarea:focus {
 .form-strip {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 9px;
     padding: 4px 2px;
 }
 
@@ -1271,9 +1280,18 @@ textarea:focus {
     width: 20px;
     height: 20px;
     border-radius: 6px;
+    flex: 0 0 auto;
     background: var(--accent, #7aa2ff);
 }
 
 .form-pip.win { background: var(--good, #4ade80); }
 .form-pip.loss { background: var(--bad, #f87171); }
 .form-pip.draw { background: rgba(160, 160, 160, 0.6); }
+
+/* Panels do not space themselves - every other view wraps them in a grid that
+   does it (the Dashboard uses .dash-grid, gap 24px). The profile emitted bare
+   sibling sections, so they sat flush against one another. */
+.profile-stack {
+    display: grid;
+    gap: 24px;
+}
