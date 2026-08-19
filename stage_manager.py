@@ -70,8 +70,13 @@ class StageManager:
         self.matches_since_last_webhook_ping = 0
         self.ping_every_x_match = load_toml_as_dict("cfg/webhook_config.toml")['ping_every_x_match']
         self.runtime_control = runtime_control
-        if early_access:
-            self.player_tag = load_toml_as_dict("./cfg/general_config.toml")['player_tag']
+        # Always read, never conditionally. This used to be set only when the
+        # paid module was installed, so without it the attribute did not exist
+        # at all and anything that touched it raised AttributeError. The tag is
+        # plain config and the API path needs it either way.
+        self.player_tag = str(
+            load_toml_as_dict("./cfg/general_config.toml").get('player_tag', "") or ""
+        ).strip()
         self.ping_when_stuck = load_toml_as_dict("cfg/webhook_config.toml")["ping_when_stuck"]
         self.playstyle_info = playstyle_info
         self.get_latest_state = state_getting
@@ -105,24 +110,74 @@ class StageManager:
         trophy_value = int(numbers)
         return trophy_value
 
+    def resync_from_api(self, when):
+        """Take the trophy count from the API instead of from our own running sum.
+
+        Trophies are otherwise only ever a local total: a starting number plus
+        every delta this bot believed it earned. Any delta it got wrong - a
+        match it misread, a result it never saw, a game played by hand between
+        sessions - stays wrong forever and the push target drifts with it.
+
+        Two things used to stop this running at all.
+
+        It was behind `if early_access`, the paid module, which is not part of
+        this fork - so for everyone here the resync simply never happened. The
+        fallbacks at the top of this file already provide both functions from
+        brawl_api, so there is nothing to gate on.
+
+        And it then required BOTH trophies and a win streak to be present. The
+        official API does not publish per-brawler win streaks and never will;
+        get_brawler_stats documents that it returns None for the streak. So the
+        condition could not be true, and the trophy figure sitting right next
+        to it - which the API does publish, and which is the whole point - was
+        thrown away on account of a value nobody can supply.
+
+        They are now judged separately: the trophy count is taken whenever it
+        arrives, and the streak is left exactly as it was when the API has
+        nothing to say about it.
+        """
+        if not self.player_tag:
+            return
+
+        # The bot's own cache would happily answer with the figure from before
+        # the match that just finished, which is precisely the number being
+        # corrected here.
+        try:
+            from brawl_api import clear_cache
+            clear_cache()
+        except (ImportError, ModuleNotFoundError):
+            pass
+
+        player_info = get_player_info(self.player_tag)
+        if not player_info:
+            print(f"Could not reach the API to refresh stats ({when}).")
+            return
+
+        current_brawler = self.brawlers_pick_data[0]['brawler']
+        trophies, win_streak = get_brawler_stats(player_info, current_brawler)
+
+        if trophies is not None:
+            if trophies != self.Trophy_observer.current_trophies:
+                print(f"Trophies resynced from the API ({when}): "
+                      f"{self.Trophy_observer.current_trophies} -> {trophies}")
+            self.Trophy_observer.current_trophies = trophies
+            if self.brawlers_pick_data[0].get('type') == "trophies":
+                self.brawlers_pick_data[0]["trophies"] = trophies
+                save_brawler_data(self.brawlers_pick_data)
+
+        # Only when the API actually knows. None means "no information", and
+        # overwriting a real streak with it would reset the count every match.
+        if win_streak is not None:
+            self.Trophy_observer.win_streak = win_streak
+
     def start_game(self):
         if self._should_stop() or self._should_pause():
             return
 
-        if early_access and self.player_tag:
+        if self.player_tag:
             print("Waiting 3 seconds for API to update with latest data...")
             time.sleep(3)
-            player_info = get_player_info(self.player_tag)
-            if not player_info:
-                print("Player tag is incorrect. Use your Brawl Stars player tag, not your Supercell ID. Skipping API stat refresh.")
-            else:
-                current_brawler = self.brawlers_pick_data[0]['brawler']
-                trophies, win_streak = get_brawler_stats(player_info, current_brawler)
-                if trophies is not None and win_streak is not None:
-                    if trophies != self.Trophy_observer.current_trophies or win_streak != self.Trophy_observer.win_streak:
-                        print(f"Warning: Trophies or win streak from API do not match current values. This may indicate a desync. API values: trophies={trophies}, win_streak={win_streak}. Current values: trophies={self.Trophy_observer.current_trophies}, win_streak={self.Trophy_observer.win_streak}")
-                    self.Trophy_observer.current_trophies = trophies
-                    self.Trophy_observer.win_streak = win_streak
+            self.resync_from_api("before starting")
         print("state is lobby, starting game")
         values = {
             "trophies": self.Trophy_observer.current_trophies,
@@ -264,6 +319,12 @@ class StageManager:
                 self.brawlers_pick_data[0][type_to_push] = value
                 self.brawlers_pick_data[0]['win_streak'] = self.Trophy_observer.win_streak
                 save_brawler_data(self.brawlers_pick_data)
+
+                # Rematching never passes through the lobby, so start_game -
+                # and with it the only other resync - is skipped for as long as
+                # the wins keep coming. That is exactly the run over which a
+                # drifting total does the most damage.
+                self.resync_from_api("after the match")
 
             wants_rematch = (self.play_again_on_win and parsed_result
                              and parsed_result.result == MatchResult.VICTORY
