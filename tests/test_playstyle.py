@@ -617,6 +617,92 @@ def check_breakout(report):
         report.check("it keeps pushing at every point in the sweep", True, True)
 
 
+AFK_FUNCS = {"watch_for_afk", "is_afk_spot", "playing_teammates", "to_world",
+             "vec_len"}
+AFK_CONSTS = {"AFK_AFTER", "AFK_IGNORE_FOR", "AFK_SPOT_TILES", "IDLE_MOVE_TILES"}
+
+
+def check_afk(report):
+    """A teammate who never moves must be left behind, fight or no fight."""
+    clock = [1000.0]
+
+    class Clock:
+        @staticmethod
+        def time():
+            return clock[0]
+
+    context = lift(AFK_FUNCS, AFK_CONSTS, base_context(time=Clock))
+    context["persistent_data"] = {"afk_anchor": None, "afk_since": 0.0,
+                                  "afk_spot": None, "afk_spot_until": 0.0}
+    AFK_AFTER = context["AFK_AFTER"]
+
+    still = (1200.0, 500.0)
+
+    def hold(seconds, at=still):
+        """Let the clock run with the teammate parked where they are."""
+        left = seconds
+        while left > 0:
+            step = min(1.0, left)
+            clock[0] += step
+            left -= step
+            context["watch_for_afk"](at)
+
+    report.section("ten seconds of standing still is enough to give up")
+    context["watch_for_afk"](still)
+    hold(AFK_AFTER - 2)
+    report.check("not yet", context["is_afk_spot"](still), False)
+    hold(3)
+    report.check("now", context["is_afk_spot"](still), True)
+
+    report.section("a fight nearby changes nothing about it")
+    # Nothing in watch_for_afk consults enemies or projectiles - which is the
+    # whole point, because the stagnation rule does and therefore never fired.
+    context["enemy_data"] = [box(1000, 500), box(1100, 520)]
+    context["projectiles"] = [object()]
+    report.check("still given up on", context["is_afk_spot"](still), True)
+    context["enemy_data"] = []
+    context["projectiles"] = []
+
+    report.section("they are dropped from the regroup list, others are not")
+    context["teammate_data"] = [box(*still), box(400, 400)]
+    kept = context["playing_teammates"]()
+    report.check("one of the two survives", len(kept), 1)
+    report.check("and it is the one that moves",
+                 context["get_entity_pos"](kept[0])[0], 400.0)
+
+    report.section("a teammate who moves is never given up on")
+    context["persistent_data"] = {"afk_anchor": None, "afk_since": 0.0,
+                                  "afk_spot": None, "afk_spot_until": 0.0}
+    tiles = context["IDLE_MOVE_TILES"] * context["TILE_SIZE"]
+    walker = [1200.0, 500.0]
+    for _ in range(int(AFK_AFTER) + 6):
+        clock[0] += 1.0
+        walker[0] += tiles + 5
+        context["watch_for_afk"](tuple(walker))
+    report.check("never flagged", context["is_afk_spot"](tuple(walker)), False)
+
+    report.section("giving up is temporary, not permanent")
+    context["persistent_data"] = {"afk_anchor": None, "afk_since": 0.0,
+                                  "afk_spot": None, "afk_spot_until": 0.0}
+    context["watch_for_afk"](still)
+    hold(AFK_AFTER + 1)
+    report.check("flagged", context["is_afk_spot"](still), True)
+    clock[0] += context["AFK_IGNORE_FOR"] + 1
+    report.check("and released again later", context["is_afk_spot"](still), False)
+
+    report.section("somewhere else on the map is not the spot")
+    context["persistent_data"] = {"afk_anchor": None, "afk_since": 0.0,
+                                  "afk_spot": None, "afk_spot_until": 0.0}
+    context["watch_for_afk"](still)
+    hold(AFK_AFTER + 1)
+    far = (still[0] + context["TILE_SIZE"] * 8, still[1])
+    report.check("a distant teammate is unaffected", context["is_afk_spot"](far), False)
+
+    report.section("no teammate at all is not a crash")
+    context["watch_for_afk"](None)
+    report.check("survives nobody in sight", context["is_afk_spot"](None), False)
+
+
 def main():
     report = Failures("playstyle")
     for path in PLAYSTYLES:
@@ -640,6 +726,7 @@ def main():
     check_breakout(report)
     check_fight(report)
     check_standing(report)
+    check_afk(report)
     check_idle(report)
     return report.finish()
 

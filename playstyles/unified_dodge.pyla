@@ -166,6 +166,31 @@ IDLE_MOVE_TILES = 1.5
 # rather than re-attaching to the same idle teammate the moment it steps away.
 IDLE_COMMIT = 6.0
 
+# -- Standing next to somebody who is not playing -------------------------
+# A teammate who never moves is not a teammate. Overnight trophy farming with
+# an auto-clicker is common: the account queues, stands still for the whole
+# match so the game does not flag it AFK, and queues again. The bot attaches
+# to that account, regroups on it, and spends the match strafing beside a
+# statue - which is what the review said, and it was right.
+#
+# The stagnation rule already here cannot catch it, and could not have. It
+# treats any visible enemy as "something is happening", and on a farming map
+# there is nearly always an enemy on screen, so the clock resets before it can
+# ever run out. That rule answers "has the match stopped happening", which is a
+# different and still useful question. This one answers "is the person I am
+# following actually playing", and nothing about a fight nearby changes that
+# answer.
+AFK_AFTER = 10.0
+
+# Once given up on, a spot is avoided for this long rather than forever. The
+# bot has no way to tell two teammates apart, so this is remembered as a place,
+# not a person - and a place that a real player walked away from should stop
+# being ignored reasonably soon.
+AFK_IGNORE_FOR = 30.0
+
+# How close to that spot still counts as "the one I gave up on", in tiles.
+AFK_SPOT_TILES = 2.5
+
 # -- Standing: how many of us are left, and how far in we are -------------
 # Showdown is not one game, it is two. Early, dying costs a placement nobody
 # was going to keep anyway and a kill is worth taking on thin odds. Late, with
@@ -250,6 +275,10 @@ persistent_data.setdefault("last_gadget_use", 0.0)
 persistent_data.setdefault("dodge_count", 0)
 persistent_data.setdefault("last_activity", 0.0)
 persistent_data.setdefault("idle_anchor", None)
+persistent_data.setdefault("afk_anchor", None)
+persistent_data.setdefault("afk_since", 0.0)
+persistent_data.setdefault("afk_spot", None)
+persistent_data.setdefault("afk_spot_until", 0.0)
 persistent_data.setdefault("center_run_until", 0.0)
 
 if _known:
@@ -399,6 +428,63 @@ def escape_boundary():
 # ─────────────────────────────────────────────────────────────────────
 #  ANTI-STAGNATION
 # ─────────────────────────────────────────────────────────────────────
+
+def watch_for_afk(mate_coords):
+    """Time how long the followed teammate has stood in exactly one place.
+
+    Deliberately independent of everything else. It does not care whether a
+    fight is happening, whether the bot is moving, or how far away the mate is
+    - only whether that mate has moved. Any of those extra conditions is what
+    stopped the existing stagnation rule from ever firing here.
+
+    World coordinates, because on screen a perfectly still teammate slides
+    about whenever the bot walks, so screen positions cannot answer the one
+    question being asked.
+    """
+    now = time.time()
+    if mate_coords is None:
+        persistent_data["afk_anchor"] = None
+        return
+
+    world = to_world(mate_coords)
+    anchor = persistent_data.get("afk_anchor")
+    threshold = TILE_SIZE * IDLE_MOVE_TILES
+
+    if anchor is None or vec_len(world[0] - anchor[0],
+                                 world[1] - anchor[1]) > threshold:
+        # They moved. Start the clock again from where they are now.
+        persistent_data["afk_anchor"] = world
+        persistent_data["afk_since"] = now
+        return
+
+    if now - persistent_data.get("afk_since", now) >= AFK_AFTER:
+        if debug:
+            print("teammate has not moved for", AFK_AFTER, "s - going it alone")
+        persistent_data["afk_spot"] = world
+        persistent_data["afk_spot_until"] = now + AFK_IGNORE_FOR
+        persistent_data["afk_anchor"] = None
+
+
+def is_afk_spot(coords):
+    """Whether this is the place the bot just gave up on."""
+    spot = persistent_data.get("afk_spot")
+    if spot is None or coords is None:
+        return False
+    if time.time() > persistent_data.get("afk_spot_until", 0.0):
+        return False
+    world = to_world(coords)
+    return vec_len(world[0] - spot[0],
+                   world[1] - spot[1]) <= TILE_SIZE * AFK_SPOT_TILES
+
+
+def playing_teammates():
+    """teammate_data without whoever is standing perfectly still in it."""
+    kept = []
+    for mate in teammate_data:
+        if not is_afk_spot(get_entity_pos(mate)):
+            kept.append(mate)
+    return kept
+
 
 def to_world(point):
     """Screen coordinate to a frame that does not move with the camera."""
@@ -651,6 +737,14 @@ if must_hold and persistent_data["time_since_holding_attack"] is not None:
 
 gas_reading = is_there_poison_gas(player_data)
 
+# Watched every frame, and against the RAW teammate list rather than the
+# filtered one. Once somebody has been given up on they disappear from
+# playing_teammates(), so this is the only place left that can still see them -
+# and it has to, otherwise the bot could never notice they started playing
+# again and the spot would simply expire on a timer.
+_watched_mate, _ = find_closest_teammate(teammate_data, player_pos, walls)
+watch_for_afk(_watched_mate)
+
 
 def leads_into_gas(move):
     """True if this movement heads into anything that hurts to stand in.
@@ -711,7 +805,7 @@ def avoid_poison_gas():
 # ─────────────────────────────────────────────────────────────────────
 
 def no_enemy_movement():
-    mate_coords, mate_distance = find_closest_teammate(teammate_data, player_pos, walls)
+    mate_coords, mate_distance = find_closest_teammate(playing_teammates(), player_pos, walls)
 
     # 0. Nothing has happened for a while: stop waiting on the teammate and go
     #    where the game is. Checked before the regroup branch, because it is
@@ -952,7 +1046,7 @@ def assess_fight(enemy_distance, enemy_coords):
 
 def retreat_movement(enemy_coords):
     """Fall back toward a teammate, or straight away from the enemy."""
-    mate_coords, _ = find_closest_teammate(teammate_data, player_pos, walls)
+    mate_coords, _ = find_closest_teammate(playing_teammates(), player_pos, walls)
     away = move_away_from(enemy_coords)
     if mate_coords is None:
         return away
@@ -991,7 +1085,7 @@ def combat_movement(enemy_coords, enemy_distance):
         # Not chasing this enemy. If the team is somewhere else, that is where
         # to be - circling a far-off enemy while the squad walks away is how
         # the bot ended up alone in the first place.
-        mate_coords, mate_distance = find_closest_teammate(teammate_data, player_pos, walls)
+        mate_coords, mate_distance = find_closest_teammate(playing_teammates(), player_pos, walls)
         if mate_coords is not None and mate_distance is not None:
             if mate_distance > TILE_SIZE * REGROUP_TILES:
                 return move_toward(mate_coords)
@@ -1104,7 +1198,7 @@ else:
     # combat movement back toward them - previously the bot only regrouped when
     # no enemy was visible at all, which in practice is almost never, so it
     # drifted off and fought 1v2.
-    mate_coords, mate_distance = find_closest_teammate(teammate_data, player_pos, walls)
+    mate_coords, mate_distance = find_closest_teammate(playing_teammates(), player_pos, walls)
     # A fight is the definition of something happening, so keep the idle clock
     # fed here too. Without this the timer would run down during a long
     # engagement and fire the moment the last enemy dropped out of sight.
@@ -1244,7 +1338,7 @@ if is_stuck and stuck_for > BREAK_OUT_AFTER:
 
     # 1. A teammate is the best thing to walk toward: it is where the bot
     #    should be going anyway, and it is by definition reachable ground.
-    mate_coords, mate_distance = find_closest_teammate(teammate_data, player_pos, walls)
+    mate_coords, mate_distance = find_closest_teammate(playing_teammates(), player_pos, walls)
     if mate_coords is not None:
         target = mate_coords
     else:
