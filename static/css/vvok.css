@@ -1117,3 +1117,40 @@ textarea:focus {
     .panel, .btn, .nav-item, .hist-card, .ps-card, .hero-link, .queue-item { transition: none; }
     .btn::after, .brand-mark::after { display: none; }
 }
+
+/* ---------------------------------------------------------------------------
+   Profile summary, above the match history it is derived from.
+   --------------------------------------------------------------------------- */
+.profile-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 14px;
+    padding: 4px 2px 2px;
+}
+
+.profile-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: var(--surface-2, rgba(255, 255, 255, 0.04));
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+
+.profile-label {
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.65;
+}
+
+.profile-value {
+    font-size: 1.5rem;
+    line-height: 1.15;
+}
+
+.profile-note {
+    font-size: 0.78rem;
+    opacity: 0.6;
+}

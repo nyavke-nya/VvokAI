@@ -117,6 +117,9 @@ class WebDataService:
 
     BOT_FIELDS: dict[str, tuple[str, Any]] = {
         "play_again_on_win": ("bool_str", False),
+        "stop_at": ("str", ""),
+        "resume_at": ("str", ""),
+        "max_session_minutes": ("int", 0),
         "minimum_movement_delay": ("float", 0.1),
         "unstuck_movement_delay": ("float", 2.4),
         "unstuck_movement_hold_time": ("float", 1.4),
@@ -880,7 +883,9 @@ class WebDataService:
     def get_match_history_payload(self) -> dict[str, Any]:
         csv_path = resolve_project_path("cfg", "match_history.csv")
         if not csv_path.exists():
-            return self._build_match_history_response([])
+            empty = self._build_match_history_response([])
+            empty["profile"] = self._profile_from_csv(csv_path)
+            return empty
 
         grouped: dict[str, dict[str, Any]] = {}
 
@@ -992,7 +997,9 @@ class WebDataService:
             })
 
         items.sort(key=lambda item: (-item["total_matches"], item["brawler"]))
-        return self._build_match_history_response(items)
+        payload = self._build_match_history_response(items)
+        payload["profile"] = self._profile_from_csv(csv_path)
+        return payload
 
     @staticmethod
     def _parse_match_datetime(value: Any) -> datetime | None:
@@ -1032,6 +1039,20 @@ class WebDataService:
             summary["win_rate"] = summary["loss_rate"] = 0.0
 
         return {"summary": summary, "items": items}
+
+    @staticmethod
+    def _profile_from_csv(csv_path) -> dict[str, Any]:
+        """The profile, or an empty one. Never raises: a damaged history file
+        must not be able to take the whole History view down with it."""
+        try:
+            import csv as _csv
+
+            from profile_stats import build_profile
+            with open(csv_path, newline="", encoding="utf-8") as handle:
+                return build_profile(list(_csv.DictReader(handle)))
+        except Exception:
+            from profile_stats import build_profile
+            return build_profile([])
 
     def get_bootstrap_payload(self) -> dict[str, Any]:
         discord_link = get_discord_link()

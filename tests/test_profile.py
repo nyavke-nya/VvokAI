@@ -1,0 +1,110 @@
+"""The profile, and the clock that decides when to stop playing."""
+import sys
+from datetime import datetime, timedelta
+
+from _harness import Failures
+
+from profile_stats import build_profile
+from schedule_control import Schedule, parse_clock
+
+report = Failures("profile and schedule")
+
+
+def row(when, brawler, result, delta, trophies=500):
+    return {"date_time": when.isoformat(), "brawler_name": brawler,
+            "result": result, "trophy_delta": delta, "current_trophies": trophies}
+
+
+NOW = datetime(2026, 8, 20, 15, 0, 0)
+base = NOW - timedelta(hours=2)
+rows = [
+    row(base + timedelta(minutes=0), "shelly", "victory", 8),
+    row(base + timedelta(minutes=5), "shelly", "victory", 9),
+    row(base + timedelta(minutes=10), "shelly", "defeat", -4),
+    row(base + timedelta(minutes=15), "colt", "victory", 7),
+    # A gap far longer than a match: this starts a second session.
+    row(base + timedelta(minutes=200), "colt", "draw", 0),
+]
+
+report.section("the numbers people actually ask about")
+p = build_profile(rows, now=NOW)
+report.check("matches", p["matches"], 5)
+report.check("wins", p["wins"], 3)
+report.check("losses", p["losses"], 1)
+report.check("draws", p["draws"], 1)
+report.check("win rate", p["win_rate"], 60.0)
+report.check("net trophies", p["trophies_net"], 20)
+report.check("won and lost counted apart", (p["trophies_won"], p["trophies_lost"]), (24, 4))
+
+report.section("a long gap is a second sitting, not one long one")
+report.check("sessions", p["sessions"], 2)
+report.at_least("play time is measured, not invented", p["play_minutes"], 15)
+report.at_most("and does not swallow the gap", p["play_minutes"], 40)
+
+report.section("streaks")
+report.check("best streak", p["best_streak"], 2)
+report.check("a draw neither breaks nor extends it", p["current_streak"], 1)
+
+report.section("per-brawler standing")
+report.check("best by trophies", p["best_brawler"]["brawler"], "shelly")
+report.check("most played", p["most_played"]["brawler"], "shelly")
+
+report.section("nothing to report is not a crash")
+empty = build_profile([], now=NOW)
+report.check("no matches", empty["matches"], 0)
+report.check("no win rate", empty["win_rate"], 0.0)
+report.check("no best brawler", empty["best_brawler"], None)
+
+report.section("damaged rows are counted, not fatal")
+broken = build_profile([{"date_time": "not a date", "brawler_name": "bea",
+                         "result": "victory", "trophy_delta": "x"}], now=NOW)
+report.check("the match still counts", broken["matches"], 1)
+report.check("an unreadable delta reads as zero", broken["trophies_net"], 0)
+
+report.section("reading a time off the config")
+report.check("HH:MM", parse_clock("23:30"), 23 * 60 + 30)
+report.check("a dot works too", parse_clock("8.05"), 8 * 60 + 5)
+report.check("empty is not a time", parse_clock(""), None)
+report.check("nonsense is not a time", parse_clock("bedtime"), None)
+report.check("out of range is not a time", parse_clock("25:00"), None)
+
+report.section("a quiet window that crosses midnight")
+night = Schedule(stop_at="23:30", resume_at="08:00")
+at = lambda h, m: datetime(2026, 8, 20, h, m)
+report.check("just before it starts", night.in_quiet_hours(at(23, 29)), False)
+report.check("just after it starts", night.in_quiet_hours(at(23, 31)), True)
+report.check("the small hours", night.in_quiet_hours(at(3, 0)), True)
+report.check("just before it lifts", night.in_quiet_hours(at(7, 59)), True)
+report.check("just after it lifts", night.in_quiet_hours(at(8, 0)), False)
+report.check("the middle of the day", night.in_quiet_hours(at(15, 0)), False)
+
+report.section("a window inside one day")
+day = Schedule(stop_at="09:00", resume_at="17:00")
+report.check("before work", day.in_quiet_hours(at(8, 0)), False)
+report.check("during work", day.in_quiet_hours(at(12, 0)), True)
+report.check("after work", day.in_quiet_hours(at(18, 0)), False)
+
+report.section("a stop time with nothing to lift it holds until midnight")
+until_midnight = Schedule(stop_at="22:00")
+report.check("before", until_midnight.in_quiet_hours(at(21, 59)), False)
+report.check("after", until_midnight.in_quiet_hours(at(22, 1)), True)
+report.check("next morning is free again", until_midnight.in_quiet_hours(at(7, 0)), False)
+
+report.section("a session cap")
+capped = Schedule(max_session_minutes=90)
+started = datetime(2026, 8, 20, 12, 0)
+report.check("an hour in", capped.session_exhausted(started, at(13, 0)), False)
+report.check("ninety minutes in", capped.session_exhausted(started, at(13, 30)), True)
+report.check("no cap set means never", Schedule().session_exhausted(started, at(23, 0)), False)
+
+report.section("nothing configured is completely inert")
+off = Schedule()
+report.check("not active", off.active, False)
+report.check("never holds", off.holding(started, at(3, 0))[0], False)
+
+report.section("holding says why")
+holding, reason = night.holding(started, at(2, 0))
+report.check("it holds", holding, True)
+report.check("and names the reason", reason, "quiet hours")
+
+sys.exit(report.finish())

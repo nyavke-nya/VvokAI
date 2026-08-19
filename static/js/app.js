@@ -860,11 +860,53 @@ function renderPlaystyleGamemodePills(gamemodes) {
     return gamemodes.slice(0, 4).map((mode) => `<span class="ps-m-pill">${escapeHtml(GAMEMODE_LABELS[mode] || String(mode))}</span>`).join("");
 }
 
+function renderProfile() {
+    // Derived entirely from the match history, so it can never disagree with
+    // the rows listed underneath it.
+    const p = (state.history && state.history.profile) || null;
+    if (!p || !p.matches) return "";
+
+    const hours = Math.floor(p.play_minutes / 60);
+    const mins = p.play_minutes % 60;
+    const played = hours ? `${hours}h ${mins}m` : `${mins}m`;
+    const net = p.trophies_net >= 0 ? `+${p.trophies_net}` : `${p.trophies_net}`;
+    const best = p.best_brawler;
+    const most = p.most_played;
+
+    const tile = (label, value, note = "") => `
+        <div class="profile-tile">
+            <span class="profile-label">${escapeHtml(label)}</span>
+            <strong class="profile-value">${escapeHtml(String(value))}</strong>
+            ${note ? `<span class="profile-note">${escapeHtml(note)}</span>` : ""}
+        </div>`;
+
+    return `
+        <section class="panel profile-panel">
+            <div class="panel-header">
+                <div>
+                    <p class="eyebrow">Profile</p>
+                    <h3 class="panel-title">${p.matches} matches played</h3>
+                    <p class="meta-line">${p.sessions} sessions | ${played} at the controls</p>
+                </div>
+            </div>
+            <div class="profile-grid">
+                ${tile("Win rate", formatPercent(p.win_rate), `${p.wins}W / ${p.losses}L / ${p.draws}D`)}
+                ${tile("Trophies", net, `+${p.trophies_won} won, -${p.trophies_lost} lost`)}
+                ${tile("Today", p.matches_today, `${p.matches_week} this week`)}
+                ${tile("Best streak", p.best_streak, `${p.current_streak} right now`)}
+                ${best ? tile("Best brawler", best.brawler, `${best.net >= 0 ? "+" : ""}${best.net} over ${best.matches}`) : ""}
+                ${most ? tile("Most played", most.brawler, `${most.matches} matches, ${formatPercent(most.win_rate)}`) : ""}
+            </div>
+        </section>`;
+}
+
+
 function renderHistory() {
     const view = document.getElementById("view-history");
     const summary = getHistorySummary();
 
     view.innerHTML = `
+        ${renderProfile()}
         <section class="panel">
             <div class="panel-header history-head">
                     <div>

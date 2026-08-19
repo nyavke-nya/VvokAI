@@ -1,15 +1,23 @@
 from __future__ import annotations
 
 import threading
+from datetime import datetime
 from typing import Any, Callable
 import traceback
 
 
 class RuntimeControl:
-    def __init__(self, state_callback: Callable[[str], None]):
+    def __init__(self, state_callback: Callable[[str], None], schedule=None):
         self._state_callback = state_callback
         self._stop_event = threading.Event()
         self._pause_requested = threading.Event()
+        # Time-based holding. Checked in should_pause rather than bolted onto
+        # every caller, because should_pause is already the one question the
+        # whole bot asks before doing anything - the stage manager, the play
+        # loop and every interruptible sleep all funnel through it.
+        self._schedule = schedule
+        self._session_started = datetime.now()
+        self._schedule_reason = ""
 
     def request_pause(self):
         self._pause_requested.set()
@@ -25,9 +33,31 @@ class RuntimeControl:
         return self._stop_event.is_set()
 
     def should_pause(self) -> bool:
-        return self._pause_requested.is_set() and not self._stop_event.is_set()
+        if self._stop_event.is_set():
+            return False
+        if self._pause_requested.is_set():
+            return True
+        if self._schedule is not None and self._schedule.active:
+            holding, reason = self._schedule.holding(self._session_started)
+            if holding:
+                if reason != self._schedule_reason:
+                    print(f"Pausing: {reason}.")
+                    self._schedule_reason = reason
+                return True
+            if self._schedule_reason:
+                print("Resuming: back inside the playing window.")
+                self._schedule_reason = ""
+        return False
+
+    def schedule_hold_reason(self) -> str:
+        """Why the schedule is holding, or "" when it is not."""
+        return self._schedule_reason
 
     def mark_running(self):
+        # A session-length cap has to measure from something. Running is the
+        # only honest start: time spent paused or stopped is not playing.
+        if self._schedule_reason:
+            self._session_started = datetime.now()
         self._state_callback("running")
 
     def mark_paused(self):
@@ -81,7 +111,16 @@ class RuntimeManager:
                     return {"ok": True, "message": "Pyla resumed."}
                 return {"ok": False, "message": f"Pyla cannot start while state is {self._state}."}
 
-            self.rt_control = RuntimeControl(self._set_state)
+            # Read at start, so editing the times in Settings takes effect on
+            # the next run rather than needing the whole app restarted.
+            schedule = None
+            try:
+                from schedule_control import Schedule
+                from utils import load_toml_as_dict
+                schedule = Schedule.from_config(load_toml_as_dict("cfg/bot_config.toml"))
+            except Exception as error:
+                print(f"Could not read the play schedule, ignoring it: {error}")
+            self.rt_control = RuntimeControl(self._set_state, schedule=schedule)
             self._state = "running"
             self._last_error = ""
             self._thread = threading.Thread(
