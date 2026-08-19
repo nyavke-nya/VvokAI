@@ -66,4 +66,32 @@ m.resync_from_api("test")
 check("observer still corrected", m.Trophy_observer.current_trophies, 812)
 check("but the wins row is not overwritten with trophies", saved, [])
 
+
+report.section("a stale answer is declined, never written back")
+saved = []
+m = make((500, None))          # API still reporting the pre-match total
+m.resync_from_api("after the match", expect_change_from=500)
+check("the local total survives", m.Trophy_observer.current_trophies, 500)
+check("nothing written", saved, [])
+
+saved = []
+m = make((513, None))          # API has caught up
+m.resync_from_api("after the match", expect_change_from=500)
+check("a moved total is taken", m.Trophy_observer.current_trophies, 513)
+check("and written", saved[-1]["trophies"], 513)
+
+report.section("the post-match call must not make anything wait")
+import time as _time
+saved = []
+m = make((513, None))
+def slow(_tag):
+    _time.sleep(1.5)
+    return {"x": 1}
+sm.get_player_info = slow
+started = _time.time()
+m.resync_from_api("after the match", expect_change_from=500, background=True)
+check("the caller returns immediately", _time.time() - started < 0.3, True)
+_time.sleep(2.0)
+check("and the value still arrives", m.Trophy_observer.current_trophies, 513)
+
 sys.exit(report.finish())

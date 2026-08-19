@@ -1,4 +1,5 @@
 import sys
+import threading
 import time
 import cv2
 
@@ -110,7 +111,7 @@ class StageManager:
         trophy_value = int(numbers)
         return trophy_value
 
-    def resync_from_api(self, when):
+    def resync_from_api(self, when, expect_change_from=None, background=False):
         """Take the trophy count from the API instead of from our own running sum.
 
         Trophies are otherwise only ever a local total: a starting number plus
@@ -139,6 +140,20 @@ class StageManager:
         if not self.player_tag:
             return
 
+        if background:
+            # Nothing waits on this. The point of asking the API is to stop the
+            # bot's own arithmetic drifting, and that is worth nothing if the
+            # asking is what makes the rematch slow.
+            threading.Thread(
+                target=self.resync_from_api,
+                args=(when,),
+                kwargs={"expect_change_from": expect_change_from},
+                daemon=True,
+            ).start()
+            return
+
+        current_brawler = self.brawlers_pick_data[0]['brawler']
+
         # The bot's own cache would happily answer with the figure from before
         # the match that just finished, which is precisely the number being
         # corrected here.
@@ -153,8 +168,19 @@ class StageManager:
             print(f"Could not reach the API to refresh stats ({when}).")
             return
 
-        current_brawler = self.brawlers_pick_data[0]['brawler']
         trophies, win_streak = get_brawler_stats(player_info, current_brawler)
+
+        # Supercell publishes the new total a moment after a match ends, so an
+        # answer asked for immediately afterwards is often still the old one.
+        # Writing that back would erase the win that just happened. Rather than
+        # wait for it - waiting is the one thing this must not do - the stale
+        # answer is simply declined, and the local figure stands until the next
+        # resync, which will have had a whole match to catch up.
+        if (expect_change_from is not None and trophies is not None
+                and trophies == expect_change_from):
+            print("API has not caught up with the last match yet, keeping the "
+                  "local total for now.")
+            return
 
         if trophies is not None:
             if trophies != self.Trophy_observer.current_trophies:
@@ -307,6 +333,9 @@ class StageManager:
 
                 current_brawler = self.brawlers_pick_data[0]['brawler']
                 power_level = None if not early_access else get_brawler_stats(get_player_info(self.player_tag), current_brawler, power_level=True)[2]
+                # Kept so the resync below can tell "the API has the new total"
+                # from "the API has not caught up yet".
+                trophies_before_match = self.Trophy_observer.current_trophies
                 self.Trophy_observer.add_trophies(parsed_result, current_brawler, self.playstyle_info, power_level)
                 self.Trophy_observer.add_win(parsed_result)
                 self.time_since_last_stat_change = time.time()
@@ -324,7 +353,9 @@ class StageManager:
                 # and with it the only other resync - is skipped for as long as
                 # the wins keep coming. That is exactly the run over which a
                 # drifting total does the most damage.
-                self.resync_from_api("after the match")
+                self.resync_from_api("after the match",
+                                     expect_change_from=trophies_before_match,
+                                     background=True)
 
             wants_rematch = (self.play_again_on_win and parsed_result
                              and parsed_result.result == MatchResult.VICTORY
