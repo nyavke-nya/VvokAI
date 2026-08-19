@@ -1123,14 +1123,30 @@ textarea:focus {
    --------------------------------------------------------------------------- */
 .profile-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    /* Narrow screens fall back to as many as fit. */
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    /* Every row the same height. Without this the rows size themselves to
+       their own contents, so a row whose notes wrap to two lines stands taller
+       than the one above it and the block reads as ragged rather than as a
+       grid. */
+    grid-auto-rows: 1fr;
     gap: 14px;
     padding: 4px 2px 2px;
+}
+
+/* Eight tiles want a column count that divides them. At the width this panel
+   actually gets, auto-fit chose five, leaving a second row of three hanging
+   off to the left. Four and four is the same information in two even rows. */
+@media (min-width: 860px) {
+    .profile-grid { grid-template-columns: repeat(4, 1fr); }
 }
 
 .profile-tile {
     display: flex;
     flex-direction: column;
+    /* Label at the top, value under it, note pinned to the bottom - so the
+       values line up across a row even when one note is a line longer. */
+    justify-content: flex-start;
     gap: 2px;
     padding: 14px 16px;
     border-radius: 14px;
@@ -1146,13 +1162,16 @@ textarea:focus {
 }
 
 .profile-value {
-    font-size: 1.5rem;
+    /* "3 loss streak" has to fit the same box as "57%". */
+    font-size: clamp(1.15rem, 1.6vw + 0.4rem, 1.5rem);
     line-height: 1.15;
 }
 
 .profile-note {
     font-size: 0.78rem;
     opacity: 0.6;
+    margin-top: auto;
+    padding-top: 6px;
 }
 
 /* Profile page ------------------------------------------------------------ */
