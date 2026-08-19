@@ -81,6 +81,24 @@ broken = build_profile([{"date_time": "not a date", "brawler_name": "bea",
 report.check("the match still counts", broken["matches"], 1)
 report.check("an unreadable delta reads as zero", broken["trophies_net"], 0)
 
+
+report.section("the page reads the profile from where the app actually keeps it")
+# The profile shipped once reading state.history, which does not exist - every
+# other view reads state.bootstrap - so the tab rendered "no matches recorded"
+# against 1224 of them. A string check, but it is the exact mistake that got
+# through a rendered-in-a-browser test, because the probe supplied a fixture
+# shaped the way the code expected rather than the way the app stores it.
+app_js = open("static/js/app.js", encoding="utf-8").read()
+report.check("it reads state.bootstrap.history.profile",
+             "state.bootstrap.history.profile" in app_js, True)
+report.check("and never a state.history that does not exist",
+             "state.history &&" in app_js, False)
+report.check("the tab is registered", 'profile: { label: "Profile"' in app_js, True)
+report.check("the view container exists",
+             'id="view-profile"' in open("templates/index.html", encoding="utf-8").read(),
+             True)
+report.check("and it is rendered with the rest", "    renderProfile();" in app_js, True)
+
 report.section("reading a time off the config")
 report.check("HH:MM", parse_clock("23:30"), 23 * 60 + 30)
 report.check("a dot works too", parse_clock("8.05"), 8 * 60 + 5)

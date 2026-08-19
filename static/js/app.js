@@ -1001,16 +1001,22 @@ function renderProfile() {
     if (!view) return;
 
     // Derived entirely from the match history, so it can never disagree with
-    // the rows the History tab lists.
-    const p = (state.history && state.history.profile) || null;
+    // the rows the History tab lists. It lives under state.bootstrap, which is
+    // where every other view reads its data from - there is no state.history,
+    // and reading one is how this rendered "no matches" against 1224 of them.
+    const p = (state.bootstrap && state.bootstrap.history
+               && state.bootstrap.history.profile) || null;
 
     if (!p || !p.matches) {
         view.innerHTML = `
             <section class="panel">
-                <div class="empty-state">
-                    <h3>No matches recorded yet</h3>
-                    <p class="meta-line">Everything here is worked out from the match
-                    history, so it fills in as the bot plays.</p>
+                <div class="panel-header">
+                    <div>
+                        <p class="eyebrow">Profile</p>
+                        <h3 class="panel-title">No matches recorded yet</h3>
+                        <p class="meta-line">Everything here is worked out from the
+                        match history, so it fills in as the bot plays.</p>
+                    </div>
                 </div>
             </section>`;
         return;
