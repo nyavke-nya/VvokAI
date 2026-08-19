@@ -1154,3 +1154,107 @@ textarea:focus {
     font-size: 0.78rem;
     opacity: 0.6;
 }
+
+/* Profile page ------------------------------------------------------------ */
+.profile-tile.tone-up .profile-value { color: var(--good, #4ade80); }
+.profile-tile.tone-down .profile-value { color: var(--bad, #f87171); }
+
+.profile-table-wrap { overflow-x: auto; }
+
+.profile-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+
+.profile-table th {
+    text-align: left;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.6;
+    padding: 6px 10px;
+    white-space: nowrap;
+}
+
+.profile-table td {
+    padding: 8px 10px;
+    border-top: 1px solid var(--border, rgba(255, 255, 255, 0.07));
+    white-space: nowrap;
+}
+
+.pt-name { position: relative; min-width: 160px; }
+
+.pt-bar {
+    position: absolute;
+    left: 0;
+    top: 4px;
+    bottom: 4px;
+    border-radius: 6px;
+    background: var(--accent-soft, rgba(120, 160, 255, 0.16));
+}
+
+.pt-label { position: relative; text-transform: capitalize; }
+.pt-up { color: var(--good, #4ade80); }
+.pt-down { color: var(--bad, #f87171); }
+
+.cyc-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 150px;
+    padding: 4px 2px 0;
+    overflow-x: auto;
+}
+
+.cyc-col {
+    flex: 1 1 0;
+    min-width: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+}
+
+.cyc-bar-space {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    align-items: flex-end;
+}
+
+.cyc-bar {
+    width: 100%;
+    border-radius: 5px 5px 0 0;
+    background: var(--accent, #7aa2ff);
+    min-height: 0;
+}
+
+.cyc-bar.good { background: var(--good, #4ade80); }
+.cyc-bar.even { background: var(--accent, #7aa2ff); }
+.cyc-bar.poor { background: var(--bad, #f87171); }
+.cyc-bar.empty { background: transparent; }
+
+.cyc-label {
+    font-size: 0.68rem;
+    opacity: 0.55;
+    padding-top: 6px;
+}
+
+.form-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 4px 2px;
+}
+
+.form-pip {
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    background: var(--accent, #7aa2ff);
+}
+
+.form-pip.win { background: var(--good, #4ade80); }
+.form-pip.loss { background: var(--bad, #f87171); }
+.form-pip.draw { background: rgba(160, 160, 160, 0.6); }

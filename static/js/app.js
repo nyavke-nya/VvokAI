@@ -3,6 +3,7 @@ const NAV_ITEMS = {
     queue: { label: "Brawlers", icon: "queue" },
     playstyles: { label: "Playstyles", icon: "playstyles" },
     history: { label: "History", icon: "history" },
+    profile: { label: "Profile", icon: "history" },
     settings: { label: "Settings", icon: "settings" },
 };
 
@@ -392,6 +393,7 @@ function renderAll() {
     renderQueue();
     renderPlaystyles();
     renderHistory();
+    renderProfile();
     renderSettings();
     setView(state.currentView);
 }
@@ -860,44 +862,207 @@ function renderPlaystyleGamemodePills(gamemodes) {
     return gamemodes.slice(0, 4).map((mode) => `<span class="ps-m-pill">${escapeHtml(GAMEMODE_LABELS[mode] || String(mode))}</span>`).join("");
 }
 
-function renderProfile() {
-    // Derived entirely from the match history, so it can never disagree with
-    // the rows listed underneath it.
-    const p = (state.history && state.history.profile) || null;
-    if (!p || !p.matches) return "";
-
-    const hours = Math.floor(p.play_minutes / 60);
-    const mins = p.play_minutes % 60;
-    const played = hours ? `${hours}h ${mins}m` : `${mins}m`;
-    const net = p.trophies_net >= 0 ? `+${p.trophies_net}` : `${p.trophies_net}`;
-    const best = p.best_brawler;
-    const most = p.most_played;
-
-    const tile = (label, value, note = "") => `
-        <div class="profile-tile">
+function profileTile(label, value, note = "", tone = "") {
+    return `
+        <div class="profile-tile ${tone}">
             <span class="profile-label">${escapeHtml(label)}</span>
             <strong class="profile-value">${escapeHtml(String(value))}</strong>
             ${note ? `<span class="profile-note">${escapeHtml(note)}</span>` : ""}
         </div>`;
+}
+
+
+function profileDuration(minutes) {
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return hours ? `${hours}h ${rest}m` : `${rest}m`;
+}
+
+
+function profileSigned(value) {
+    return value > 0 ? `+${value}` : String(value);
+}
+
+
+function profileDate(value) {
+    if (!value) return "never";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "never";
+    return parsed.toLocaleDateString(undefined, {
+        day: "numeric", month: "short", year: "numeric",
+    });
+}
+
+
+// A table with a bar behind the numbers. The bar is proportional to matches
+// played, so the rows somebody actually has evidence for are the ones that
+// stand out - a 100% win rate over two games should not look like a result.
+function profileTable(title, rows, subject) {
+    if (!rows || !rows.length) return "";
+    const most = Math.max(...rows.map(r => r.matches), 1);
+    const body = rows.slice(0, 12).map(row => `
+        <tr>
+            <td class="pt-name">
+                <span class="pt-bar" style="width:${(row.matches / most) * 100}%"></span>
+                <span class="pt-label">${escapeHtml(row.name)}</span>
+            </td>
+            <td>${row.matches}</td>
+            <td>${formatPercent(row.win_rate)}</td>
+            <td class="${row.net >= 0 ? "pt-up" : "pt-down"}">${profileSigned(row.net)}</td>
+            <td>${row.net_per_match >= 0 ? "+" : ""}${row.net_per_match}</td>
+        </tr>`).join("");
 
     return `
-        <section class="panel profile-panel">
+        <section class="panel">
+            <div class="panel-header">
+                <div>
+                    <p class="eyebrow">${escapeHtml(title)}</p>
+                    <h3 class="panel-title">${rows.length} ${escapeHtml(subject)}</h3>
+                </div>
+            </div>
+            <div class="profile-table-wrap">
+                <table class="profile-table">
+                    <thead>
+                        <tr>
+                            <th>${escapeHtml(subject)}</th>
+                            <th>Matches</th>
+                            <th>Win rate</th>
+                            <th>Trophies</th>
+                            <th>Per match</th>
+                        </tr>
+                    </thead>
+                    <tbody>${body}</tbody>
+                </table>
+            </div>
+        </section>`;
+}
+
+
+// One column per slot, height by matches played, tinted by win rate. Two
+// numbers in one picture, because either alone is misleading: a busy hour with
+// a bad win rate is the interesting case and neither chart shows it on its own.
+function profileCycle(title, rows, key, caption) {
+    if (!rows || !rows.length) return "";
+    const most = Math.max(...rows.map(r => r.matches), 1);
+    const columns = rows.map(row => {
+        const height = Math.round((row.matches / most) * 100);
+        const tone = row.matches === 0 ? "empty"
+            : row.win_rate >= 55 ? "good"
+            : row.win_rate >= 45 ? "even" : "poor";
+        const label = key === "hour" ? String(row.hour).padStart(2, "0") : row.day.slice(0, 3);
+        const title = `${label}: ${row.matches} matches, ${formatPercent(row.win_rate)} won, ${profileSigned(row.net)}`;
+        return `
+            <div class="cyc-col" title="${escapeHtml(title)}">
+                <div class="cyc-bar-space">
+                    <div class="cyc-bar ${tone}" style="height:${Math.max(height, row.matches ? 4 : 0)}%"></div>
+                </div>
+                <span class="cyc-label">${escapeHtml(label)}</span>
+            </div>`;
+    }).join("");
+
+    return `
+        <section class="panel">
+            <div class="panel-header">
+                <div>
+                    <p class="eyebrow">${escapeHtml(title)}</p>
+                    <h3 class="panel-title">${escapeHtml(caption)}</h3>
+                    <p class="meta-line">Height is matches played, colour is win rate</p>
+                </div>
+            </div>
+            <div class="cyc-chart">${columns}</div>
+        </section>`;
+}
+
+
+function profileForm(form) {
+    if (!form || !form.length) return "";
+    const pips = form.map(match => {
+        const tone = match.result === "victory" ? "win"
+            : match.result === "defeat" ? "loss" : "draw";
+        const label = `${match.brawler}: ${match.result} (${profileSigned(match.delta)})`;
+        return `<span class="form-pip ${tone}" title="${escapeHtml(label)}"></span>`;
+    }).join("");
+    return `
+        <section class="panel">
+            <div class="panel-header">
+                <div>
+                    <p class="eyebrow">Recent form</p>
+                    <h3 class="panel-title">Last ${form.length} matches</h3>
+                    <p class="meta-line">Newest first</p>
+                </div>
+            </div>
+            <div class="form-strip">${pips}</div>
+        </section>`;
+}
+
+
+function renderProfile() {
+    const view = document.getElementById("view-profile");
+    if (!view) return;
+
+    // Derived entirely from the match history, so it can never disagree with
+    // the rows the History tab lists.
+    const p = (state.history && state.history.profile) || null;
+
+    if (!p || !p.matches) {
+        view.innerHTML = `
+            <section class="panel">
+                <div class="empty-state">
+                    <h3>No matches recorded yet</h3>
+                    <p class="meta-line">Everything here is worked out from the match
+                    history, so it fills in as the bot plays.</p>
+                </div>
+            </section>`;
+        return;
+    }
+
+    const streak = p.current_streak >= 0
+        ? `${p.current_streak} win streak`
+        : `${Math.abs(p.current_streak)} loss streak`;
+    const busiest = p.busiest_day
+        ? `${profileDate(p.busiest_day.date)} — ${p.busiest_day.matches} matches`
+        : "";
+
+    view.innerHTML = `
+        <section class="panel profile-hero">
             <div class="panel-header">
                 <div>
                     <p class="eyebrow">Profile</p>
                     <h3 class="panel-title">${p.matches} matches played</h3>
-                    <p class="meta-line">${p.sessions} sessions | ${played} at the controls</p>
+                    <p class="meta-line">
+                        ${profileDate(p.first_played)} to ${profileDate(p.last_played)}
+                        | ${p.days_active} active days | ${p.sessions} sessions
+                    </p>
                 </div>
             </div>
             <div class="profile-grid">
-                ${tile("Win rate", formatPercent(p.win_rate), `${p.wins}W / ${p.losses}L / ${p.draws}D`)}
-                ${tile("Trophies", net, `+${p.trophies_won} won, -${p.trophies_lost} lost`)}
-                ${tile("Today", p.matches_today, `${p.matches_week} this week`)}
-                ${tile("Best streak", p.best_streak, `${p.current_streak} right now`)}
-                ${best ? tile("Best brawler", best.brawler, `${best.net >= 0 ? "+" : ""}${best.net} over ${best.matches}`) : ""}
-                ${most ? tile("Most played", most.brawler, `${most.matches} matches, ${formatPercent(most.win_rate)}`) : ""}
+                ${profileTile("Win rate", formatPercent(p.win_rate),
+                              `${p.wins}W / ${p.losses}L / ${p.draws}D`)}
+                ${profileTile("Trophies", profileSigned(p.trophies_net),
+                              `+${p.trophies_won} won, -${p.trophies_lost} lost`,
+                              p.trophies_net >= 0 ? "tone-up" : "tone-down")}
+                ${profileTile("Per match", `${p.net_per_match >= 0 ? "+" : ""}${p.net_per_match}`,
+                              `best ${profileSigned(p.best_match)}, worst ${p.worst_match}`)}
+                ${profileTile("Time played", profileDuration(p.play_minutes),
+                              `${p.matches_per_session} matches per session`)}
+                ${profileTile("Today", p.matches_today,
+                              `${profileSigned(p.trophies_today)} trophies, ${p.matches_week} this week`)}
+                ${profileTile("Right now", streak,
+                              `best ${p.best_streak} won, worst ${p.worst_streak} lost`,
+                              p.current_streak >= 0 ? "tone-up" : "tone-down")}
+                ${profileTile("Per day", p.matches_per_day, busiest)}
+                ${p.best_brawler ? profileTile("Best brawler", p.best_brawler.name,
+                    `${profileSigned(p.best_brawler.net)} over ${p.best_brawler.matches} matches`) : ""}
             </div>
-        </section>`;
+        </section>
+
+        ${profileForm(p.form)}
+        ${profileCycle("Time of day", p.by_hour, "hour", "When it plays, and how it goes")}
+        ${profileCycle("Day of week", p.by_weekday, "day", "Across the week")}
+        ${profileTable("Brawlers", p.brawlers, "brawlers")}
+        ${profileTable("Playstyles", p.playstyles, "playstyles")}
+        ${profileTable("Gamemodes", p.gamemodes, "gamemodes")}
+    `;
 }
 
 
@@ -906,7 +1071,6 @@ function renderHistory() {
     const summary = getHistorySummary();
 
     view.innerHTML = `
-        ${renderProfile()}
         <section class="panel">
             <div class="panel-header history-head">
                     <div>
