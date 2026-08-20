@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import threading
-from datetime import datetime
 from typing import Any, Callable
 import traceback
 
@@ -16,7 +15,6 @@ class RuntimeControl:
         # whole bot asks before doing anything - the stage manager, the play
         # loop and every interruptible sleep all funnel through it.
         self._schedule = schedule
-        self._session_started = datetime.now()
         self._schedule_reason = ""
 
     def request_pause(self):
@@ -38,7 +36,7 @@ class RuntimeControl:
         if self._pause_requested.is_set():
             return True
         if self._schedule is not None and self._schedule.active:
-            holding, reason = self._schedule.holding(self._session_started)
+            holding, reason = self._schedule.holding()
             if holding:
                 if reason != self._schedule_reason:
                     print(f"Pausing: {reason}.")
@@ -54,10 +52,7 @@ class RuntimeControl:
         return self._schedule_reason
 
     def mark_running(self):
-        # A session-length cap has to measure from something. Running is the
-        # only honest start: time spent paused or stopped is not playing.
-        if self._schedule_reason:
-            self._session_started = datetime.now()
+        self._schedule_reason = ""
         self._state_callback("running")
 
     def mark_paused(self):

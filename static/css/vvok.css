@@ -1358,3 +1358,9 @@ textarea:focus {
     padding-top: 10px;
     line-height: 1.45;
 }
+
+.sched-fields label small {
+    font-size: 0.68rem;
+    opacity: 0.5;
+    line-height: 1.35;
+}

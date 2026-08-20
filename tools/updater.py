@@ -97,7 +97,7 @@ TUNING = {
         "hypercharge_pixels_minimum",
         "super_pixels_minimum",
         "idle_pixels_minimum",
-        # stop_at, resume_at and max_session_minutes are deliberately absent.
+        # stop_at and resume_at are deliberately absent.
         # When somebody may run their bot is their decision, not calibration,
         # and pushing this machine's hours onto theirs would be rude. They
         # still ARRIVE on an install that has never seen them, because a key

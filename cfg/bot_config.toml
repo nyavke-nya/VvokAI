@@ -17,4 +17,3 @@ play_again_on_win = "yes"
 current_playstyle = "unified_dodge.pyla"
 stop_at = ""
 resume_at = ""
-max_session_minutes = 0

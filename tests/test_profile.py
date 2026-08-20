@@ -128,21 +128,37 @@ report.check("before", until_midnight.in_quiet_hours(at(21, 59)), False)
 report.check("after", until_midnight.in_quiet_hours(at(22, 1)), True)
 report.check("next morning is free again", until_midnight.in_quiet_hours(at(7, 0)), False)
 
-report.section("a session cap")
-capped = Schedule(max_session_minutes=90)
-started = datetime(2026, 8, 20, 12, 0)
-report.check("an hour in", capped.session_exhausted(started, at(13, 0)), False)
-report.check("ninety minutes in", capped.session_exhausted(started, at(13, 30)), True)
-report.check("no cap set means never", Schedule().session_exhausted(started, at(23, 0)), False)
-
 report.section("nothing configured is completely inert")
 off = Schedule()
 report.check("not active", off.active, False)
-report.check("never holds", off.holding(started, at(3, 0))[0], False)
+report.check("never holds", off.holding(at(3, 0))[0], False)
 
 report.section("holding says why")
-holding, reason = night.holding(started, at(2, 0))
+holding, reason = night.holding(at(2, 0))
 report.check("it holds", holding, True)
 report.check("and names the reason", reason, "quiet hours")
+
+
+report.section("the session cap is gone, not merely hidden")
+# A duration and a clock time answered the same question in different units,
+# and nobody could say which won. Removed rather than left in the config for
+# somebody to find later and wonder about.
+runtime = open("webui/runtime.py", encoding="utf-8").read()
+schedule_src = open("schedule_control.py", encoding="utf-8").read()
+report.check("no session clock in the runtime", "_session_started" in runtime, False)
+report.check("no cap in the schedule", "max_session_minutes" in schedule_src, False)
+report.check("and none in the shipped config",
+             "max_session_minutes" in open("cfg/bot_config.toml", encoding="utf-8").read(),
+             False)
+
+report.section("the schedule explains itself in words, not setting names")
+app_js = open("static/js/app.js", encoding="utf-8").read()
+# Looked for as markup, not as prose - the first version of this check matched
+# the comment that explains why the label was changed.
+report.check("no bare 'Session limit' label",
+             "<span>Session limit</span>" in app_js, False)
+for phrase in ("Pause at this time", "Start again at",
+               "Time of day, 24 hour", "Leave empty to stay paused"):
+    report.check(f"says {phrase!r}", phrase in app_js, True)
 
 sys.exit(report.finish())
