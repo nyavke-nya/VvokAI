@@ -233,4 +233,14 @@ stage_all = open("stage_manager.py", encoding="utf-8").read()
 done_block = stage_all[stage_all.index("all targets completed"):stage_all.index("ping_when_target_is_reached")]
 report.check("no shutdown on the finish path", "shutdown_computer" in done_block, False)
 
+
+report.section("the brawler list is wound all the way to the top")
+# Fourteen swipes left the view short when the selected brawler sat far down
+# the list, so the search began halfway and everything above was invisible to
+# it - indistinguishable from the brawler not existing.
+lobby = open("lobby_automation.py", encoding="utf-8").read()
+import re as _re2
+swipes = int(_re2.search(r"SCROLL_TOP_SWIPES = (\d+)", lobby).group(1))
+report.at_least("enough swipes to reach the top from anywhere", swipes, 18)
+
 sys.exit(report.finish())

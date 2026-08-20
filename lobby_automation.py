@@ -51,9 +51,16 @@ class LobbyAutomation:
     # it is stuck, and grinding through it costs minutes before anyone is told.
     MAX_SCANS = 40
 
-    # Swipes to get back to the top. More than the list is tall, because a swipe
-    # that lands while the view is still gliding does nothing.
-    SCROLL_TOP_SWIPES = 14
+    # Swipes to get back to the top. More than the list is tall, because a
+    # swipe that lands while the view is still gliding does nothing at all -
+    # so the count has to cover the wasted ones as well as the useful ones.
+    #
+    # Fourteen was not enough in practice: with a brawler far down the list the
+    # view still had further to go when the swiping stopped, the search then
+    # started from halfway, and everything above that point was invisible to it
+    # - which looks exactly like the brawler not existing. Overshooting costs
+    # nothing, because a list already at the top ignores the extra swipes.
+    SCROLL_TOP_SWIPES = 19
 
     def _scroll_to_list_top(self, runtime_control=None, stop_event=None):
         """Put the brawler list back at the top before searching it.
