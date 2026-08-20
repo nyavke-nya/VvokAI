@@ -404,6 +404,53 @@ function renderAlerts() {
     alerts.innerHTML = warnings.map((warning) => `<div class="alert">${escapeHtml(warning)}</div>`).join("");
 }
 
+function renderRuntimeSchedule() {
+    // Deliberately on the Runtime panel rather than in Settings. When the bot
+    // may run is a decision people make while starting it, so it belongs next
+    // to the button that starts it - buried three tabs away it would never be
+    // found, which is exactly what happened the first time.
+    // The bot section, not general: these keys live in cfg/bot_config.toml.
+    const bot = (state.bootstrap && state.bootstrap.settings
+                 && state.bootstrap.settings.bot) || {};
+    const stopAt = bot.stop_at || "";
+    const resumeAt = bot.resume_at || "";
+    const limit = Number(bot.max_session_minutes || 0);
+
+    const active = Boolean(stopAt) || limit > 0;
+    let summary = "Runs until you stop it";
+    if (stopAt && resumeAt) summary = `Plays outside ${escapeHtml(stopAt)} - ${escapeHtml(resumeAt)}`;
+    else if (stopAt) summary = `Stops at ${escapeHtml(stopAt)}`;
+    if (limit > 0) {
+        summary += `${active && stopAt ? ", and after" : "Stops after"} ${limit} min`;
+    }
+
+    return `
+        <details class="runtime-schedule ${active ? "is-set" : ""}" ${active ? "open" : ""}>
+            <summary>
+                <span class="sched-title">Schedule</span>
+                <span class="sched-summary">${summary}</span>
+            </summary>
+            <div class="sched-fields">
+                <label>
+                    <span>Stop at</span>
+                    <input type="text" id="schedStopAt" placeholder="23:30" value="${escapeHtml(stopAt)}">
+                </label>
+                <label>
+                    <span>Start again at</span>
+                    <input type="text" id="schedResumeAt" placeholder="08:00" value="${escapeHtml(resumeAt)}">
+                </label>
+                <label>
+                    <span>Session limit</span>
+                    <input type="number" id="schedLimit" min="0" step="10" placeholder="0" value="${limit || ""}">
+                </label>
+            </div>
+            <p class="sched-help">Times are 24 hour. The window may cross midnight,
+            so 23:30 to 08:00 works. It finishes the current match and pauses -
+            the queue is kept. Leave everything empty to run until stopped.</p>
+        </details>`;
+}
+
+
 function renderDashboard() {
     const view = document.getElementById("view-dashboard");
     const { links, queue, runtime, auth } = state.bootstrap;
@@ -436,6 +483,7 @@ function renderDashboard() {
         </button>
         <p class="runtime-note ${runtime.state === "error" ? "runtime-error" : ""}">${escapeHtml(statusCopy)}</p>
         ${!queue.length ? '<button id="goToBrawlersBtn" class="btn" style="margin-top: 12px;">Go to Brawlers</button>' : ''}
+        ${renderRuntimeSchedule()}
     `;
 
     if (["running", "pausing"].includes(runtime.state)) {
@@ -447,6 +495,7 @@ function renderDashboard() {
                     <button id="pauseRuntimeBtn" class="btn btn-primary btn-runtime-action ${runtime.state === "pausing" ? "is-disabled" : ""}">${iconMarkup("pause")} Pause</button>
                     <button id="stopRuntimeBtn" class="btn btn-runtime-action">${iconMarkup("stop")} Stop</button>
                 </div>
+                ${renderRuntimeSchedule()}
             </div>
         `;
     } else if (isPaused) {
@@ -458,6 +507,7 @@ function renderDashboard() {
                     <button id="resumeRuntimeBtn" class="btn btn-primary btn-runtime-action">${iconMarkup("play")} Start</button>
                     <button id="stopRuntimeBtn" class="btn btn-runtime-action">${iconMarkup("stop")} Stop</button>
                 </div>
+                ${renderRuntimeSchedule()}
             </div>
         `;
     }
@@ -1684,6 +1734,33 @@ function renderQueueStrip(queue) {
 }
 
 function bindRuntimeButtons() {
+    for (const [id, key] of [["schedStopAt", "stop_at"],
+                             ["schedResumeAt", "resume_at"],
+                             ["schedLimit", "max_session_minutes"]]) {
+        const field = document.getElementById(id);
+        if (!field) continue;
+        // On change, not on every keystroke: half a typed time is not a time,
+        // and saving it would clear the setting on the way through.
+        field.addEventListener("change", async () => {
+            const value = key === "max_session_minutes"
+                ? Number(field.value || 0)
+                : field.value.trim();
+            const payload = { ...(state.bootstrap.settings.bot || {}), [key]: value };
+            const result = await fetchJSON("/api/settings/bot", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            }, true);
+            if (!result || result.ok === false) {
+                showToast(result?.message || "Schedule could not be saved.", "error");
+                return;
+            }
+            state.bootstrap.settings.bot = result;
+            showToast("Schedule saved. It applies the next time VvokAI starts.", "success");
+            renderDashboard();
+        });
+    }
+
     document.getElementById("startRuntimeBtn")?.addEventListener("click", async () => {
         const button = document.getElementById("startRuntimeBtn");
         if (button.classList.contains("is-disabled")) return;

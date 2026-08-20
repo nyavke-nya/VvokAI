@@ -1295,3 +1295,66 @@ textarea:focus {
     display: grid;
     gap: 24px;
 }
+
+/* Play schedule, on the Runtime panel where the session is started ------- */
+.runtime-schedule {
+    margin-top: 16px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.09));
+    background: rgba(255, 255, 255, 0.03);
+    text-align: left;
+}
+
+.runtime-schedule.is-set { border-color: rgba(122, 162, 255, 0.35); }
+
+.runtime-schedule summary {
+    cursor: pointer;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    list-style: none;
+}
+
+.runtime-schedule summary::-webkit-details-marker { display: none; }
+
+.sched-title {
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.7;
+}
+
+.sched-summary { font-size: 0.85rem; opacity: 0.75; }
+
+.sched-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px;
+    padding-top: 12px;
+}
+
+.sched-fields label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 0.75rem;
+    opacity: 0.8;
+}
+
+.sched-fields input {
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.14));
+    background: rgba(0, 0, 0, 0.25);
+    color: inherit;
+    font: inherit;
+    font-size: 0.9rem;
+}
+
+.sched-help {
+    font-size: 0.74rem;
+    opacity: 0.5;
+    padding-top: 10px;
+    line-height: 1.45;
+}

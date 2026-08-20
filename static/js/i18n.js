@@ -300,6 +300,45 @@
         "Get Early Access": "Получить ранний доступ", "Maybe Later": "Позже",
         "Unlock Premium Features": "Открыть платные функции",
         "Community": "Сообщество",
+
+        // ---- profile
+        "Profile": "Профиль",
+        "No matches recorded yet": "Матчей пока нет",
+        "Everything here is worked out from the match history, so it fills in as the bot plays.":
+            "Всё здесь считается из истории матчей и заполняется по мере игры.",
+        "Win rate": "Побед",
+        "Trophies": "Кубки",
+        "Per match": "За матч",
+        "Time played": "Наиграно",
+        "Today": "Сегодня",
+        "Right now": "Сейчас",
+        "Per day": "В день",
+        "Best brawler": "Лучший боец",
+        "Most played": "Больше всего сыграно",
+        "Recent form": "Последние матчи",
+        "Newest first": "Свежие первыми",
+        "Time of day": "Время суток",
+        "When it plays, and how it goes": "Когда играет и с каким результатом",
+        "Day of week": "День недели",
+        "Across the week": "По дням недели",
+        "Height is matches played, colour is win rate":
+            "Высота — число матчей, цвет — процент побед",
+        "Gamemodes": "Режимы",
+        "brawlers": "бойцов",
+        "playstyles": "стилей",
+        "gamemodes": "режимов",
+
+        // ---- play schedule, on the runtime panel
+        "Schedule": "Расписание",
+        "Stop at": "Останавливаться в",
+        "Start again at": "Продолжать в",
+        "Session limit": "Лимит сессии",
+        "Runs until you stop it": "Работает, пока не остановишь",
+        "Schedule saved. It applies the next time VvokAI starts.":
+            "Расписание сохранено, начнёт действовать при следующем запуске.",
+        "Schedule could not be saved.": "Не удалось сохранить расписание.",
+        "Times are 24 hour. The window may cross midnight, so 23:30 to 08:00 works. It finishes the current match and pauses - the queue is kept. Leave everything empty to run until stopped.":
+            "Время в 24-часовом формате. Окно может переходить через полночь, поэтому 23:30 — 08:00 работает. Бот доигрывает текущий матч и встаёт на паузу, очередь сохраняется. Оставь всё пустым, чтобы работал до остановки.",
         "Enter your Pyla API key": "Введи ключ Pyla API",
         "Pyla Early Access": "Ранний доступ Pyla",
         "Generate one in Discord with /generate_key using PylaBot.":
@@ -328,11 +367,38 @@
     const originals = new WeakMap();
     let busy = false;
 
+    // Lines that carry a number cannot be looked up whole - "1543 matches
+    // played" is a different string every match. A handful of patterns covers
+    // them without turning this into a template engine, and each one still
+    // round-trips because the English original is kept on the node.
+    const PATTERNS = [
+        [/^(\d+) matches played$/, "Сыграно матчей: $1"],
+        [/^Last (\d+) matches$/, "Последние $1 матчей"],
+        [/^(\d+) brawlers$/, "Бойцов: $1"],
+        [/^(\d+) playstyles$/, "Стилей игры: $1"],
+        [/^(\d+) gamemodes$/, "Режимов: $1"],
+        [/^(\d+) sessions \| (.+) at the controls$/, "Сессий: $1 | за игрой $2"],
+        [/^(.+) to (.+) \| (\d+) active days \| (\d+) sessions$/,
+         "$1 — $2 | дней активности: $3 | сессий: $4"],
+        [/^(\d+) matches$/, "Матчей: $1"],
+        [/^(\d+)W \/ (\d+)L \/ (\d+)D$/, "$1 побед / $2 поражений / $3 ничьих"],
+    ];
+
     function targetFor(text) {
-        const trimmed = text.trim();
+        // Collapsed for matching only: markup indentation puts newlines and
+        // runs of spaces inside otherwise ordinary sentences.
+        const trimmed = text.trim().replace(/\s+/g, " ");
         if (!trimmed || KEEP.has(trimmed)) return null;
+
         const hit = RU[trimmed];
-        return hit ? text.replace(trimmed, hit) : null;
+        if (hit) return text.replace(text.trim(), hit);
+
+        for (const [pattern, replacement] of PATTERNS) {
+            if (pattern.test(trimmed)) {
+                return text.replace(text.trim(), trimmed.replace(pattern, replacement));
+            }
+        }
+        return null;
     }
 
     function applyToNode(node) {
