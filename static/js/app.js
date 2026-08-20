@@ -417,6 +417,7 @@ function renderRuntimeSchedule() {
                  && state.bootstrap.settings.bot) || {};
     const stopAt = bot.stop_at || "";
     const resumeAt = bot.resume_at || "";
+    const closeGame = bot.close_game_when_scheduled !== false;
 
     let summary = "Runs until you stop it";
     if (stopAt && resumeAt) {
@@ -443,6 +444,10 @@ function renderRuntimeSchedule() {
                     <small>Leave empty to stay paused</small>
                 </label>
             </div>
+            <label class="sched-toggle">
+                <input type="checkbox" id="schedCloseGame" ${closeGame ? "checked" : ""}>
+                <span>Close Brawl Stars while paused, and reopen it on the way back</span>
+            </label>
             <p class="sched-help">It finishes the current match first and then pauses,
             so the queue and your progress are kept. The window may cross midnight -
             23:30 to 08:00 works. Leave both empty and it runs until you stop it
@@ -1734,6 +1739,20 @@ function renderQueueStrip(queue) {
 }
 
 function bindRuntimeButtons() {
+    const closeGameBox = document.getElementById("schedCloseGame");
+    if (closeGameBox) {
+        closeGameBox.addEventListener("change", async () => {
+            const payload = { ...(state.bootstrap.settings.bot || {}),
+                              close_game_when_scheduled: closeGameBox.checked };
+            const result = await fetchJSON("/api/settings/bot", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            }, true);
+            if (result && result.ok !== false) state.bootstrap.settings.bot = result;
+        });
+    }
+
     for (const [id, key] of [["schedStopAt", "stop_at"],
                              ["schedResumeAt", "resume_at"]]) {
         const field = document.getElementById(id);

@@ -1364,3 +1364,14 @@ textarea:focus {
     opacity: 0.5;
     line-height: 1.35;
 }
+
+.sched-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    padding-top: 12px;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.sched-toggle input { margin-top: 2px; }

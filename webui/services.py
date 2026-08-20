@@ -119,6 +119,7 @@ class WebDataService:
         "play_again_on_win": ("bool_str", False),
         "stop_at": ("str", ""),
         "resume_at": ("str", ""),
+        "close_game_when_scheduled": ("bool", True),
         "minimum_movement_delay": ("float", 0.1),
         "unstuck_movement_delay": ("float", 2.4),
         "unstuck_movement_hold_time": ("float", 1.4),

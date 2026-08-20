@@ -334,6 +334,8 @@
         "Start again at": "Продолжать в",
         "Time of day, 24 hour": "Время суток, 24 часа",
         "Leave empty to stay paused": "Пусто — останется на паузе",
+        "Close Brawl Stars while paused, and reopen it on the way back":
+            "Закрывать Brawl Stars на паузе и открывать обратно при возобновлении",
         "Runs until you stop it": "Работает, пока не остановишь",
         "It finishes the current match first and then pauses, so the queue and your progress are kept. The overnight window may cross midnight - 23:30 to 08:00 works. Leave everything empty and it runs until you stop it yourself.":
             "Сначала доигрывает текущий матч и только потом встаёт на паузу, очередь и прогресс сохраняются. Ночное окно может переходить через полночь — 23:30 до 08:00 работает. Оставь всё пустым, и бот будет работать, пока не остановишь сам.",

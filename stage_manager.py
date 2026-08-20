@@ -222,6 +222,15 @@ class StageManager:
                 notify_user("completed", screenshot, self)
                 print("Bot stopping: all targets completed with no more brawlers.")
                 self.window_controller.release_movement(priority=True)
+                # Nothing left to push, so nothing left to stay online for.
+                # Same switch the scheduled pause uses - and read here with
+                # plain code, because config_bool is not imported in this
+                # module and a NameError on the finish path would turn a
+                # completed run into a crash.
+                raw = load_toml_as_dict("./cfg/bot_config.toml").get(
+                    "close_game_when_scheduled", True)
+                if raw is True or str(raw).strip().lower() in {"1", "true", "yes", "on"}:
+                    self.window_controller.close_brawl_stars()
                 self.window_controller.close()
                 sys.exit(0)
             ping_when_target_is_reached = load_toml_as_dict("cfg/webhook_config.toml")["ping_when_target_is_reached"]

@@ -249,6 +249,55 @@ class WindowController:
         print("All scrcpy reconnect attempts exhausted")
         return False
 
+    def close_brawl_stars(self):
+        """Stop the game and leave it stopped.
+
+        Everything needed was already here - restart_brawl_stars is app_stop
+        followed by app_start. This is the same call without the second half,
+        for the case where the work is finished and the point is that the
+        account goes offline rather than sitting in a lobby all night.
+        """
+        try:
+            self.device.app_stop(self.BRAWL_STARS_PACKAGE)
+            print("Brawl Stars closed.")
+            return True
+        except Exception as error:
+            # Never fatal: the bot has finished either way, and failing to
+            # close the game is not a reason to fail the run that succeeded.
+            print(f"Could not close Brawl Stars: {error}")
+            return False
+
+    def close_brawl_stars(self):
+        """Stop the game and leave it stopped.
+
+        Everything needed was already here: restart_brawl_stars is app_stop
+        followed by app_start. This is the same call without the second half,
+        for when the point is that the account goes offline rather than sitting
+        in a lobby all night.
+        """
+        try:
+            self.device.app_stop(self.BRAWL_STARS_PACKAGE)
+            print("Brawl Stars closed.")
+            return True
+        except Exception as error:
+            # Never fatal. Failing to close the game is not a reason to fail a
+            # run that was otherwise finished or paused correctly.
+            print(f"Could not close Brawl Stars: {error}")
+            return False
+
+    def open_brawl_stars(self, wait=8.0):
+        """Start the game again and give it time to reach a usable screen."""
+        try:
+            self.device.app_start(self.BRAWL_STARS_PACKAGE)
+        except Exception as error:
+            print(f"Could not start Brawl Stars: {error}")
+            return False
+        # Loading takes a while on a cold start, and the state finder reading a
+        # splash screen would otherwise decide it is lost and restart the game.
+        time.sleep(max(wait, 0.0))
+        print("Brawl Stars started.")
+        return True
+
     def restart_brawl_stars(self):
         self.device.app_stop(self.BRAWL_STARS_PACKAGE)
         time.sleep(1)

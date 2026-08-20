@@ -161,4 +161,32 @@ for phrase in ("Pause at this time", "Start again at",
                "Time of day, 24 hour", "Leave empty to stay paused"):
     report.check(f"says {phrase!r}", phrase in app_js, True)
 
+
+report.section("a scheduled pause closes the game, a manual one does not")
+main_src = open("main.py", encoding="utf-8").read()
+pause = main_src[main_src.index("def wait_while_paused"):main_src.index("def handle_pause_request")]
+report.check("it tells the two kinds of pause apart",
+             "schedule_hold_reason" in pause, True)
+report.check("closes on a scheduled hold", "close_brawl_stars()" in pause, True)
+report.check("and opens it again on the way out", "open_brawl_stars()" in pause, True)
+report.check("the switch is read, not assumed",
+             "close_game_while_scheduled()" in pause, True)
+
+report.section("finishing the queue closes it too")
+stage = open("stage_manager.py", encoding="utf-8").read()
+done = stage[stage.index("all targets completed"):stage.index("ping_when_target_is_reached")]
+report.check("closes the game when nothing is left to push",
+             "close_brawl_stars()" in done, True)
+# The call, not the word. The comment on that line explains why config_bool is
+# avoided there, and an earlier version of this check matched the explanation.
+report.check("without calling a name it does not import",
+             "config_bool(" in done, False)
+
+report.section("the app control exists and is survivable")
+wc = open("window_controller.py", encoding="utf-8").read()
+for name in ("def close_brawl_stars", "def open_brawl_stars"):
+    report.check(f"{name} exists", name in wc, True)
+close_fn = wc[wc.index("def close_brawl_stars"):wc.index("def open_brawl_stars")]
+report.check("a failure to close is caught", "except Exception" in close_fn, True)
+
 sys.exit(report.finish())

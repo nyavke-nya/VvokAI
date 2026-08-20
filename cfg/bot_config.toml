@@ -17,3 +17,4 @@ play_again_on_win = "yes"
 current_playstyle = "unified_dodge.pyla"
 stop_at = ""
 resume_at = ""
+close_game_when_scheduled = true
