@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from typing import Any, Callable
 import traceback
 
@@ -27,24 +28,25 @@ class RuntimeControl:
         self._stop_event.set()
         self._pause_requested.clear()
 
-    def should_stop(self) -> bool:
-        return self._stop_event.is_set()
-
     def should_pause(self) -> bool:
+        return self._pause_requested.is_set() and not self._stop_event.is_set()
+
+    def should_stop(self) -> bool:
+        # The schedule STOPS rather than pauses, and that is the whole point.
+        # A pause leaves the bot running, and a bot that is running notices
+        # Brawl Stars has been closed, calls that a crash, and starts it again
+        # within a couple of seconds - so closing the game while paused
+        # achieves nothing. Stopping is what makes it stick.
         if self._stop_event.is_set():
-            return False
-        if self._pause_requested.is_set():
             return True
         if self._schedule is not None and self._schedule.active:
             holding, reason = self._schedule.holding()
             if holding:
                 if reason != self._schedule_reason:
-                    print(f"Pausing: {reason}.")
+                    print(f"Stopping: {reason}.")
                     self._schedule_reason = reason
                 return True
-            if self._schedule_reason:
-                print("Resuming: back inside the playing window.")
-                self._schedule_reason = ""
+            self._schedule_reason = ""
         return False
 
     def schedule_hold_reason(self) -> str:
@@ -62,6 +64,7 @@ class RuntimeControl:
 class RuntimeManager:
     def __init__(self, pyla_main):
         self.pyla_main = pyla_main
+        self._resume_thread = None
         self._thread: threading.Thread | None = None
         self.rt_control: RuntimeControl | None = None
         self._lock = threading.Lock()
@@ -125,7 +128,50 @@ class RuntimeManager:
                 name="pyla-runtime",
             )
             self._thread.start()
+            self._watch_for_resume(discord_bot)
             return {"ok": True, "message": "Pyla started."}
+
+    def _watch_for_resume(self, discord_bot):
+        """Start the run again when the quiet window ends.
+
+        The schedule stops the bot rather than pausing it, so nothing inside
+        the run survives to restart itself - but this process does, because it
+        is the web server. One thread, waking once a minute, doing nothing at
+        all unless a stop time was actually configured.
+        """
+        if self._resume_thread and self._resume_thread.is_alive():
+            return
+
+        def wait_out_the_night():
+            from datetime import datetime
+            while True:
+                time.sleep(30)
+                try:
+                    from schedule_control import Schedule
+                    from utils import load_toml_as_dict, invalidate_toml_cache
+                    invalidate_toml_cache("cfg/bot_config.toml")
+                    schedule = Schedule.from_config(load_toml_as_dict("cfg/bot_config.toml"))
+                except Exception:
+                    continue
+
+                if not schedule.active or schedule.resume_at is None:
+                    # Nothing to come back for. Without a resume time the stop
+                    # is meant to be final until somebody presses Start.
+                    return
+                if self.get_status()["state"] in {"running", "pausing"}:
+                    continue
+                if schedule.in_quiet_hours(datetime.now()):
+                    continue
+
+                print("Schedule: the playing window has opened, starting again.")
+                result = self.start_current_queue(discord_bot)
+                if not result.get("ok"):
+                    print(f"Schedule could not start the run: {result.get('message')}")
+                return
+
+        self._resume_thread = threading.Thread(
+            target=wait_out_the_night, daemon=True, name="pyla-schedule-resume")
+        self._resume_thread.start()
 
     def start_current_queue(self, discord_bot) -> dict[str, Any]:
         if not self.queue_provider or not self._auth_provider:

@@ -162,15 +162,33 @@ for phrase in ("Pause at this time", "Start again at",
     report.check(f"says {phrase!r}", phrase in app_js, True)
 
 
-report.section("a scheduled pause closes the game, a manual one does not")
+report.section("the schedule stops the bot, it does not merely pause it")
+# Pausing was useless: a paused bot is still running, and a running bot treats
+# "Brawl Stars is not open" as a crash and reopens it within a couple of
+# seconds. Stopping is what makes closing the game stick.
+runtime = open("webui/runtime.py", encoding="utf-8").read()
+stop_fn = runtime[runtime.index("def should_stop"):runtime.index("def mark_running")]
+pause_fn = runtime[runtime.index("def should_pause"):runtime.index("def should_stop")]
+report.check("the schedule is consulted when deciding to stop",
+             "self._schedule" in stop_fn, True)
+report.check("and no longer when deciding to pause",
+             "self._schedule" in pause_fn, False)
+
+report.section("stopping closes the game, and in the right order")
 main_src = open("main.py", encoding="utf-8").read()
-pause = main_src[main_src.index("def wait_while_paused"):main_src.index("def handle_pause_request")]
-report.check("it tells the two kinds of pause apart",
-             "schedule_hold_reason" in pause, True)
-report.check("closes on a scheduled hold", "close_brawl_stars()" in pause, True)
-report.check("and opens it again on the way out", "open_brawl_stars()" in pause, True)
-report.check("the switch is read, not assumed",
-             "close_game_while_scheduled()" in pause, True)
+stop = main_src[main_src.index("def stop_gracefully"):main_src.index("def close_game_on_stop")]
+report.check("the game is closed on the way down", "close_brawl_stars()" in stop, True)
+report.check("the crash watchdog is stopped first",
+             stop.index("stop_crash_watchdog") < stop.index("close_brawl_stars"), True)
+report.check("the switch is read, not assumed", "close_game_on_stop()" in stop, True)
+
+report.section("and it comes back when the window opens")
+report.check("something is watching for the window to open",
+             "_watch_for_resume" in runtime, True)
+report.check("it gives up when there is no resume time",
+             "schedule.resume_at is None" in runtime, True)
+report.check("and does not fight a run that is already going",
+             'self.get_status()["state"] in {"running", "pausing"}' in runtime, True)
 
 report.section("finishing the queue closes it too")
 stage = open("stage_manager.py", encoding="utf-8").read()

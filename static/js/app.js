@@ -421,9 +421,9 @@ function renderRuntimeSchedule() {
 
     let summary = "Runs until you stop it";
     if (stopAt && resumeAt) {
-        summary = `Pauses at ${escapeHtml(stopAt)}, starts itself again at ${escapeHtml(resumeAt)}`;
+        summary = `Stops at ${escapeHtml(stopAt)}, starts itself again at ${escapeHtml(resumeAt)}`;
     } else if (stopAt) {
-        summary = `Pauses at ${escapeHtml(stopAt)} and stays paused until you start it`;
+        summary = `Stops at ${escapeHtml(stopAt)} and stays stopped until you start it`;
     }
 
     return `
@@ -446,12 +446,13 @@ function renderRuntimeSchedule() {
             </div>
             <label class="sched-toggle">
                 <input type="checkbox" id="schedCloseGame" ${closeGame ? "checked" : ""}>
-                <span>Close Brawl Stars while paused, and reopen it on the way back</span>
+                <span>Close Brawl Stars when it stops</span>
             </label>
-            <p class="sched-help">It finishes the current match first and then pauses,
-            so the queue and your progress are kept. The window may cross midnight -
-            23:30 to 08:00 works. Leave both empty and it runs until you stop it
-            yourself.</p>
+            <p class="sched-help">It finishes the current match first, then stops -
+            a full stop rather than a pause, because a paused bot treats a closed
+            game as a crash and reopens it. Trophies and the queue are saved. The
+            window may cross midnight, so 23:30 to 08:00 works. Leave both empty
+            and it runs until you stop it yourself.</p>
         </details>`;
 }
 

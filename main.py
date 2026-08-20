@@ -171,8 +171,14 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
 
         def stop_gracefully(self):
             cprint("Stop requested from UI - shutting down gracefully", "#AAE5A4")
+            # Order matters. The crash watchdog treats "Brawl Stars is not
+            # running" as a crash and starts it again within a couple of
+            # seconds, so closing the game while anything is still watching is
+            # pointless - it has to go first.
             self.stop_state_checker()
             self.stop_crash_watchdog()
+            if self.close_game_on_stop():
+                self.window_controller.close_brawl_stars()
             if self.Play.dodge_service is not None:
                 self.Play.dodge_service.stop()
             # priority=True so a dodge that grabbed the joystick a moment ago
@@ -180,6 +186,17 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
             self.window_controller.release_movement(priority=True)
             self.window_controller.close()
             discord_bot.set_window_controller(None)
+
+        def close_game_on_stop(self):
+            """Whether shutting down should also close Brawl Stars.
+
+            Read each time rather than cached, so changing it takes effect at
+            the next stop instead of the next launch.
+            """
+            raw = load_toml_as_dict("./cfg/bot_config.toml").get("close_game_when_scheduled", True)
+            if isinstance(raw, bool):
+                return raw
+            return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
         def start_state_checker(self):
             if self.state_checker_thread and self.state_checker_thread.is_alive():
@@ -231,17 +248,6 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
                     print(f"State checker failed: {e}")
                     self.state_checker_stop_event.wait(0.1)
 
-        def close_game_while_scheduled(self):
-            """Whether a scheduled pause should shut the game down.
-
-            Read each time rather than cached, so turning it off takes effect
-            at the next pause instead of the next restart.
-            """
-            raw = load_toml_as_dict("./cfg/bot_config.toml").get("close_game_when_scheduled", True)
-            if isinstance(raw, bool):
-                return raw
-            return str(raw).strip().lower() in {"1", "true", "yes", "on"}
-
         def wait_while_paused(self):
             if not self.runtime_control:
                 return
@@ -250,21 +256,7 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
             # the run is paused from the UI.
             self.window_controller.release_movement(priority=True)
             self.runtime_control.mark_paused()
-
-            # A pause from the clock is different from a pause from the Pause
-            # button. The scheduled one is meant to last hours, and leaving the
-            # account parked in a lobby all night is the thing it exists to
-            # avoid - so the game is closed, and started again on the way out.
-            # A pause somebody asked for by hand is left alone: they are
-            # standing there and will press Start in a moment.
-            scheduled = bool(getattr(self.runtime_control, "schedule_hold_reason", lambda: "")())
-            closed_game = False
-            if scheduled and self.close_game_while_scheduled():
-                closed_game = self.window_controller.close_brawl_stars()
-                cprint("Paused by the schedule. Brawl Stars closed until it is due back.",
-                       "#AAE5A4")
-            else:
-                cprint("Pyla is paused in the lobby. Waiting for Start to resume.", "#AAE5A4")
+            cprint("Pyla is paused in the lobby. Waiting for Start to resume.", "#AAE5A4")
 
             while self.should_pause() and not self.should_stop():
                 state = self.get_latest_state()
@@ -276,15 +268,9 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
                     return
 
             if not self.should_stop():
-                if closed_game:
-                    self.window_controller.open_brawl_stars()
                 self.runtime_control.mark_running()
                 self.time_since_last_webhook_ping = time.time()
                 print("Pause released, resuming run.")
-            elif closed_game:
-                # Stopped while the schedule had the game shut. Leave it shut:
-                # nobody asked for it to come back just to be closed again.
-                pass
 
         def handle_pause_request(self):
             if self.should_pause() and not self.should_stop():

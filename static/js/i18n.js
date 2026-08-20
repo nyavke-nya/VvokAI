@@ -334,8 +334,7 @@
         "Start again at": "Продолжать в",
         "Time of day, 24 hour": "Время суток, 24 часа",
         "Leave empty to stay paused": "Пусто — останется на паузе",
-        "Close Brawl Stars while paused, and reopen it on the way back":
-            "Закрывать Brawl Stars на паузе и открывать обратно при возобновлении",
+        "Close Brawl Stars when it stops": "Закрывать Brawl Stars при остановке",
         "Runs until you stop it": "Работает, пока не остановишь",
         "It finishes the current match first and then pauses, so the queue and your progress are kept. The overnight window may cross midnight - 23:30 to 08:00 works. Leave everything empty and it runs until you stop it yourself.":
             "Сначала доигрывает текущий матч и только потом встаёт на паузу, очередь и прогресс сохраняются. Ночное окно может переходить через полночь — 23:30 до 08:00 работает. Оставь всё пустым, и бот будет работать, пока не остановишь сам.",
@@ -386,9 +385,9 @@
         [/^(.+) to (.+) \| (\d+) active days \| (\d+) sessions$/,
          "$1 — $2 | дней активности: $3 | сессий: $4"],
         [/^(\d+) matches$/, "Матчей: $1"],
-        [/^Pauses at (.+), starts itself again at (.+)$/, "Пауза в $1, сама продолжит в $2"],
-        [/^Pauses at (.+) and stays paused until you start it$/,
-         "Пауза в $1, дальше ждёт запуска вручную"],
+        [/^Stops at (.+), starts itself again at (.+)$/, "Остановка в $1, сам запустится в $2"],
+        [/^Stops at (.+) and stays stopped until you start it$/,
+         "Остановка в $1, дальше ждёт запуска вручную"],
         [/^(\d+)W \/ (\d+)L \/ (\d+)D$/, "$1 побед / $2 поражений / $3 ничьих"],
     ];
 
