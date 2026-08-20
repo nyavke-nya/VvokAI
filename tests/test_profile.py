@@ -122,19 +122,44 @@ report.check("before work", day.in_quiet_hours(at(8, 0)), False)
 report.check("during work", day.in_quiet_hours(at(12, 0)), True)
 report.check("after work", day.in_quiet_hours(at(18, 0)), False)
 
-report.section("a stop time with nothing to lift it holds until midnight")
-until_midnight = Schedule(stop_at="22:00")
-report.check("before", until_midnight.in_quiet_hours(at(21, 59)), False)
-report.check("after", until_midnight.in_quiet_hours(at(22, 1)), True)
-report.check("next morning is free again", until_midnight.in_quiet_hours(at(7, 0)), False)
+report.section("a lone stop time is a deadline, not a range")
+# This is the one that shut a computer down. Setting 04:00 at 23:50 used to put
+# the bot inside "quiet from 04:00 until midnight" immediately, so it stopped
+# the moment it was configured - and with the shutdown box ticked, powered the
+# machine off. It has to mean the NEXT 04:00.
+lone = Schedule(stop_at="4:00")
+started = datetime(2026, 8, 20, 23, 50)
+report.check("not the moment it is set",
+             lone.holding(now=datetime(2026, 8, 20, 23, 51), since=started)[0], False)
+report.check("nor later that evening",
+             lone.holding(now=datetime(2026, 8, 20, 23, 59), since=started)[0], False)
+report.check("nor in the small hours before it",
+             lone.holding(now=datetime(2026, 8, 21, 3, 59), since=started)[0], False)
+report.check("and yes once it arrives",
+             lone.holding(now=datetime(2026, 8, 21, 4, 0), since=started)[0], True)
+report.check("a stop time later the same day still works",
+             Schedule(stop_at="23:00").holding(
+                 now=datetime(2026, 8, 20, 23, 1),
+                 since=datetime(2026, 8, 20, 20, 0))[0], True)
+report.check("without knowing when the run began it refuses to fire",
+             lone.holding(now=datetime(2026, 8, 21, 5, 0), since=None)[0], False)
+
+report.section("the times people actually type are understood")
+# "400" used to parse as nothing at all, which silently disabled the schedule -
+# indistinguishable from the feature not working.
+for text, want in (("400", 240), ("0400", 240), ("4:00", 240), ("4.00", 240),
+                   ("4", 240), ("2335", 1415), ("23:35", 1415)):
+    report.check(f"{text!r} reads as {want}", parse_clock(text), want)
+for bad in ("25:00", "12:99", "abc", ""):
+    report.check(f"{bad!r} is refused", parse_clock(bad), None)
 
 report.section("nothing configured is completely inert")
 off = Schedule()
 report.check("not active", off.active, False)
-report.check("never holds", off.holding(at(3, 0))[0], False)
+report.check("never holds", off.holding(now=at(3, 0), since=started)[0], False)
 
 report.section("holding says why")
-holding, reason = night.holding(at(2, 0))
+holding, reason = night.holding(now=at(2, 0), since=started)
 report.check("it holds", holding, True)
 report.check("and names the reason", reason, "quiet hours")
 
@@ -223,9 +248,12 @@ report.check("there is a grace period", "grace_seconds=60" in fn, True)
 report.check("and it says how to cancel", "shutdown /a" in fn, True)
 report.check("a failure to power off is survivable", "except Exception" in fn, True)
 
-report.check("the shipped config has it off",
-             "shutdown_when_done = false" in open("cfg/bot_config.toml", encoding="utf-8").read(),
-             True)
+# The DEFAULT, not the live config - somebody who has ticked the box on this
+# machine is not a test failure, and asserting against their settings file
+# makes the suite fail for the wrong reason.
+services = open("webui/services.py", encoding="utf-8").read()
+report.check("the setting defaults to off",
+             '"shutdown_when_done": ("bool", False)' in services, True)
 
 
 report.section("running out of brawlers does not power the machine off")

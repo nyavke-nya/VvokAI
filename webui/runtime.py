@@ -17,6 +17,10 @@ class RuntimeControl:
         # loop and every interruptible sleep all funnel through it.
         self._schedule = schedule
         self._schedule_reason = ""
+        # A lone stop time means "the next one", so it needs to know when the
+        # run began. Without this the same time reads as "any moment past it",
+        # which fires instantly whenever the run starts later in the day.
+        self._started_at = datetime.now()
 
     def request_pause(self):
         self._pause_requested.set()
@@ -40,7 +44,7 @@ class RuntimeControl:
         if self._stop_event.is_set():
             return True
         if self._schedule is not None and self._schedule.active:
-            holding, reason = self._schedule.holding()
+            holding, reason = self._schedule.holding(since=self._started_at)
             if holding:
                 if reason != self._schedule_reason:
                     print(f"Stopping: {reason}.")

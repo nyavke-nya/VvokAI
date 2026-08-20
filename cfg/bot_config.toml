@@ -18,4 +18,4 @@ current_playstyle = "unified_dodge.pyla"
 stop_at = ""
 resume_at = ""
 close_game_when_scheduled = true
-shutdown_when_done = false
+shutdown_when_done = true
