@@ -357,6 +357,10 @@ class DodgeService:
 
         if self.config.log_stats:
             self._log_stats(stamp, projectiles)
+        # Written whenever logging is on, not only when the console
+        # printout is: the breakdown is the only way to tell a noisy
+        # screen from a strict gate, and it costs one line a second.
+        self.log.log_vision(self.tracker.stats, stamp)
 
     def _apply_emergency(self, vector, hold=None):
         controller = self.window_controller

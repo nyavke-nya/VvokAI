@@ -38,6 +38,7 @@ class DodgeLog:
         self._handle = None
         self._session_start = time.time()
         self._last_motion_log = 0.0
+        self._last_vision_log = 0.0
         self._seen_shots = {}
         self.counters = {
             "shots_seen": 0,
@@ -202,6 +203,43 @@ class DodgeLog:
             record["candidates"] = analysis.get("candidates")
             record["stay_score"] = analysis.get("stay_score")
         self._write(record)
+
+    def log_vision(self, stats, stamp, every=1.0):
+        """What the detector looked at, and why most of it was thrown away.
+
+        The counters existed but only ever reached the console, and without the
+        per-reason breakdown - so "the bot picks up too much rubbish" could be
+        argued about but not measured. Written here at the same one-per-second
+        rate as the motion record, which is far cheaper than the vision work it
+        describes.
+
+        What the reasons mean, in the order they are applied:
+
+            few_hits   too little history yet. High is normal and healthy.
+            speed      too slow for a shot, or too fast to be real. A large
+                       count here with no shooting is the noise floor.
+            bent       moved, but not in a straight line. Grass and animation.
+            origin     straight and fast, but not traceable to an enemy.
+            weak_seed  two samples that do not agree with where it came from.
+        """
+        if not self.enabled or self._handle is None:
+            return
+        if stamp - self._last_vision_log < every:
+            return
+        self._last_vision_log = stamp
+
+        rejects = dict(stats.get("rejects") or {})
+        blobs = int(stats.get("blobs", 0))
+        confirmed = int(stats.get("confirmed", 0))
+        self._write({
+            "event": "vision",
+            "blobs": blobs,
+            "tracks": int(stats.get("tracks", 0)),
+            "confirmed": confirmed,
+            "rejected_blobs": int(stats.get("rejected", 0)),
+            "rejects": rejects,
+            "ms": round(float(stats.get("ms", 0.0)), 2),
+        })
 
     def log_motion(self, motion, player_speed, tactical, stamp, every=1.0, context=None):
         """Periodic movement health check.
