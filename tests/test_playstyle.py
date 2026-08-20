@@ -133,7 +133,7 @@ FIGHT_CONSTS = {"RETREAT_BELOW_HEALTH", "CAUTIOUS_BELOW_HEALTH",
                 "FINISH_BELOW_HEALTH", "FINISH_HEALTH_LEAD",
                 "TARGET_WEAKEST_WITHIN", "ENGAGE_RADIUS_TILES", "OUTNUMBERED_BY",
                 "UNDER_FIRE_SHOTS", "NO_CHASE_BEYOND", "DODGE_MIN_CONFIDENCE",
-                "CAUTIOUS_CEILING",
+                "CAUTIOUS_CEILING", "DECLINE_EVEN_FIGHTS",
                 "MATES_MEMORY", "TEAM_SIZE", "MATCH_RESET_GAP", "LATE_AFTER",
                 "ENDGAME_AFTER", "GAS_MEANS_ENDGAME",
                 "CAUTION_EARLY_TEAM", "CAUTION_EARLY_ALONE",
@@ -708,19 +708,65 @@ def main():
     for path in PLAYSTYLES:
         check_names(report, path)
 
+    # By name, not by position. These used to index PLAYSTYLES[0] and [1],
+    # which silently pointed at different files the moment a third playstyle
+    # sorted ahead of them alphabetically.
+    def style(name):
+        for path in PLAYSTYLES:
+            if os.path.basename(path) == name:
+                return path
+        raise AssertionError(f"{name} is missing from playstyles/")
+
     report.section("the light variant must actually switch the tracker off")
-    meta = playstyle_meta(PLAYSTYLES[1])
+    meta = playstyle_meta(style("unified_light.pyla"))
     report.check("unified_light declares dodge off", meta.get("dodge"), False)
-    report.check("unified_dodge does not", playstyle_meta(PLAYSTYLES[0]).get("dodge"), None)
+    report.check("unified_dodge does not",
+                 playstyle_meta(style("unified_dodge.pyla")).get("dodge"), None)
+    report.check("unified_aggro keeps dodging on",
+                 playstyle_meta(style("unified_aggro.pyla")).get("dodge"), None)
     # Checked over the AST, not the raw text: the file's header comment
     # explains what was removed and why, and naming a thing in prose is not
     # the same as still calling it.
-    light = ast.parse(playstyle_source(PLAYSTYLES[1]))
+    light = ast.parse(playstyle_source(style("unified_light.pyla")))
     banned = {"projectiles", "solve_dodge", "dodge_enabled", "UNDER_FIRE_SHOTS",
               "DODGE_MIN_CONFIDENCE", "DODGE_BREAKS_SPACING", "ATTACK_WHILE_DODGING"}
     leftovers = sorted({n.id for n in ast.walk(light)
                         if isinstance(n, ast.Name) and n.id in banned})
     report.check("unified_light has no projectile code left", leftovers, [])
+
+    report.section("the aggressive variant presses where the careful one folds")
+    import re as _re
+    aggro = playstyle_source(style("unified_aggro.pyla"))
+    careful = playstyle_source(style("unified_dodge.pyla"))
+
+    def value(text, name):
+        found = _re.search(rf"^{name} = (.+)$", text, _re.M)
+        return found.group(1).strip() if found else None
+
+    report.check("it never declines an even fight",
+                 value(aggro, "DECLINE_EVEN_FIGHTS"), "False")
+    report.check("while the careful one still does",
+                 value(careful, "DECLINE_EVEN_FIGHTS"), "True")
+    report.check("it chases further",
+                 float(value(aggro, "NO_CHASE_BEYOND")) > float(value(careful, "NO_CHASE_BEYOND")),
+                 True)
+    report.check("it tolerates worse odds",
+                 int(value(aggro, "OUTNUMBERED_BY")) > int(value(careful, "OUTNUMBERED_BY")),
+                 True)
+    report.check("it fights at lower health",
+                 float(value(aggro, "RETREAT_BELOW_HEALTH")) < float(value(careful, "RETREAT_BELOW_HEALTH")),
+                 True)
+    report.check("every caution step is lower than the careful one",
+                 all(float(value(aggro, key)) <= float(value(careful, key))
+                     for key in ("CAUTION_EARLY_TEAM", "CAUTION_EARLY_ALONE",
+                                 "CAUTION_LATE_TEAM", "CAUTION_LATE_ALONE",
+                                 "CAUTION_ENDGAME_TEAM", "CAUTION_ENDGAME_ALONE")),
+                 True)
+    # Aggression without dodging is just dying faster, and the whole point of
+    # keeping the tracker on here is that this style takes far more fire.
+    report.check("it keeps the dodge layer", "solve_dodge" in aggro, True)
+    report.check("and it still gives up on a fight it cannot win",
+                 "return \"retreat\"" in aggro, True)
 
     check_walls(report)
     check_breakout(report)

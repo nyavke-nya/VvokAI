@@ -23,10 +23,15 @@ PLAYSTYLE = os.path.join(REPO, "playstyles", "unified_dodge.pyla")
 # against all of them: a context key renamed in play.py breaks each one the
 # same way, and the light variant is derived from the full one so it inherits
 # any mistake made there.
-PLAYSTYLES = [
-    os.path.join(REPO, "playstyles", "unified_dodge.pyla"),
-    os.path.join(REPO, "playstyles", "unified_light.pyla"),
-]
+# Found rather than listed. A hardcoded list means a new playstyle ships
+# without ever being checked - which is exactly what happened: unified_aggro
+# was added, the suite still reported the same 78 checks, and nobody would
+# have noticed until it failed in a match.
+PLAYSTYLES = sorted(
+    os.path.join(REPO, "playstyles", name)
+    for name in os.listdir(os.path.join(REPO, "playstyles"))
+    if name.endswith(".pyla")
+)
 
 
 class Failures:
