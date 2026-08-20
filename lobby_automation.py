@@ -150,16 +150,27 @@ class LobbyAutomation:
                 matched_key = brawler
             else:
                 matched_key = None
-                # .get, not [], because a brawler released after this copy of
-                # the name table was written is not in it - and the reward that
-                # hands somebody a brand new brawler is exactly the moment the
-                # bot goes looking. A KeyError here took the whole bot down.
                 aliases = self.all_brawlers_names.get(brawler) or []
                 for detected_name in clean_results.keys():
                     if detected_name in aliases:
                         matched_key = detected_name
                         print(f"Matched detected name '{detected_name}' to brawler '{brawler}' using alias list.")
                         break
+                
+                # Fallback to fuzzy matching
+                if not matched_key:
+                    import difflib
+                    best_match = None
+                    best_ratio = 0.0
+                    for detected_name in clean_results.keys():
+                        ratio = difflib.SequenceMatcher(None, detected_name, brawler).ratio()
+                        if ratio > best_ratio:
+                            best_ratio = ratio
+                            best_match = detected_name
+                    
+                    if best_ratio >= 0.8:
+                        matched_key = best_match
+                        print(f"Fuzzy matched detected name '{best_match}' to brawler '{brawler}' with ratio {best_ratio:.2f}.")
 
             if self.verbose_debug:
                 print("OCR detected the following potential matches for the brawler name:")
