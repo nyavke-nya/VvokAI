@@ -207,4 +207,30 @@ for name in ("def close_brawl_stars", "def open_brawl_stars"):
 close_fn = wc[wc.index("def close_brawl_stars"):wc.index("def open_brawl_stars")]
 report.check("a failure to close is caught", "except Exception" in close_fn, True)
 
+
+report.section("powering off is opt-in, and never on a manual stop")
+main_src = open("main.py", encoding="utf-8").read()
+stop = main_src[main_src.index("def stop_gracefully"):main_src.index("def close_game_on_stop")]
+report.check("it asks whether the clock caused this", "schedule_hold_reason" in stop, True)
+report.check("and only powers off when it did", "by_schedule and self.shutdown_when_done()" in stop, True)
+
+helper = main_src[main_src.index("def shutdown_when_done"):main_src.index("def start_state_checker")]
+report.check("the default is off", 'get("shutdown_when_done", False)' in helper, True)
+
+utils_src = open("utils.py", encoding="utf-8").read()
+fn = utils_src[utils_src.index("def shutdown_computer"):]
+report.check("there is a grace period", "grace_seconds=60" in fn, True)
+report.check("and it says how to cancel", "shutdown /a" in fn, True)
+report.check("a failure to power off is survivable", "except Exception" in fn, True)
+
+report.check("the shipped config has it off",
+             "shutdown_when_done = false" in open("cfg/bot_config.toml", encoding="utf-8").read(),
+             True)
+
+
+report.section("running out of brawlers does not power the machine off")
+stage_all = open("stage_manager.py", encoding="utf-8").read()
+done_block = stage_all[stage_all.index("all targets completed"):stage_all.index("ping_when_target_is_reached")]
+report.check("no shutdown on the finish path", "shutdown_computer" in done_block, False)
+
 sys.exit(report.finish())

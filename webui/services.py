@@ -120,6 +120,7 @@ class WebDataService:
         "stop_at": ("str", ""),
         "resume_at": ("str", ""),
         "close_game_when_scheduled": ("bool", True),
+        "shutdown_when_done": ("bool", False),
         "minimum_movement_delay": ("float", 0.1),
         "unstuck_movement_delay": ("float", 2.4),
         "unstuck_movement_hold_time": ("float", 1.4),

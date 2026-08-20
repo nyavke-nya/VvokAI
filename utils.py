@@ -862,3 +862,29 @@ def clamp(x: int, low: int, high: int) -> int:
 
 JOYSTICK_RADIUS = 75
 
+def shutdown_computer(grace_seconds=60):
+    """Ask Windows to shut down, after a delay long enough to change your mind.
+
+    The delay is the point. This runs unattended at the end of an overnight
+    session, and a bot that powers the machine off the instant it finishes is a
+    bot that will one day do it while somebody is sitting at it. Sixty seconds
+    is enough to read the message and run `shutdown /a`.
+
+    Never raises: the run has already finished successfully by the time this is
+    called, and failing to power off is not a reason to report a failed run.
+    """
+    import subprocess
+
+    seconds = max(0, int(grace_seconds))
+    try:
+        subprocess.run(
+            ["shutdown", "/s", "/t", str(seconds),
+             "/c", "VvokAI has finished. Run 'shutdown /a' to cancel."],
+            check=True, capture_output=True,
+        )
+    except Exception as error:
+        print(f"Could not schedule a shutdown: {error}")
+        return False
+    print(f"Computer will shut down in {seconds} seconds. "
+          f"Run 'shutdown /a' in a terminal to cancel.")
+    return True

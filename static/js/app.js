@@ -418,6 +418,7 @@ function renderRuntimeSchedule() {
     const stopAt = bot.stop_at || "";
     const resumeAt = bot.resume_at || "";
     const closeGame = bot.close_game_when_scheduled !== false;
+    const shutdown = bot.shutdown_when_done === true;
 
     let summary = "Runs until you stop it";
     if (stopAt && resumeAt) {
@@ -447,6 +448,10 @@ function renderRuntimeSchedule() {
             <label class="sched-toggle">
                 <input type="checkbox" id="schedCloseGame" ${closeGame ? "checked" : ""}>
                 <span>Close Brawl Stars when it stops</span>
+            </label>
+            <label class="sched-toggle">
+                <input type="checkbox" id="schedShutdown" ${shutdown ? "checked" : ""}>
+                <span>Shut down the computer afterwards</span>
             </label>
             <p class="sched-help">It finishes the current match first, then stops -
             a full stop rather than a pause, because a paused bot treats a closed
@@ -1740,17 +1745,22 @@ function renderQueueStrip(queue) {
 }
 
 function bindRuntimeButtons() {
-    const closeGameBox = document.getElementById("schedCloseGame");
-    if (closeGameBox) {
-        closeGameBox.addEventListener("change", async () => {
-            const payload = { ...(state.bootstrap.settings.bot || {}),
-                              close_game_when_scheduled: closeGameBox.checked };
+    for (const [id, key] of [["schedCloseGame", "close_game_when_scheduled"],
+                             ["schedShutdown", "shutdown_when_done"]]) {
+        const box = document.getElementById(id);
+        if (!box) continue;
+        box.addEventListener("change", async () => {
+            const payload = { ...(state.bootstrap.settings.bot || {}), [key]: box.checked };
             const result = await fetchJSON("/api/settings/bot", {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
             }, true);
             if (result && result.ok !== false) state.bootstrap.settings.bot = result;
+            if (key === "shutdown_when_done" && box.checked) {
+                showToast("The computer will power off 60 seconds after the bot "
+                          + "finishes. Run 'shutdown /a' to cancel.", "success");
+            }
         });
     }
 

@@ -175,6 +175,12 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
             # running" as a crash and starts it again within a couple of
             # seconds, so closing the game while anything is still watching is
             # pointless - it has to go first.
+            # Was this the clock, or somebody pressing Stop? It decides
+            # whether the machine is allowed to power off, and getting it wrong
+            # would shut the computer down under a person who is sitting at it.
+            by_schedule = bool(
+                getattr(self.runtime_control, "schedule_hold_reason", lambda: "")()
+            )
             self.stop_state_checker()
             self.stop_crash_watchdog()
             if self.close_game_on_stop():
@@ -186,6 +192,9 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
             self.window_controller.release_movement(priority=True)
             self.window_controller.close()
             discord_bot.set_window_controller(None)
+            if by_schedule and self.shutdown_when_done():
+                from utils import shutdown_computer
+                shutdown_computer()
 
         def close_game_on_stop(self):
             """Whether shutting down should also close Brawl Stars.
@@ -194,6 +203,13 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
             the next stop instead of the next launch.
             """
             raw = load_toml_as_dict("./cfg/bot_config.toml").get("close_game_when_scheduled", True)
+            if isinstance(raw, bool):
+                return raw
+            return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+        def shutdown_when_done(self):
+            """Whether finishing should power the machine off. Off by default."""
+            raw = load_toml_as_dict("./cfg/bot_config.toml").get("shutdown_when_done", False)
             if isinstance(raw, bool):
                 return raw
             return str(raw).strip().lower() in {"1", "true", "yes", "on"}

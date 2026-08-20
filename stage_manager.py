@@ -232,6 +232,10 @@ class StageManager:
                 if raw is True or str(raw).strip().lower() in {"1", "true", "yes", "on"}:
                     self.window_controller.close_brawl_stars()
                 self.window_controller.close()
+                # Deliberately no shutdown here. Running out of brawlers can
+                # happen at any hour, often minutes after a session starts, and
+                # powering the machine off because a short queue emptied is not
+                # what anybody means by it. Only the clock does that.
                 sys.exit(0)
             ping_when_target_is_reached = load_toml_as_dict("cfg/webhook_config.toml")["ping_when_target_is_reached"]
             if ping_when_target_is_reached:
