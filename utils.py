@@ -664,8 +664,6 @@ def get_brawler_icon_path(brawler_name: str) -> Path | None:
     normalized = normalize_brawler_filename(brawler_name)
     candidates = [
         resolve_project_path("api", "assets", "brawler_icons", f"{normalized}.png"),
-        resolve_project_path("api", "assets", "brawler_icons2", f"{str(brawler_name).lower()}.png"),
-        resolve_project_path("api", "assets", "brawler_icons2", f"{str(brawler_name).lower().strip()}.png"),
     ]
 
     for candidate in candidates:

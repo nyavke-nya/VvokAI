@@ -14,4 +14,4 @@ for brawler_obj in brawlers_data:
     image = Image.open(BytesIO(response.content))
     brawler_name = str(brawler_obj['name']).lower()
     brawler_name = os.path.basename(brawler_name).replace('.', '').replace('/', '').replace('\\', '')
-    image.save(f"./assets/brawler_icons2/{brawler_name}.png")
+    image.save(f"./assets/brawler_icons/{brawler_name}.png")
