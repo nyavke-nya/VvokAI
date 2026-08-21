@@ -86,6 +86,14 @@ class Play:
         self.walls_treshold = time_config["wall_detection"]
         self.last_walls_data = []
         self.last_bushes_data = []
+        # Where the camera was when those walls were detected. Reusing wall
+        # boxes without this leaves them at last-seen screen coordinates while
+        # the camera keeps panning, so they drift away from the walls they
+        # describe - by up to 165 px at a 0.5 s refresh and a normal walking
+        # speed. A box in the wrong place blocks a line of sight that is
+        # actually clear, which is a bot that will not shoot an enemy who has
+        # stepped out from cover until the next refresh.
+        self.last_walls_odometer = (0.0, 0.0)
         self.keys_hold = []
         self.time_since_different_movement = time.time()
         self.time_since_gadget_checked = time.time()
@@ -424,6 +432,27 @@ class Play:
                 return True
 
         return False
+
+    def camera_odometer(self):
+        """How far the camera has panned since the run started, in px."""
+        service = self.dodge_service
+        motion = service.motion if service else None
+        return motion.odometer if motion else (0.0, 0.0)
+
+    @staticmethod
+    def shift_boxes(boxes, shift):
+        """Move detection boxes by (dx, dy), leaving anything malformed alone."""
+        dx, dy = shift
+        if not dx and not dy:
+            return boxes
+        moved = []
+        for box in boxes:
+            if len(box) >= 4:
+                moved.append([box[0] + dx, box[1] + dy,
+                              box[2] + dx, box[3] + dy] + list(box[4:]))
+            else:
+                moved.append(box)
+        return moved
 
     def is_enemy_hittable(self, player_pos, enemy_pos, walls, skill_type):
         if self.can_attack_through_walls(self.current_brawler, skill_type, self.brawlers_info):
@@ -1315,18 +1344,24 @@ class Play:
         mark = self.stage("state", mark)
         data = self.get_main_data(frame)
         mark = self.stage("yolo", mark)
+        odometer = self.camera_odometer()
         if current_time - self.time_since_walls_checked > self.walls_treshold:
             tile_data = self.get_tile_data(frame, data.get("player"))
             walls, bushes = self.process_tile_data(tile_data)
             mark = self.stage("walls", mark)
             self.time_since_walls_checked = current_time
             self.last_walls_data = walls
-            data['wall'] = walls
             self.last_bushes_data = bushes
+            self.last_walls_odometer = odometer
+            data['wall'] = walls
             data['bush'] = bushes
         else:
-            data['wall'] = self.last_walls_data
-            data['bush'] = self.last_bushes_data
+            # Slide them along with the camera. They are static in the world,
+            # so the only thing that changed is where the world is on screen.
+            shift = (self.last_walls_odometer[0] - odometer[0],
+                     self.last_walls_odometer[1] - odometer[1])
+            data['wall'] = self.shift_boxes(self.last_walls_data, shift)
+            data['bush'] = self.shift_boxes(self.last_bushes_data, shift)
 
         data = self.validate_game_data(data)
         self.track_no_detections(data)

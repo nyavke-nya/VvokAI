@@ -271,4 +271,33 @@ import re as _re2
 swipes = int(_re2.search(r"SCROLL_TOP_SWIPES = (\d+)", lobby).group(1))
 report.at_least("enough swipes to reach the top from anywhere", swipes, 18)
 
+
+report.section("remembered walls follow the camera instead of drifting")
+# Walls are re-detected on an interval and reused in between. Reused without
+# compensation they stay at last-seen screen coordinates while the camera keeps
+# panning, so at a 0.5s refresh and 330 px/s they end up 165 px - nearly five
+# tiles - from the walls they describe. A box in the wrong place blocks a line
+# of sight that is clear, and the bot will not shoot an enemy who has just
+# stepped out of cover.
+import play as _play
+
+moved = _play.Play.shift_boxes([[480, 400, 520, 440]], (-165.0, 0.0))
+report.check("a box slides with the camera", moved[0][:2], [315.0, 400.0])
+report.check("and keeps its size",
+             (moved[0][2] - moved[0][0], moved[0][3] - moved[0][1]), (40.0, 40.0))
+report.check("no pan means no work", _play.Play.shift_boxes([[1, 2, 3, 4]], (0, 0)),
+             [[1, 2, 3, 4]])
+report.check("a malformed box is passed through rather than crashing",
+             _play.Play.shift_boxes([[1, 2]], (5, 5)), [[1, 2]])
+report.check("extra fields on a box survive",
+             _play.Play.shift_boxes([[0, 0, 10, 10, "wall", 0.9]], (5, 0))[0][4:],
+             ["wall", 0.9])
+
+frame = open("play.py", encoding="utf-8").read()
+reuse = frame[frame.index("if current_time - self.time_since_walls_checked"):
+              frame.index("data = self.validate_game_data(data)")]
+report.check("the reuse path actually shifts them", "shift_boxes" in reuse, True)
+report.check("and records where the camera was when they were found",
+             "self.last_walls_odometer = odometer" in reuse, True)
+
 sys.exit(report.finish())
