@@ -94,6 +94,14 @@ class Play:
         # actually clear, which is a bot that will not shoot an enemy who has
         # stepped out from cover until the next refresh.
         self.last_walls_odometer = (0.0, 0.0)
+
+        emotes = load_toml_as_dict("./cfg/lobby_config.toml").get("emotes") or {}
+        self.emote_interval = float(emotes.get("every_seconds", 0) or 0)
+        self.emote_bubble = emotes.get("bubble")
+        self.emote_buttons = emotes.get("buttons") or []
+        # Started in the future rather than at zero, so the first emote waits
+        # its turn instead of firing on the opening frame of every match.
+        self.time_since_emote = time.time()
         self.keys_hold = []
         self.time_since_different_movement = time.time()
         self.time_since_gadget_checked = time.time()
@@ -432,6 +440,30 @@ class Play:
                 return True
 
         return False
+
+    def send_emote_if_due(self, current_time):
+        """Tap the chat bubble and one emote, on a timer.
+
+        Two taps with a pause between them: the grid animates open, and a tap
+        during that lands on the map behind it - which in a match means walking
+        somewhere or firing at nothing.
+
+        The grid's own bottom-right cell is the chat button again, so it is not
+        among the buttons; picking it would close the panel and send nothing.
+        """
+        if self.emote_interval <= 0 or not self.emote_bubble or not self.emote_buttons:
+            return
+        if current_time - self.time_since_emote < self.emote_interval:
+            return
+        self.time_since_emote = current_time
+
+        import random
+
+        bubble_x, bubble_y = self.emote_bubble
+        self.window_controller.click(bubble_x, bubble_y)
+        time.sleep(0.35)
+        button_x, button_y = random.choice(self.emote_buttons)
+        self.window_controller.click(button_x, button_y)
 
     def camera_odometer(self):
         """How far the camera has panned since the run started, in px."""
@@ -1342,6 +1374,9 @@ class Play:
         state = main.get_latest_state()
         self.ensure_dodge_service()
         mark = self.stage("state", mark)
+        # Only during a match: in a menu these coordinates are other buttons.
+        if state == "match":
+            self.send_emote_if_due(current_time)
         data = self.get_main_data(frame)
         mark = self.stage("yolo", mark)
         odometer = self.camera_odometer()

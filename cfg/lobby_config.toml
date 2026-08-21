@@ -17,3 +17,22 @@ super=[1460, 830, 1560, 930]
 gadget=[1580, 930, 1700, 1050]
 hypercharge=[1350, 940, 1450, 1050]
 
+
+# Emotes sent during a match, so the account does not look like it is only ever
+# shooting. Coordinates are for a 1920x1080 screen and are scaled from there.
+#
+# `bubble` is the round chat button on the right edge. Pressing it opens a grid;
+# `buttons` are the emotes in that grid, and one is chosen at random. The grid's
+# own bottom-right cell is the chat button again, so it is deliberately not in
+# the list - clicking it would just close the panel.
+#
+# Set every_seconds = 0 to turn this off.
+[emotes]
+every_seconds = 20
+bubble = [1780, 543]
+buttons = [
+    [1565, 230], [1700, 230], [1835, 230],
+    [1565, 320], [1700, 320], [1835, 320],
+    [1565, 425], [1700, 425], [1835, 425],
+    [1565, 520], [1700, 520],
+]

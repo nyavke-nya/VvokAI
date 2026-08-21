@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 
 from _harness import Failures
 
+from utils import load_toml_as_dict
+
 from profile_stats import build_profile
 from schedule_control import Schedule, parse_clock
 
@@ -299,5 +301,27 @@ reuse = frame[frame.index("if current_time - self.time_since_walls_checked"):
 report.check("the reuse path actually shifts them", "shift_boxes" in reuse, True)
 report.check("and records where the camera was when they were found",
              "self.last_walls_odometer = odometer" in reuse, True)
+
+
+report.section("emotes go out on a timer, and only during a match")
+play_src = open("play.py", encoding="utf-8").read()
+emote = play_src[play_src.index("def send_emote_if_due"):play_src.index("def camera_odometer")]
+report.check("it waits for the interval",
+             "current_time - self.time_since_emote < self.emote_interval" in emote, True)
+report.check("zero turns it off", "self.emote_interval <= 0" in emote, True)
+report.check("it pauses between the two taps so the grid can open",
+             "time.sleep(0.35)" in emote, True)
+report.check("the button is chosen at random", "random.choice" in emote, True)
+report.check("it is only called in a match",
+             'if state == "match":\n            self.send_emote_if_due' in play_src, True)
+
+cfg = load_toml_as_dict("cfg/lobby_config.toml").get("emotes") or {}
+report.check("the coordinates live in config, not in code", bool(cfg), True)
+report.at_least("there are emotes to choose from", len(cfg.get("buttons") or []), 2)
+# The grid's bottom-right cell is the chat button itself; clicking it closes
+# the panel instead of sending anything, so it must not be in the list.
+report.check("the chat button is not among them",
+             list(cfg.get("bubble") or []) in [list(b) for b in cfg.get("buttons") or []],
+             False)
 
 sys.exit(report.finish())
