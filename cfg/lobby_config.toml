@@ -29,6 +29,8 @@ hypercharge=[1350, 940, 1450, 1050]
 # Set every_seconds = 0 to turn this off.
 [emotes]
 every_seconds = 20
+# How long the grid takes to animate open, before the emote is tapped.
+open_delay = 0.35
 bubble = [1780, 543]
 buttons = [
     [1565, 230], [1700, 230], [1835, 230],

@@ -310,7 +310,12 @@ report.check("it waits for the interval",
              "current_time - self.time_since_emote < self.emote_interval" in emote, True)
 report.check("zero turns it off", "self.emote_interval <= 0" in emote, True)
 report.check("it pauses between the two taps so the grid can open",
-             "time.sleep(0.35)" in emote, True)
+             "time.sleep(self.emote_open_delay)" in emote, True)
+# On its own thread. Waiting for the grid on the main loop stops the bot
+# reading the screen for a third of a second, which is several dodges.
+report.check("and waits off the main loop", "threading.Thread" in emote, True)
+report.check("without stacking threads if one is still going",
+             "self._emote_thread.is_alive()" in emote, True)
 report.check("the button is chosen at random", "random.choice" in emote, True)
 report.check("it is only called in a match",
              'if state == "match":\n            self.send_emote_if_due' in play_src, True)

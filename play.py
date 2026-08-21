@@ -1,5 +1,6 @@
 import math
 import random
+import threading
 import time
 import cv2
 import numpy as np
@@ -99,9 +100,13 @@ class Play:
         self.emote_interval = float(emotes.get("every_seconds", 0) or 0)
         self.emote_bubble = emotes.get("bubble")
         self.emote_buttons = emotes.get("buttons") or []
+        # How long the grid takes to animate open. In config because it is a
+        # property of the game and the device, not of this code.
+        self.emote_open_delay = float(emotes.get("open_delay", 0.35) or 0.35)
         # Started in the future rather than at zero, so the first emote waits
         # its turn instead of firing on the opening frame of every match.
         self.time_since_emote = time.time()
+        self._emote_thread = None
         self.keys_hold = []
         self.time_since_different_movement = time.time()
         self.time_since_gadget_checked = time.time()
@@ -444,9 +449,12 @@ class Play:
     def send_emote_if_due(self, current_time):
         """Tap the chat bubble and one emote, on a timer.
 
-        Two taps with a pause between them: the grid animates open, and a tap
-        during that lands on the map behind it - which in a match means walking
-        somewhere or firing at nothing.
+        On its own thread, and that is not a detail. The two taps need a pause
+        between them - the grid animates open, and a tap during it goes through
+        to the map, which in a match means walking somewhere or firing at
+        nothing - and waiting for that on the main loop stops the bot reading
+        the screen for a third of a second. A third of a second is several
+        dodges. The star drop handler is threaded for the same reason.
 
         The grid's own bottom-right cell is the chat button again, so it is not
         among the buttons; picking it would close the panel and send nothing.
@@ -455,15 +463,22 @@ class Play:
             return
         if current_time - self.time_since_emote < self.emote_interval:
             return
+        if self._emote_thread is not None and self._emote_thread.is_alive():
+            return
         self.time_since_emote = current_time
 
-        import random
+        def _send():
+            import random
 
-        bubble_x, bubble_y = self.emote_bubble
-        self.window_controller.click(bubble_x, bubble_y)
-        time.sleep(0.35)
-        button_x, button_y = random.choice(self.emote_buttons)
-        self.window_controller.click(button_x, button_y)
+            bubble_x, bubble_y = self.emote_bubble
+            self.window_controller.click(bubble_x, bubble_y)
+            time.sleep(self.emote_open_delay)
+            button_x, button_y = random.choice(self.emote_buttons)
+            self.window_controller.click(button_x, button_y)
+
+        self._emote_thread = threading.Thread(target=_send, daemon=True,
+                                              name="pyla-emote")
+        self._emote_thread.start()
 
     def camera_odometer(self):
         """How far the camera has panned since the run started, in px."""
