@@ -103,6 +103,15 @@ exit /b 1
 :: dependency list and this batch file itself. Never fatal: no network, GitHub
 :: down or rate limited all come back as "carry on".
 if not "%VVOK_RESTARTED%"=="" goto :SKIP_UPDATE
+
+:: If this is a git clone, use git to update instead of the python updater
+if exist ".git" (
+    echo [INFO] Git repository detected. Updating via git pull...
+    git pull origin main
+    :: We do not run updater.py because it skips .git folders anyway
+    goto :SKIP_UPDATE
+)
+
 if not exist "tools\updater.py" goto :SKIP_UPDATE
 
 "%PYTHON_EXE%" %PYTHON_ARGS% tools\updater.py
