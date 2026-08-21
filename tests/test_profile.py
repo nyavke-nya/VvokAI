@@ -329,4 +329,47 @@ report.check("the chat button is not among them",
              list(cfg.get("bubble") or []) in [list(b) for b in cfg.get("buttons") or []],
              False)
 
+
+report.section("an enemy half out of cover can already be shot")
+# The line of sight used to be traced to the enemy's centre alone. A brawler is
+# about ninety pixels wide, so someone stepping out from a wall was called
+# unshootable for the ~140 ms it took their centre to follow their shoulder
+# into the open - which is the delay before the bot opened fire.
+import play as _play
+
+
+class _Stub:
+    scale_factor = 1.0
+
+
+_p = object.__new__(_play.Play)
+_p.enemy_exposure_radius = 40.0
+_p.window_controller = _Stub()
+_p.current_brawler = "shelly"
+_p.brawlers_info = {"shelly": {}}
+_p.can_attack_through_walls = lambda *a: False
+
+_wall = [900, 400, 1000, 700]
+_player = (500, 550)
+
+
+def _first_shot(use_edges):
+    for y in range(560, 60, -5):
+        enemy = (1300, y)
+        if use_edges:
+            if _p.is_enemy_hittable(_player, enemy, [_wall], "attack"):
+                return y
+        elif not _play.Play.walls_block_line_of_sight(_player, enemy, [_wall]):
+            return y
+    return None
+
+
+_edges, _centre = _first_shot(True), _first_shot(False)
+report.check("fully behind cover is still no shot",
+             _p.is_enemy_hittable(_player, (1300, 550), [_wall], "attack"), False)
+report.check("in the clear is a shot",
+             _p.is_enemy_hittable(_player, (1300, 100), [_wall], "attack"), True)
+report.at_least("the edge test fires earlier than the centre test",
+                _edges - _centre, 30)
+
 sys.exit(report.finish())

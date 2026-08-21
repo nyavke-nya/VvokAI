@@ -32,6 +32,11 @@ POISON_LOW_HSV = np.array((30, 90, 221), dtype=np.uint8)
 POISON_HIGH_HSV = np.array((57, 114, 235), dtype=np.uint8)
 PLAYER_HIT_CIRCLE_RADIUS = 53
 
+# Half a brawler, near enough. Used to decide whether an enemy who is partly
+# out from behind a wall can be shot at - the centre alone answers that
+# question about 140 ms too late at normal walking speed.
+ENEMY_EXPOSURE_RADIUS = 40
+
 # How much of the region beside the player must match the gas colour before the
 # bot treats that direction as gassed.
 #
@@ -125,6 +130,13 @@ class Play:
         except (TypeError, ValueError):
             self.collision_radius = float(PLAYER_COLLISION_RADIUS)
         self.centered_wall_detection = config_bool(bot_config.get("centered_wall_detection"), False)
+        # How far to either side of an enemy still counts as the enemy, when
+        # deciding whether a wall is in the way. Roughly half a brawler.
+        try:
+            self.enemy_exposure_radius = float(
+                bot_config.get("enemy_exposure_radius", ENEMY_EXPOSURE_RADIUS))
+        except (TypeError, ValueError):
+            self.enemy_exposure_radius = float(ENEMY_EXPOSURE_RADIUS)
         self.centered_wall_crop_size = 640
         # How much of the area beside the player has to look like gas before it
         # counts. A FRACTION, not a pixel count - see _measure_poison_gas.
@@ -504,9 +516,36 @@ class Play:
     def is_enemy_hittable(self, player_pos, enemy_pos, walls, skill_type):
         if self.can_attack_through_walls(self.current_brawler, skill_type, self.brawlers_info):
             return True
-        if self.walls_block_line_of_sight(player_pos, enemy_pos, walls):
-            return False
-        return True
+        if not self.walls_block_line_of_sight(player_pos, enemy_pos, walls):
+            return True
+
+        # The centre is behind cover, which is not the same as the brawler
+        # being behind cover. A brawler is about ninety pixels wide, so someone
+        # stepping out from a wall is shootable for the ~140 ms it takes their
+        # centre to follow their shoulder into the open - and for all of that
+        # time a centre-only test says "no shot" while the enemy is plainly
+        # standing there. That is the delay before the bot opens fire.
+        #
+        # So the edges are tried too, offset across the line of sight. Two more
+        # traces, and only when the centre was already blocked.
+        for point in self.exposed_edges(player_pos, enemy_pos):
+            if not self.walls_block_line_of_sight(player_pos, point, walls):
+                return True
+        return False
+
+    def exposed_edges(self, player_pos, enemy_pos):
+        """The two points either side of an enemy, across the line of sight."""
+        dx = enemy_pos[0] - player_pos[0]
+        dy = enemy_pos[1] - player_pos[1]
+        length = math.hypot(dx, dy)
+        if length < 1e-6:
+            return ()
+        # Perpendicular to the line, so the offsets are the parts of the
+        # brawler that come out from behind a wall first.
+        offset = self.enemy_exposure_radius * (self.window_controller.scale_factor or 1)
+        nx, ny = -dy / length * offset, dx / length * offset
+        return ((enemy_pos[0] + nx, enemy_pos[1] + ny),
+                (enemy_pos[0] - nx, enemy_pos[1] - ny))
 
     def find_closest_enemy(self, enemy_data, player_coords, walls, skill_type):
         player_pos_x, player_pos_y = player_coords

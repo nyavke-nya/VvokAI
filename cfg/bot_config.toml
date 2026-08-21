@@ -19,3 +19,4 @@ stop_at = ""
 resume_at = ""
 close_game_when_scheduled = true
 shutdown_when_done = true
+enemy_exposure_radius = 40
