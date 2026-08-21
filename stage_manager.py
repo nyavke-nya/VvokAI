@@ -67,6 +67,7 @@ class StageManager:
             'end_trio_showdown_2': self.end_game,
             'end_trio_showdown_3': self.end_game,
             'nano_noodles': self.click_nano_noodles,
+            'daily_wins': self.pick_daily_wins,
         }
         self.matches_since_last_webhook_ping = 0
         self.ping_every_x_match = load_toml_as_dict("cfg/webhook_config.toml")['ping_every_x_match']
@@ -310,6 +311,33 @@ class StageManager:
         import threading
         self._star_drop_thread = threading.Thread(target=_handle_drop, daemon=True)
         self._star_drop_thread.start()
+
+    # Where the barrels stand on a 1920x1080 screen, left to right. The row is
+    # fixed; which of the slots still hold an unopened barrel is not.
+    DAILY_WINS_SLOTS = [
+        (300, 725), (637, 768), (969, 785), (1300, 768), (1640, 733),
+    ]
+
+    def pick_daily_wins(self):
+        """Open three barrels on the daily-wins screen.
+
+        Three because that is what the screen offers, and three distinct ones
+        because clicking the same barrel twice wastes a pick. Which three does
+        not matter - the reward is behind whichever is chosen - so they are
+        picked at random rather than pretending to choose.
+
+        Same shape as click_nano_noodles: taps in one pass with a short gap
+        between them, no thread. The gap is longer here because a barrel plays
+        an opening animation and a tap during it lands on the reward covering
+        the next barrel rather than on the barrel.
+        """
+        import random
+
+        for x, y in random.sample(self.DAILY_WINS_SLOTS, 3):
+            if self._should_stop():
+                return
+            self.window_controller.click(x, y, already_include_ratio=False)
+            time.sleep(0.6)
 
     def click_nano_noodles(self):
         noodle_x, noodle_y = 960, 740

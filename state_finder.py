@@ -204,7 +204,7 @@ def is_in_daily_wins(image):
     slots are already ticked by the time the screen is usually seen. The panel
     is in the same place every time and says the same word.
     """
-    return is_template_in_region(image, states_path + 'daily_wins_choose.png',
+    return is_template_in_region(image, states_path + 'noodles.png',
                                  region_data["daily_wins"])
 
 
