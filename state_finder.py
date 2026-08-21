@@ -34,6 +34,17 @@ def is_template_in_region(image, template_path, region, threshold=0.75):
     cropped_image = image[new_y:new_y + new_height, new_x:new_x + new_width]
     current_height, current_width = image.shape[:2]
     loaded_template = load_template(template_path, current_width, current_height)
+    if loaded_template is None:
+        return False
+    if (loaded_template.shape[0] > cropped_image.shape[0]
+            or loaded_template.shape[1] > cropped_image.shape[1]):
+        # A template larger than the area it is searched in cannot match, and
+        # matchTemplate raises rather than saying so.
+        if template_path not in missing_templates:
+            missing_templates.add(template_path)
+            print(f"State template is bigger than its search region, skipped: "
+                  f"{template_path}")
+        return False
     result = cv2.matchTemplate(cropped_image, loaded_template,
                                cv2.TM_CCOEFF_NORMED)
     min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
@@ -43,11 +54,24 @@ def is_template_in_region(image, template_path, region, threshold=0.75):
 
 
 cached_templates = {}
+missing_templates = set()
+
+
 def load_template(image_path, width, height):
     if (image_path, width, height) in cached_templates:
         return cached_templates[(image_path, width, height)]
     current_width_ratio, current_height_ratio = width / orig_screen_width, height / orig_screen_height
     image = cv2.imread(image_path)
+    if image is None:
+        # A missing template used to take the whole state checker down with an
+        # AttributeError on None.shape - every frame, so the bot stopped
+        # recognising ANY screen because one picture was absent. One screen it
+        # cannot detect is a missing feature; no screens at all is a dead bot.
+        if image_path not in missing_templates:
+            missing_templates.add(image_path)
+            print(f"State template missing, that check is skipped: {image_path}")
+        cached_templates[(image_path, width, height)] = None
+        return None
     orig_height, orig_width = image.shape[:2]
     resized_image = cv2.resize(image, (int(orig_width * current_width_ratio), int(orig_height * current_height_ratio)))
     resized_colored_image = cv2.cvtColor(resized_image, cv2.COLOR_BGR2RGB)
@@ -114,6 +138,8 @@ def get_in_game_state(image):
         if is_in_prestige_milestone(image): return "prestige_milestone"
         if should_print_debug_info: print("Checking for nano noodles...")
         if is_in_nano_noodles(image): return "nano_noodles"
+        if should_print_debug_info: print("Checking for the daily wins choice...")
+        if is_in_daily_wins(image): return "daily_wins"
         if should_print_debug_info: print("Checking for star drop...")
         star_drop_type = is_in_star_drop(image)
         if star_drop_type:
@@ -168,6 +194,18 @@ def is_in_prestige_milestone(image):
 
 def is_in_nano_noodles(image):
     return is_template_in_region(image, states_path + "nano_noodles.png", region_data['nano_noodles'])
+
+
+def is_in_daily_wins(image):
+    """The daily-wins screen that asks you to pick barrels.
+
+    Matched on the CHOOSE panel rather than on the barrels themselves: the
+    barrels move, there are a varying number of them, and two of the three
+    slots are already ticked by the time the screen is usually seen. The panel
+    is in the same place every time and says the same word.
+    """
+    return is_template_in_region(image, states_path + 'daily_wins_choose.png',
+                                 region_data["daily_wins"])
 
 
 def is_in_star_drop(image):
