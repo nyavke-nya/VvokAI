@@ -21,7 +21,7 @@ for file in os.listdir(star_drops_path):
 end_results_path = r"./images/end_results/"
 
 region_data = load_toml_as_dict("./cfg/lobby_config.toml")['template_matching']
-match_result_crop_region = region_data['match_result']
+match_result_crop_region = region_data.get('match_result', [20, 10, 650, 200])
 
 
 def is_template_in_region(image, template_path, region, threshold=0.75):
@@ -154,19 +154,19 @@ def get_in_game_state(image):
 
 
 def is_in_shop(image) -> bool:
-    return is_template_in_region(image, states_path + 'powerpoint.png', region_data["powerpoint"])
+    return is_template_in_region(image, states_path + 'powerpoint.png', region_data.get("powerpoint", [1000, 5, 80, 80]))
 
 
 def is_in_brawler_selection(image) -> bool:
-    return is_template_in_region(image, states_path + 'brawler_menu_heart.png', region_data["brawler_menu_heart"])
+    return is_template_in_region(image, states_path + 'brawler_menu_heart.png', region_data.get("brawler_menu_heart", [1470, 0, 430, 140]))
 
 
 def is_in_offer_popup(image) -> bool:
-    return is_template_in_region(image, states_path + 'close_popup.png', region_data["close_popup"])
+    return is_template_in_region(image, states_path + 'close_popup.png', region_data.get("close_popup", [1740, 140, 140, 100]))
 
 
 def is_in_lobby(image) -> bool:
-    return is_template_in_region(image, states_path + 'lobby_menu.png', region_data["lobby_menu"])
+    return is_template_in_region(image, states_path + 'lobby_menu.png', region_data.get("lobby_menu", [1790, 20, 75, 65]))
 
 
 def is_in_end_of_a_match(image):
@@ -174,26 +174,26 @@ def is_in_end_of_a_match(image):
 
 
 def is_in_trophy_reward(image):
-    return is_template_in_region(image, states_path + 'trophies_screen.png', region_data["trophies_screen"])
+    return is_template_in_region(image, states_path + 'trophies_screen.png', region_data.get("trophies_screen", [1545, 915, 365, 168]))
 
 
 def is_in_brawl_pass(image):
-    return is_template_in_region(image, states_path + 'brawl_pass_house.png', region_data['brawl_pass_house'])
+    return is_template_in_region(image, states_path + 'brawl_pass_house.png', region_data.get('brawl_pass_house', [1750, 0, 169, 100]))
 
 
 def is_in_star_road(image):
-    return is_template_in_region(image, states_path + "go_back_arrow.png", region_data['go_back_arrow'])
+    return is_template_in_region(image, states_path + "go_back_arrow.png", region_data.get('go_back_arrow', [0, 0, 175, 110]))
 
 
 def is_in_match_making(image):
-    return is_template_in_region(image, states_path + "exit_match_making.png", region_data['exit_match_making'])
+    return is_template_in_region(image, states_path + "exit_match_making.png", region_data.get('exit_match_making', [1600, 925, 295, 135]))
 
 
 def is_in_prestige_milestone(image):
-    return is_template_in_region(image, states_path + "prestige_continue.png", region_data['prestige_continue'])
+    return is_template_in_region(image, states_path + "prestige_continue.png", region_data.get('prestige_continue', [535, 950, 345, 95]))
 
 def is_in_nano_noodles(image):
-    return is_template_in_region(image, states_path + "nano_noodles.png", region_data['nano_noodles'])
+    return is_template_in_region(image, states_path + "nano_noodles.png", region_data.get('nano_noodles', [360, 880, 215, 150]))
 
 
 def is_in_daily_wins(image):
@@ -205,12 +205,12 @@ def is_in_daily_wins(image):
     is in the same place every time and says the same word.
     """
     return is_template_in_region(image, states_path + 'noodles.png',
-                                 region_data["daily_wins"])
+                                 region_data.get("daily_wins", [270, 310, 290, 120]))
 
 
 def is_in_star_drop(image):
     for image_filename in images_with_star_drop:
-        if is_template_in_region(image, star_drops_path + image_filename, region_data['star_drop']):
+        if is_template_in_region(image, star_drops_path + image_filename, region_data.get('star_drop', [790, 350, 350, 350])):
             if "angelic" in image_filename.lower(): return "angelic"
             if "demonic" in image_filename.lower(): return "demonic"
             if "starr_nova" in image_filename.lower(): return "starr_nova"
