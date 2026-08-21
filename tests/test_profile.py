@@ -390,4 +390,20 @@ report.check("without retrying a manual pick", 'head.get("automatically_pick")' 
 report.check("the flag exists before any match",
              "self.brawler_needs_selecting = False\n        self.ping_when_stuck" in stage_src, True)
 
+
+report.section("the brawler list is dragged beside the cards, not across them")
+# 1700 was on the cards - their right edge is at about x=1696 - so every swipe
+# started on a brawler, and a drag the game read as a tap opened whichever one
+# it landed on. Colour variation over the band the swipes travel: 85 at x=1700,
+# 3 from x=1760 outward. Cards, then plain background.
+lobby_src = open("lobby_automation.py", encoding="utf-8").read()
+import re as _re3
+column = int(_re3.search(r"SCROLL_COLUMN = (\d+)", lobby_src).group(1))
+report.at_least("clear of the cards", column, 1760)
+report.at_most("and not on the screen edge, where Android takes the gesture", column, 1880)
+report.check("no swipe still uses a hardcoded column",
+             "int(1700 * wr)" in lobby_src, False)
+report.check("every swipe uses the constant",
+             lobby_src.count("self.SCROLL_COLUMN * wr"), 3)
+
 sys.exit(report.finish())

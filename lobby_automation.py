@@ -62,6 +62,19 @@ class LobbyAutomation:
     # nothing, because a list already at the top ignores the extra swipes.
     SCROLL_TOP_SWIPES = 19
 
+    # The column the list is dragged by, on a 1920-wide screen.
+    #
+    # 1700 was on the cards. Their right edge sits at about x=1696, so every
+    # swipe started on a brawler, and a drag that the game read as a tap opened
+    # whichever one it landed on - the bot would be scrolling and suddenly be
+    # inside a random brawler's page. Measured across the band the swipes
+    # travel through, colour variation at x=1700 is 85 and at x=1760 and beyond
+    # it is 3: cards, then plain background.
+    #
+    # 1820 is clear of the cards with room to spare, and far enough from the
+    # screen edge that Android does not read it as a back gesture.
+    SCROLL_COLUMN = 1820
+
     def _scroll_to_list_top(self, runtime_control=None, stop_event=None):
         """Put the brawler list back at the top before searching it.
 
@@ -82,8 +95,9 @@ class LobbyAutomation:
             if self._should_interrupt(runtime_control, stop_event):
                 return True
             # Finger downward, which moves the list up.
-            self.window_controller.swipe(int(1700 * wr), int(650 * hr),
-                                         int(1700 * wr), int(1000 * hr), duration=0.25)
+            column = int(self.SCROLL_COLUMN * wr)
+            self.window_controller.swipe(column, int(650 * hr),
+                                         column, int(1000 * hr), duration=0.25)
             time.sleep(0.15)
         # Let the overscroll bounce settle, or the first OCR reads a blur.
         return self._sleep_interruptible(1.0, runtime_control, stop_event)
@@ -218,14 +232,16 @@ class LobbyAutomation:
             if c == 0:
                 wr = self.window_controller.width_ratio
                 hr = self.window_controller.height_ratio
-                self.window_controller.swipe(int(1700 * wr), int(900 * hr), int(1700 * wr), int(850 * hr), duration=0.5)
+                column = int(self.SCROLL_COLUMN * wr)
+                self.window_controller.swipe(column, int(900 * hr), column, int(850 * hr), duration=0.5)
                 if self._sleep_interruptible(3, runtime_control, stop_event):
                     print("Brawler selection aborted by user.")
                     return "aborted"
                 c += 1
                 continue
 
-            self.window_controller.swipe(int(1700 * wr), int(900 * hr), int(1700 * wr), int(650 * hr), duration=0.5)
+            column = int(self.SCROLL_COLUMN * wr)
+            self.window_controller.swipe(column, int(900 * hr), column, int(650 * hr), duration=0.5)
             if self._sleep_interruptible(3, runtime_control, stop_event):
                 print("Brawler selection aborted by user.")
                 return "aborted"
