@@ -19,14 +19,19 @@ Two things worth knowing before enabling it:
     password in a plain file is a password in a plain file - if that is not
     acceptable, leave this off and use the wildcard approach below instead.
 
-  * The portal's WEB FORM takes a CIDR range, and a key made there by hand for
-    0.0.0.0/0 works from any address with no credentials stored anywhere and no
-    code involved. That is still the best answer for anyone willing to do it
-    once. Its API does not: every range tried through the endpoint used here -
-    a /24, a /16, 0.0.0.0/0 itself - is refused with HTTP 500
-    "ip-validation-failure", and only a bare address is accepted. So this
-    module cannot create the wildcard key on anyone's behalf; it can only keep
-    a single-address key pointed at the right address.
+  * A key made by hand for 0.0.0.0/0 works from any address, with no
+    credentials stored anywhere and no code involved. That is the best answer
+    for anyone the portal lets do it.
+
+    What is measured and what is reported should not be confused here. What
+    was measured: the portal's API refuses every range through the endpoint
+    this module uses - a /24, a /16 and 0.0.0.0/0 itself all come back HTTP 500
+    "ip-validation-failure", and only a bare address is accepted. That is why
+    this module cannot create a wildcard key on anyone's behalf. What was
+    reported rather than tested: that the web form accepts what its own API
+    refuses. It worked for the author of this fork; it has been disputed by
+    others, and the field is documented as taking one address. Treat it as
+    worth trying, not as a guarantee.
 
     Which address that is comes from the API's own refusal, not from a
     what-is-my-ip service. Those answer for their own connection and, on a
@@ -146,8 +151,8 @@ def network_for(address, bits):
 
     Kept, and left at a single address by default, because the portal's API
     will not take anything wider. Every range tried - the surrounding /24, a
-    /16, even the 0.0.0.0/0 that the portal's own web form accepts - comes back
-    HTTP 500 "ip-validation-failure". Only a bare address is accepted there.
+    /16, 0.0.0.0/0 itself - comes back HTTP 500 "ip-validation-failure". Only a
+    bare address is accepted there.
 
     Which makes getting that one address right the whole job, and it is not
     ipify's answer: that reports the address ipify was contacted from, which on
