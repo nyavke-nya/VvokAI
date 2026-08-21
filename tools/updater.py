@@ -115,6 +115,7 @@ TUNING = {
         "super",
         "idle",
     ),
+    "cfg/lobby_config.toml": (),
     # Every value in the dodge config is calibration; there is nothing personal
     # in the file. Listing no keys means "add anything new, change nothing" -
     # deliberately conservative, because anyone who has tuned their dodging has
