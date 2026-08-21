@@ -92,7 +92,11 @@ install(lambda n: Reply(403, DENIED), configured=False)
 brawl_api.get_player_info("#ABC")
 check("never called the portal", calls["refresh"], 0)
 check("told them how to fix it",
-      "0.0.0.0/0" in (brawl_api.last_error() or ""), True)
+      "email and password" in (brawl_api.last_error() or ""), True)
+# And does NOT repeat the wildcard advice, which does not work: the portal
+# takes one address and refuses every range.
+check("without sending them after a wildcard key",
+      "0.0.0.0/0" in (brawl_api.last_error() or ""), False)
 
 report.section("address changed once, portal configured: one reissue, then it works")
 seq = {"n": 0}

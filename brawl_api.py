@@ -224,18 +224,21 @@ def _fetch(tag, token, allow_refresh):
             # sends them off to re-check the one thing that is already right.
             _last_error = (
                 "API rejected the token (403) even after reissuing it for this "
-                "address. If you are on a VPN or mobile connection the address "
-                "may be changing faster than the key can be replaced; a key made "
-                "by hand at developer.brawlstars.com with Allowed IP Ranges set "
-                "to 0.0.0.0/0 works from anywhere and needs no credentials."
+                "address. That usually means the connection leaves by a different "
+                "address each time - a VPN or mobile connection does this - and "
+                "no single-address key can keep up. There is no wildcard key to "
+                "fall back on, because the portal refuses ranges. Either use a "
+                "connection with a stable address, or route the bot through a "
+                "proxy and issue the key for the proxy."
             )
         else:
             _last_error = (
                 "API rejected the token (403). Tokens are locked to the IP address "
-                "they were created for, and yours has changed. Either create a key "
-                "at developer.brawlstars.com for the range 0.0.0.0/0, or add "
-                "brawl_api_email and brawl_api_password to cfg/general_config.toml "
-                "and the bot will reissue it by itself."
+                "they were created for, and yours has changed. Add the developer "
+                "portal email and password in Settings and the bot will reissue "
+                "the key for the new address by itself - that is the only way to "
+                "keep this working, since the portal will not issue a key for a "
+                "range."
             )
     elif response.status_code == 429:
         _last_error = "Rate limited by the Brawl Stars API. Try again shortly."

@@ -36,24 +36,25 @@ player_tag = ""
 # setting that turns that off, so a token issued at home stops working the
 # moment the ISP hands out a new address, and the API answers with a bare 403.
 #
-# Two ways to live with that:
+# You may have read that setting the IP range to 0.0.0.0/0 gives a key that
+# works from anywhere. It does not: the field takes a single address, and the
+# portal refuses every range.
 #
-#   1. When creating the key, set the IP range to 0.0.0.0/0. It then works from
-#      anywhere, no credentials are stored and no code is involved. Do this if
-#      the portal lets you.
-#
-#   2. Fill in the two fields below. On a 403 the bot logs in to the developer
-#      portal, deletes the key it made last time, issues a new one for the
-#      current address and retries - about two seconds, once per address change.
+# What works is the two fields below. On a 403 the bot logs in to the developer
+# portal, deletes the key it made last time, issues a new one for the address
+# the API itself reported, and retries - about two seconds, once per address
+# change.
 #
 # Never commit this file; it is git-ignored for exactly this reason.
 brawl_api_token = ""
 
 # Developer-portal login, used ONLY to re-issue the token above when the IP
-# changes. Leave blank to disable that - option 1 above needs neither.
+# changes. Leave blank to disable that: trophy sync then stops working the next
+# time your address moves, and nothing else is affected.
 #
 # A password in a plain text file is a password in a plain text file. It never
 # leaves this machine except to developer.brawlstars.com, and it is never
-# logged, but if that trade is not acceptable use the 0.0.0.0/0 key instead.
+# logged. If that trade is not acceptable, the alternative is a proxy with a
+# fixed address, with the key issued for the proxy.
 brawl_api_email = ""
 brawl_api_password = ""

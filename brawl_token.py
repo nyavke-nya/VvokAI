@@ -17,21 +17,15 @@ Two things worth knowing before enabling it:
   * It needs the developer-portal email and password in cfg/general_config.toml.
     That file is git-ignored precisely because it holds credentials, but a
     password in a plain file is a password in a plain file - if that is not
-    acceptable, leave this off and use the wildcard approach below instead.
+    acceptable, leave this off - trophy sync stops when the address changes,
+    and nothing else is affected.
 
-  * A key made by hand for 0.0.0.0/0 works from any address, with no
-    credentials stored anywhere and no code involved. That is the best answer
-    for anyone the portal lets do it.
-
-    What is measured and what is reported should not be confused here. What
-    was measured: the portal's API refuses every range through the endpoint
-    this module uses - a /24, a /16 and 0.0.0.0/0 itself all come back HTTP 500
-    "ip-validation-failure", and only a bare address is accepted. That is why
-    this module cannot create a wildcard key on anyone's behalf. What was
-    reported rather than tested: that the web form accepts what its own API
-    refuses. It worked for the author of this fork; it has been disputed by
-    others, and the field is documented as taking one address. Treat it as
-    worth trying, not as a guarantee.
+  * There is no wildcard key, whatever you have read. The advice to put
+    0.0.0.0/0 in Allowed IP Ranges circulates widely and was in this project's
+    own README; the field takes one address, and the portal's API refuses every
+    range - a /24, a /16 and 0.0.0.0/0 itself all come back HTTP 500
+    "ip-validation-failure". Reissuing a single-address key is not a fallback
+    for something better. It is the approach.
 
     Which address that is comes from the API's own refusal, not from a
     what-is-my-ip service. Those answer for their own connection and, on a
@@ -203,15 +197,13 @@ _GIVE_UP_MESSAGE = "\n\n".join((
     "already wrong for the next request, and making more of them only floods "
     "the developer portal.",
 
-    "The fix takes two minutes and is permanent: go to "
-    "developer.brawlstars.com, delete the VvokAI keys, create one with Allowed "
-    "IP Ranges set to 0.0.0.0/0, and paste it into Settings. That key works "
-    "from any address, so nothing has to chase it. The website accepts "
-    "0.0.0.0/0 even though the portal API this bot uses refuses it, which is "
-    "why this cannot be done for you.",
+    "There is no wildcard key to switch to. The portal refuses ranges, so "
+    "every key is tied to one address, and no amount of reissuing catches a "
+    "connection that keeps moving.",
 
-    "You can also clear the developer-portal email and password in Settings - "
-    "with a 0.0.0.0/0 key they are not needed.",
+    "What does work: put the bot on a connection with a stable address, or "
+    "route it through a proxy and issue the key for the proxy. Only trophy "
+    "sync is affected - everything else runs normally without it.",
 ))
 
 
@@ -281,10 +273,10 @@ def refresh(previous=None, force=False, seen_ip=None):
     email, password = credentials()
     if not email or not password:
         _last_error = (
-            "Automatic token refresh is off. Add brawl_api_email and "
-            "brawl_api_password to cfg/general_config.toml, or create a key at "
-            "developer.brawlstars.com for the range 0.0.0.0/0 so it works from "
-            "any address."
+            "Automatic token refresh is off. Add the developer portal email "
+            "and password in Settings so the bot can reissue the key when your "
+            "address changes - the portal will not issue a key for a range, so "
+            "there is no way around this."
         )
         return None
 
@@ -370,7 +362,7 @@ def refresh(previous=None, force=False, seen_ip=None):
                 _quiet_until = time.time() + GIVE_UP_FOR
                 _last_error = _GIVE_UP_MESSAGE
                 print("Brawl Stars API: giving up on automatic key reissue - "
-                      "this connection needs a 0.0.0.0/0 key made by hand.")
+                      "this connection does not keep one address.")
                 return None
 
         if not accepted:
@@ -385,10 +377,8 @@ def refresh(previous=None, force=False, seen_ip=None):
                 "propagating and it starts working within a minute or two on "
                 "its own. It also happens on a VPN whose traffic leaves by "
                 "several addresses, where a key can only ever match some of "
-                "the requests. The permanent fix for that is a key made by "
-                "hand at developer.brawlstars.com with Allowed IP Ranges set "
-                "to 0.0.0.0/0 - the website accepts it even though the portal "
-                "API this bot uses will not, so it cannot be done for you."
+                "the requests - and no wildcard key exists to fix that, "
+                "because the portal refuses ranges."
             )
             print(f"Brawl Stars API key reissued for {address}, not active yet.")
             return None
