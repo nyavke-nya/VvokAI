@@ -79,6 +79,9 @@ class StageManager:
         self.player_tag = str(
             load_toml_as_dict("./cfg/general_config.toml").get('player_tag', "") or ""
         ).strip()
+        # Set when a switch to the queue head did not take, cleared when it
+        # does. Checked on every visit to the lobby.
+        self.brawler_needs_selecting = False
         self.ping_when_stuck = load_toml_as_dict("cfg/webhook_config.toml")["ping_when_stuck"]
         self.playstyle_info = playstyle_info
         self.get_latest_state = state_getting
@@ -111,6 +114,13 @@ class StageManager:
 
         trophy_value = int(numbers)
         return trophy_value
+
+    def adopt_current_brawler(self):
+        """Point the trophy observer at whoever is at the head of the queue."""
+        head = self.brawlers_pick_data[0]
+        self.Trophy_observer.change_trophies(head['trophies'])
+        self.Trophy_observer.current_wins = head['wins'] if head['wins'] != "" else 0
+        self.Trophy_observer.win_streak = head['win_streak']
 
     def resync_from_api(self, when, expect_change_from=None, background=False):
         """Take the trophy count from the API instead of from our own running sum.
@@ -205,6 +215,26 @@ class StageManager:
             print("Waiting 3 seconds for API to update with latest data...")
             time.sleep(3)
             self.resync_from_api("before starting")
+
+        # A switch that failed earlier is retried here, once per visit to the
+        # lobby, until it takes. Without this the bot plays the brawler it has
+        # already finished with, forever.
+        if self.brawler_needs_selecting and self.brawlers_pick_data:
+            head = self.brawlers_pick_data[0]
+            if head.get("automatically_pick"):
+                print(f"Retrying the switch to {head['brawler']}.")
+                result = self.Lobby_automation.select_brawler(
+                    head['brawler'], self.get_latest_state,
+                    runtime_control=self.runtime_control)
+                if result == "success":
+                    self.brawler_needs_selecting = False
+                    self.adopt_current_brawler()
+                elif result in ("aborted", "stuck"):
+                    return
+            else:
+                # Manual mode: nothing to retry, the person switches.
+                self.brawler_needs_selecting = False
+
         print("state is lobby, starting game")
         values = {
             "trophies": self.Trophy_observer.current_trophies,
@@ -261,8 +291,16 @@ class StageManager:
                         return
                     attempts_left -= 1
                     if attempts_left <= 0:
-                        print("No queued brawler could be selected. Playing with "
-                              "whichever brawler the game has selected.")
+                        print("No queued brawler could be selected. Will try "
+                              "again before the next match.")
+                        # Remembered, because giving up here used to be
+                        # permanent. Selection is only attempted when a target
+                        # is reached, and once the game is left on the finished
+                        # brawler that never happens again - the queue head is
+                        # a brawler nobody is playing, so its trophies never
+                        # move and its target is never met. The bot sat pushing
+                        # the completed brawler for the rest of the session.
+                        self.brawler_needs_selecting = True
                         break
                     current_brawler = self.brawlers_pick_data.pop(0)
                     self.brawlers_pick_data.append(current_brawler)
@@ -270,15 +308,29 @@ class StageManager:
                     self.quit_shop()
                     select_brawler = self.Lobby_automation.select_brawler(next_brawler_name, self.get_latest_state, runtime_control=self.runtime_control)
                 if select_brawler == "aborted" or select_brawler == "stuck":
+                    self.brawler_needs_selecting = True
                     return
                 if select_brawler == "success":
-                    self.Trophy_observer.change_trophies(self.brawlers_pick_data[0]['trophies'])
-                    self.Trophy_observer.current_wins = self.brawlers_pick_data[0]['wins'] if self.brawlers_pick_data[0]['wins'] != "" else 0
-                    self.Trophy_observer.win_streak = self.brawlers_pick_data[0]['win_streak']
+                    self.brawler_needs_selecting = False
+                # Adopted whether or not the switch worked, and that is the
+                # point. This used to sit inside "if success", so a failed
+                # selection left the observer holding the FINISHED brawler's
+                # trophies - still above its target - and the very next lobby
+                # read the target as reached again, removed another brawler and
+                # tried again. The queue emptied one entry per match while the
+                # bot played the same brawler throughout, which is what this
+                # looked like from outside: brawlers vanishing from the list and
+                # nothing ever changing on screen.
+                #
+                # brawlers_pick_data[0] is the brawler being pushed now, so the
+                # observer has to track it either way. If the switch failed the
+                # game is still on the old one for a match, and one match of
+                # trophies goes to the wrong name - which the API resync
+                # corrects, and which is a great deal cheaper than eating the
+                # whole queue.
+                self.adopt_current_brawler()
             else:
-                self.Trophy_observer.change_trophies(self.brawlers_pick_data[0]['trophies'])
-                self.Trophy_observer.current_wins = self.brawlers_pick_data[0]['wins'] if self.brawlers_pick_data[0]['wins'] != "" else 0
-                self.Trophy_observer.win_streak = self.brawlers_pick_data[0]['win_streak']
+                self.adopt_current_brawler()
                 print("Next brawler is in manual mode, waiting 10 seconds to let user switch.")
                 if self._sleep_interruptible(10):
                     return

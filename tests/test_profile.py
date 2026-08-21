@@ -372,4 +372,22 @@ report.check("in the clear is a shot",
 report.at_least("the edge test fires earlier than the centre test",
                 _edges - _centre, 30)
 
+
+report.section("a brawler switch that fails is retried, not abandoned")
+# Selection was only ever attempted at the moment a target was reached. When it
+# failed the bot carried on with the finished brawler - and since the queue head
+# was then a brawler nobody was playing, its trophies never moved and its target
+# was never met, so the moment never came again. The bot pushed a completed
+# brawler for the rest of the session while the interface showed a different one.
+stage_src = open("stage_manager.py", encoding="utf-8").read()
+report.check("a failed switch is remembered",
+             "self.brawler_needs_selecting = True" in stage_src, True)
+report.check("and cleared once it takes",
+             "self.brawler_needs_selecting = False" in stage_src, True)
+start_game = stage_src[stage_src.index("def start_game"):stage_src.index("def click_star_drop")]
+report.check("the lobby retries it", "self.brawler_needs_selecting and" in start_game, True)
+report.check("without retrying a manual pick", 'head.get("automatically_pick")' in start_game, True)
+report.check("the flag exists before any match",
+             "self.brawler_needs_selecting = False\n        self.ping_when_stuck" in stage_src, True)
+
 sys.exit(report.finish())
