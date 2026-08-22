@@ -768,6 +768,23 @@ def main():
     report.check("and it still gives up on a fight it cannot win",
                  "return \"retreat\"" in aggro, True)
 
+    report.section("melee brawlers stop closing once they are already shooting")
+    # The attack fires at 1.0 of attack_range. Every step taken below that is
+    # walking further into the enemy after the shots are landing - which is how
+    # a Mortis arrives nose to nose having absorbed the entire approach.
+    for name in ("unified_dodge.pyla", "unified_light.pyla", "unified_aggro.pyla"):
+        text = playstyle_source(style(name))
+        close = float(value(text, "ASSASSIN_CLOSE_TO"))
+        tank = float(value(text, "TANK_CLOSE_TO"))
+        report.at_least(f"{name}: assassins settle inside their reach, not inside the enemy",
+                        close, 0.5)
+        report.at_most(f"{name}: but still inside it, so the attack connects", close, 0.95)
+        report.at_least(f"{name}: tanks too", tank, 0.5)
+        report.at_most(f"{name}: and still closer than an assassin", tank, close)
+    report.check("the aggressive style still commits harder than the careful one",
+                 float(value(aggro, "ASSASSIN_CLOSE_TO")) < float(value(careful, "ASSASSIN_CLOSE_TO")),
+                 True)
+
     check_walls(report)
     check_breakout(report)
     check_fight(report)

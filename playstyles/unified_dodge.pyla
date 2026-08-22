@@ -93,8 +93,14 @@ LOBS_HOLD_NEAR = 0.50
 LOBS_HOLD_FAR = 0.85
 
 # Melee archetypes close until this fraction of their range, then circle.
-ASSASSIN_CLOSE_TO = 0.40
-TANK_CLOSE_TO = 0.25
+#
+# The attack itself fires at 1.0 - anything below that is walking further into
+# the enemy after the shots are already landing, which is how a Mortis ends up
+# nose to nose having eaten the whole approach. It was 0.40 here and 0.28 on
+# the aggressive style: less than half a tile of standoff for a brawler whose
+# whole range is three, so the bot closed until it was standing inside them.
+ASSASSIN_CLOSE_TO = 0.85
+TANK_CLOSE_TO = 0.70
 
 # ── Self-preservation ────────────────────────────────────────────────────
 # The bot used to close on anything it could see and died to fights it was

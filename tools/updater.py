@@ -93,6 +93,7 @@ TUNING = {
         "entity_detection_confidence",
         "centered_wall_detection",
         "poison_gas_fraction",
+        "attack_range_multiplier",
         "gadget_pixels_minimum",
         "hypercharge_pixels_minimum",
         "super_pixels_minimum",

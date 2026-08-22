@@ -156,6 +156,9 @@
         "Perceived Tile Size": "Размер клетки",
         "Map tile size in pixels used by playstyle movement and wall-aware targeting.":
             "Размер клетки карты в пикселях: по нему считается движение и обход стен.",
+        "Attack Range Multiplier": "Множитель дальности атаки",
+        "Scales every brawler's attack and super range. The built-in table is measured short, so the bot used to open fire at about half of its real reach; 1.35 puts it at about three quarters. Raise it to shoot from further out, lower it if shots start missing. 1.0 is the old behaviour.":
+            "Множит дальность атаки и супера у всех бойцов. Встроенная таблица занижена, из-за неё бот открывал огонь примерно с половины своей настоящей дистанции; 1.35 поднимает это до трёх четвертей. Больше — стреляет издалека, меньше — если промахивается. 1.0 — как было раньше.",
         "Minimum Movement Delay": "Минимальная пауза движения",
         "Lower bound between movement actions.": "Нижний предел между командами движения.",
         "Unstuck Delay": "Задержка разблокировки",

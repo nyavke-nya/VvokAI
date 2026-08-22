@@ -406,4 +406,72 @@ report.check("no swipe still uses a hardcoded column",
 report.check("every swipe uses the constant",
              lobby_src.count("self.SCROLL_COLUMN * wr"), 3)
 
+
+report.section("brawler ranges are corrected for the real size of a tile")
+# The table in cfg/brawlers_info.json is written as if a map tile were 54 px.
+# Measured on a captured frame it is about 98: the border fence draws one post
+# per tile and the posts are 98 px apart, and the ring the game paints under
+# the player - about one tile across - is 115 px wide. So the bot was opening
+# fire at roughly half of every brawler's actual reach, which is what people
+# were reporting as "he only shoots point blank" and "Mortis walks all the way
+# in and dies".
+import play as _play3
+
+
+class _Win:
+    scale_factor = 0.5
+
+
+def _ranges(multiplier):
+    stub = object.__new__(_play3.Play)
+    stub.window_controller = _Win()
+    stub.attack_range_multiplier = multiplier
+    return stub.load_brawler_ranges({"mortis": {"safe_range": 100.0, "attack_range": 200.0,
+                                                "super_range": 400.0}})["mortis"]
+
+
+_safe, _attack, _super = _ranges(1.35)
+report.check("attack range is stretched", _attack, int(200 * 0.5 * 1.35))
+report.check("so is the super", _super, int(400 * 0.5 * 1.35))
+report.check("but safe_range is not - it is a keep-out, not a reach",
+             _safe, int(100 * 0.5))
+report.check("1.0 leaves the table exactly as it was", _ranges(1.0), [50, 100, 200])
+report.check("the window scale still applies on top",
+             _ranges(1.35)[1] > _ranges(1.0)[1], True)
+
+_cfg = load_toml_as_dict("cfg/bot_config.toml")
+report.check("the multiplier lives in the config, not in code",
+             "attack_range_multiplier" in _cfg, True)
+report.at_least("and ships pointing further out than the raw table",
+                float(_cfg["attack_range_multiplier"]), 1.2)
+report.at_most("without pushing brawlers past their real reach",
+               float(_cfg["attack_range_multiplier"]), 1.6)
+
+_updater = open("tools/updater.py", encoding="utf-8").read()
+report.check("existing installs get it on the next update",
+             '"attack_range_multiplier",' in _updater, True)
+report.check("and it is editable from the web UI",
+             '"attack_range_multiplier"' in open("webui/services.py", encoding="utf-8").read(),
+             True)
+report.check("with a Russian label, like every other setting",
+             "Множитель дальности атаки" in open("static/js/i18n.js", encoding="utf-8").read(),
+             True)
+
+# A zero or a negative here would leave every brawler unable to shoot at all.
+_play_src = open("play.py", encoding="utf-8").read()
+report.check("a nonsense value in the config cannot disarm the bot",
+             "if not 0.25 <= self.attack_range_multiplier <= 4.0:" in _play_src, True)
+
+
+report.section("PowerShell needs the leading .\ and the README says so")
+# "start_pyla.bat is not recognized as the name of a cmdlet" - PowerShell does
+# not look in the current directory, so the plain name fails there while it
+# works in cmd.exe. People hit this the first time they try to start the bot.
+_readme = open("README.md", encoding="utf-8").read()
+report.check("the launch line is shown the way PowerShell wants it",
+             ".\start_pyla.bat" in _readme, True)
+report.check("and the error people actually see is named",
+             "не распознано как имя командлета" in _readme, True)
+
+
 sys.exit(report.finish())

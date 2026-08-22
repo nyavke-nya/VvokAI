@@ -37,6 +37,35 @@ PLAYER_HIT_CIRCLE_RADIUS = 53
 # question about 140 ms too late at normal walking speed.
 ENEMY_EXPOSURE_RADIUS = 40
 
+# Every attack_range in cfg/brawlers_info.json is multiplied by this before the
+# playstyle sees it.
+#
+# Those numbers are inherited from PylaAI and they are all short. Measured on a
+# captured frame: the map border fence draws one post per tile and the posts sit
+# 98 px apart, and the ring under the player - which the game draws at about one
+# tile across - is 115 px wide. So a tile is roughly 98 px on screen, while the
+# range table is written as if a tile were 54. Checked against the projectile
+# speeds in the dodge log too: at 98 px/tile the fastest shot seen reads 15
+# tiles/s, which is a real Brawl Stars speed; at 54 it would read 28, which
+# nothing in the game does.
+#
+# The result was a bot that opened fire at roughly half of its brawler's actual
+# reach, walked most of the way in before it could shoot at all, and ate the
+# whole approach. Two people described exactly that within a day of each other:
+# "he barely attacks until he is practically touching them" on Mortis, and "mine
+# only ever shoots point blank" on everyone else.
+#
+# Not corrected to the full 1.9x it measures at. The table is not a clean
+# scaling of the real ranges - El Primo is already over his, most others are at
+# 50-65% - so a blanket doubling would push several brawlers past their reach
+# and have them firing into empty air. 1.35 moves the whole set from about
+# half of true range to about three quarters, which is where a brawler wants
+# to be fighting anyway: inside its own reach with margin to spare.
+#
+# Configurable because it is a calibration, not a preference. 1.0 restores the
+# old behaviour exactly.
+ATTACK_RANGE_MULTIPLIER = 1.35
+
 # How much of the region beside the player must match the gas colour before the
 # bot treats that direction as gassed.
 #
@@ -145,6 +174,18 @@ class Play:
                 bot_config.get("poison_gas_fraction", POISON_GAS_FRACTION))
         except (TypeError, ValueError):
             self.poison_gas_fraction = POISON_GAS_FRACTION
+        # See ATTACK_RANGE_MULTIPLIER. Clamped rather than trusted: a zero or a
+        # negative here would make every brawler unable to shoot at all, and a
+        # typo in a config file should not be able to do that.
+        try:
+            self.attack_range_multiplier = float(
+                bot_config.get("attack_range_multiplier", ATTACK_RANGE_MULTIPLIER))
+        except (TypeError, ValueError):
+            self.attack_range_multiplier = ATTACK_RANGE_MULTIPLIER
+        if not 0.25 <= self.attack_range_multiplier <= 4.0:
+            print(f"attack_range_multiplier {self.attack_range_multiplier} is out of "
+                  f"the sensible 0.25-4.0 range, using {ATTACK_RANGE_MULTIPLIER}")
+            self.attack_range_multiplier = ATTACK_RANGE_MULTIPLIER
 
         bot_config = load_toml_as_dict("cfg/bot_config.toml")
         time_config = load_toml_as_dict("cfg/time_tresholds.toml")
@@ -350,13 +391,19 @@ class Play:
         if not brawlers_info:
             brawlers_info = load_brawlers_info()
         screen_size_ratio = self.window_controller.scale_factor
+        # safe_range is deliberately left alone. It is not a reach, it is "do
+        # not let anything get closer than this", and the table's version of
+        # that is already about right - stretching it would push brawlers away
+        # from fights they should be taking.
+        reach_ratio = screen_size_ratio * self.attack_range_multiplier
         ranges = {}
         for brawler, info in brawlers_info.items():
             attack_range = info['attack_range']
             safe_range = info['safe_range']
             super_range = info['super_range']
-            v = [safe_range, attack_range, super_range]
-            ranges[brawler] = [int(v[0] * screen_size_ratio), int(v[1] * screen_size_ratio), int(v[2] * screen_size_ratio)]
+            ranges[brawler] = [int(safe_range * screen_size_ratio),
+                               int(attack_range * reach_ratio),
+                               int(super_range * reach_ratio)]
         return ranges
 
     @staticmethod

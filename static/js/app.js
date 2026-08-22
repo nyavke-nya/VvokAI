@@ -135,6 +135,7 @@ const SETTINGS_META = {
         { key: "unstuck_movement_delay", label: "Unstuck Delay", type: "number", step: "0.1", help: "Delay before the unstuck routine fires." },
         { key: "unstuck_movement_hold_time", label: "Unstuck Hold Time", type: "number", step: "0.1", help: "How long the unstuck move is held." },
         { key: "perceived_tile_size", label: "Perceived Tile Size", type: "number", help: "Map tile size in pixels used by playstyle movement and wall-aware targeting." },
+        { key: "attack_range_multiplier", label: "Attack Range Multiplier", type: "number", step: "0.05", help: "Scales every brawler's attack and super range. The built-in table is measured short, so the bot used to open fire at about half of its real reach; 1.35 puts it at about three quarters. Raise it to shoot from further out, lower it if shots start missing. 1.0 is the old behaviour." },
         { key: "centered_wall_detection", label: "Centered Wall Detection", type: "checkbox", help: "Use the close wall model on a 640x640 crop centered near the player." },
         { key: "wall_detection_confidence", label: "Wall Confidence", type: "number", step: "0.05", help: "Confidence threshold for wall detection." },
         { key: "entity_detection_confidence", label: "Entity Confidence", type: "number", step: "0.05", help: "Confidence threshold for player and enemy detections." },
