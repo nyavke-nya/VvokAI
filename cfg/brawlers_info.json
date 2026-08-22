@@ -943,6 +943,6 @@
         "super_range": 576,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 4
+        "hold_attack": 3
     }
 }
