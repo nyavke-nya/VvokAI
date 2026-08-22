@@ -934,5 +934,15 @@
         "super_range": 277,
         "super_type": "dash",
         "hold_attack": 0
+    },
+    "nori": {
+        "safe_range": 0.0,
+        "attack_range": 448.0,
+        "quick_attack_range": 192.0,
+        "super_type": "damage",
+        "super_range": 362,
+        "ignore_walls_for_attacks": false,
+        "ignore_walls_for_supers": false,
+        "hold_attack": 2
     }
 }

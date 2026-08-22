@@ -703,6 +703,93 @@ def check_afk(report):
     report.check("survives nobody in sight", context["is_afk_spot"](None), False)
 
 
+def check_two_attacks(report):
+    """Nori: a tap that swings now, or a hold that charges a long shot.
+
+    Everyone else has one attack off that button, so the tap branch has to stay
+    invisible to them - a brawler who suddenly stops charging is a brawler who
+    fires every shot at minimum damage.
+    """
+    import json as _json
+    report.section("a brawler with two attacks uses the right one for the range")
+
+    info = _json.load(open("cfg/brawlers_info.json", encoding="utf-8"))
+    names = _json.load(open("cfg/names.json", encoding="utf-8"))
+    report.check("nori is in the brawler table", "nori" in info, True)
+    nori = info.get("nori", {})
+    report.check("with a charged reach", nori.get("attack_range", 0) > 0, True)
+    report.check("and a tap reach inside it",
+                 0 < nori.get("quick_attack_range", 0) < nori.get("attack_range", 0), True)
+    report.check("and a hold time, or the charge would never happen",
+                 nori.get("hold_attack", 0) > 0, True)
+    report.check("nori has name aliases too - four letters is thin for a fuzzy match",
+                 len(names.get("nori", [])) > 0, True)
+    report.check("every brawler in the table has a names.json entry",
+                 sorted(set(info) - set(names)), [])
+    report.check("nobody else grew a second attack by accident",
+                 sorted(k for k, v in info.items() if v.get("quick_attack_range", 0)),
+                 ["nori"])
+
+    def fire(distance, hold_range, charging=False, must_hold=True):
+        """Run do_attack once and report which button press came out."""
+        pressed = []
+        context = base_context(
+            must_hold=must_hold,
+            quick_attack_range=hold_range,
+            brawler_info={"attack_range": 448.0, "hold_attack": 2},
+            AIMED_SHOTS=False,
+            aim_enabled=False,
+            persistent_data={"time_since_holding_attack": 1000.0 if charging else None},
+            attack=lambda touch_up=True, touch_down=True: pressed.append(
+                "tap" if (touch_up and touch_down) else
+                ("press" if touch_down else "release")),
+            aimed_attack=lambda target: pressed.append("aimed"),
+        )
+        context["time"] = _FakeClock()
+        lift(["do_attack", "tap_attack"], set(), context)
+        context["do_attack"]((900.0 + distance, 500.0))
+        return pressed
+
+    report.check("point blank, it swings instead of charging", fire(100.0, 192.0), ["tap"])
+    report.check("at range, it charges", fire(400.0, 192.0), ["press"])
+    report.check("exactly at the tap reach still swings", fire(192.0, 192.0), ["tap"])
+    report.check("one pixel further charges", fire(193.0, 192.0), ["press"])
+
+    # The regression that matters: Angelo and Hank have no tap, and a tap
+    # branch that leaked to them would fire every shot uncharged.
+    report.check("a hold brawler with no tap always charges, even point blank",
+                 fire(10.0, 0.0), ["press"])
+    report.check("and a brawler with no hold at all is untouched",
+                 fire(10.0, 0.0, must_hold=False), ["tap"])
+
+    # Switching mid-charge would leave the finger down and the shot unfired.
+    report.check("a charge already running is finished, not swapped for a tap",
+                 fire(10.0, 192.0, charging=True), ["release"])
+
+    # Only unified_dodge is executed above; the other two are copies and copies
+    # drift. These check the branch is actually in all of them.
+    for path in PLAYSTYLES:
+        if path.endswith("skeleton.py"):
+            continue
+        label = os.path.basename(path)
+        text = playstyle_source(path)
+        report.check(f"{label}: has the tap path",
+                     "def tap_attack(" in text, True)
+        report.check(f"{label}: reads the tap reach from the brawler table",
+                     'brawler_info.get("quick_attack_range"' in text, True)
+        report.check(f"{label}: and scales it like the other ranges",
+                     "attack_range / max(float(brawler_info[\"attack_range\"]), 1.0)" in text,
+                     True)
+
+
+class _FakeClock:
+    """time.time() that is always past any hold that has started."""
+
+    @staticmethod
+    def time():
+        return 2000.0
+
+
 def main():
     report = Failures("playstyle")
     for path in PLAYSTYLES:
@@ -785,6 +872,7 @@ def main():
                  float(value(aggro, "ASSASSIN_CLOSE_TO")) < float(value(careful, "ASSASSIN_CLOSE_TO")),
                  True)
 
+    check_two_attacks(report)
     check_walls(report)
     check_breakout(report)
     check_fight(report)

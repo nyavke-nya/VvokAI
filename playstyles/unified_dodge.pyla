@@ -277,6 +277,7 @@ if not brawler_info:
     brawler_info = {
         "safe_range": 300.0,
         "attack_range": 480.0,
+        "quick_attack_range": 0.0,
         "super_type": "damage",
         "super_range": 480,
         "ignore_walls_for_attacks": False,
@@ -305,6 +306,22 @@ else:
     safe_range = brawler_info["safe_range"]
     attack_range = brawler_info["attack_range"]
     super_range = brawler_info["super_range"]
+
+# Nori has two attacks off one button: a tap that swings instantly at knife
+# range, and a hold that charges a long shot. One attack_range cannot describe
+# that, so quick_attack_range carries the reach of the tap. Inside it, tapping
+# beats charging - a charge is two seconds of standing still in front of
+# somebody who is already on top of you.
+#
+# get_brawler_range only hands back three numbers, so this one is scaled by the
+# ratio the engine applied to the other three; the window scale and
+# attack_range_multiplier both come out in the wash. It is 0 for every brawler
+# with a single attack, which is all of them but Nori, and 0 disables the
+# branch entirely.
+quick_attack_range = float(brawler_info.get("quick_attack_range", 0.0))
+if quick_attack_range > 0:
+    quick_attack_range = quick_attack_range * (
+        attack_range / max(float(brawler_info["attack_range"]), 1.0))
 
 player_pos = get_entity_pos(player_data)
 
@@ -677,16 +694,30 @@ archetype = detect_archetype()
 #  COMBAT
 # ─────────────────────────────────────────────────────────────────────
 
+def tap_attack(target):
+    # Lead the target when we know where it is going. aimed_attack falls
+    # back to a plain tap on its own when the lead is negligible, so a
+    # stationary enemy costs nothing extra.
+    if AIMED_SHOTS and aim_enabled and target is not None:
+        aimed_attack(target)
+    else:
+        attack()
+
+
 def do_attack(target=None):
     if not must_hold:
-        # Lead the target when we know where it is going. aimed_attack falls
-        # back to a plain tap on its own when the lead is negligible, so a
-        # stationary enemy costs nothing extra.
-        if AIMED_SHOTS and aim_enabled and target is not None:
-            aimed_attack(target)
-        else:
-            attack()
+        tap_attack(target)
         return
+
+    # A charge already under way is always finished. Deciding again halfway
+    # through would leave the finger down on the button and the shot never
+    # released - and the enemy who walked into tap range while it charged is
+    # about to eat the charged shot anyway.
+    charging = persistent_data["time_since_holding_attack"] is not None
+    if not charging and quick_attack_range > 0 and target is not None:
+        if get_distance(target, player_pos) <= quick_attack_range:
+            tap_attack(target)
+            return
 
     hold_time = float(brawler_info.get("hold_attack", 0.0))
     if persistent_data["time_since_holding_attack"] is None:
