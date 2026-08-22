@@ -310,8 +310,8 @@ else:
 # Nori has two attacks off one button: a tap that swings instantly at knife
 # range, and a hold that charges a long shot. One attack_range cannot describe
 # that, so quick_attack_range carries the reach of the tap. Inside it, tapping
-# beats charging - a charge is two seconds of standing still in front of
-# somebody who is already on top of you.
+# beats charging - a charge is several seconds of standing still in front of
+# somebody who is already on top of you, and hold_attack says how many.
 #
 # get_brawler_range only hands back three numbers, so this one is scaled by the
 # ratio the engine applied to the other three; the window scale and

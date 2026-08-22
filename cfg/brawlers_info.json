@@ -937,12 +937,12 @@
     },
     "nori": {
         "safe_range": 0.0,
-        "attack_range": 448.0,
-        "quick_attack_range": 192.0,
+        "attack_range": 640,
+        "quick_attack_range": 234,
         "super_type": "damage",
-        "super_range": 362,
+        "super_range": 576,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 2
+        "hold_attack": 4
     }
 }

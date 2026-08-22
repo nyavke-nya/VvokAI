@@ -753,7 +753,11 @@ def check_two_attacks(report):
                  "def brawler_ids(" in open("brawl_api.py", encoding="utf-8").read(), True)
 
     def fire(distance, hold_range, charging=False, must_hold=True):
-        """Run do_attack once and report which button press came out."""
+        """Run do_attack once and report which button press came out.
+
+        The ranges here are arbitrary - this exercises the branch, not Nori.
+        His actual numbers are checked against the table above.
+        """
         pressed = []
         context = base_context(
             must_hold=must_hold,
