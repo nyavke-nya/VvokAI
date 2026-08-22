@@ -125,6 +125,58 @@ TUNING = {
 }
 
 
+# The same rule as TUNING, for the two configs that are JSON rather than TOML:
+# a name the file has never heard of is added, a name it already has is left
+# exactly as it is.
+#
+# They need it as much as the TOML ones do. Both are keyed by brawler, cfg/ is
+# protected wholesale, and neither is in TUNING - so a brawler added here has
+# so far reached nobody who installed from a zip. The bot does ask an upstream
+# service for brawlers it does not recognise, but a brawler released this week
+# is exactly the one that service does not have yet, which is the case this
+# exists for.
+#
+# Adding only, never changing: somebody whose file already has the brawler may
+# have tuned its ranges, or picked it up from that upstream service with
+# numbers of its own, and neither is ours to overwrite.
+JSON_ADDITIONS = (
+    "cfg/brawlers_info.json",
+    "cfg/names.json",
+)
+
+
+def merge_json(shipped_text, current_text):
+    """The user's file with unknown names added. None when nothing is missing.
+
+    Two levels deep, because a brawler can gain a field as well as a file
+    gaining a brawler - quick_attack_range arrived on a Nori that some people
+    already had - and a record that is missing one of those reads as a brawler
+    with no second attack rather than as an error.
+    """
+    try:
+        shipped = json.loads(shipped_text)
+        current = json.loads(current_text)
+    except ValueError:
+        return None
+    if not isinstance(shipped, dict) or not isinstance(current, dict):
+        return None
+
+    changed = False
+    for name, record in shipped.items():
+        if name not in current:
+            current[name] = record
+            changed = True
+        elif isinstance(record, dict) and isinstance(current[name], dict):
+            for field, value in record.items():
+                if field not in current[name]:
+                    current[name][field] = value
+                    changed = True
+
+    if not changed:
+        return None
+    return json.dumps(current, indent=4, ensure_ascii=False) + chr(10)
+
+
 def say(message):
     print(f"[update] {message}")
 
@@ -243,7 +295,24 @@ def apply(source):
         relative = incoming.relative_to(source)
         target = ROOT / relative
 
-        tuning = TUNING.get(relative.as_posix().lower())
+        key = relative.as_posix().lower()
+        if key in JSON_ADDITIONS and target.exists():
+            try:
+                merged = merge_json(incoming.read_text(encoding="utf-8"),
+                                    target.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError):
+                continue
+            if merged is None:
+                continue
+            keep = BACKUP / relative
+            keep.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(target, keep)
+            target.write_text(merged, encoding="utf-8")
+            changed += 1
+            say(f"  {relative.as_posix()} (new entries added)")
+            continue
+
+        tuning = TUNING.get(key)
         if tuning is not None:
             # A config with calibration in it: merged key by key rather than
             # replaced, so the token, the queue and the chosen playstyle stay

@@ -10,7 +10,7 @@ import sys
 from _harness import Failures
 
 sys.path.insert(0, "tools")
-from updater import merge_settings  # noqa: E402
+from updater import JSON_ADDITIONS, merge_json, merge_settings  # noqa: E402
 
 report = Failures("updater settings merge")
 
@@ -83,5 +83,68 @@ report.check("the comment is still there",
              "# how big a tile looks" in out, True)
 report.check("the blank line too", "\n\n" in out, True)
 report.check("and the value updated", "perceived_tile_size = 35" in out, True)
+
+report.section("a new brawler reaches somebody who installed last month")
+# cfg/ is protected wholesale, and brawlers_info.json is not in TUNING, so a
+# brawler added to the table used to reach nobody running from a zip. The bot
+# does ask an upstream service about brawlers it does not recognise, but the
+# one released this week is exactly the one that service has not got yet.
+import json as _json
+
+report.check("both brawler files are on the additions list",
+             sorted(JSON_ADDITIONS),
+             ["cfg/brawlers_info.json", "cfg/names.json"])
+
+SHIPPED_JSON = _json.dumps({
+    "shelly": {"attack_range": 490.0, "hold_attack": 0},
+    "nori": {"attack_range": 448.0, "quick_attack_range": 192.0, "hold_attack": 2},
+})
+
+
+def merged_json(current, shipped=SHIPPED_JSON):
+    out = merge_json(shipped, current)
+    return _json.loads(out) if out is not None else _json.loads(current)
+
+
+theirs_json = _json.dumps({
+    "shelly": {"attack_range": 490.0, "hold_attack": 0},
+    # tuned by hand, and not ours to undo
+    "mortis": {"attack_range": 400.0, "hold_attack": 0},
+})
+out = merged_json(theirs_json)
+report.check("the new brawler arrives", "nori" in out, True)
+report.check("with all of its numbers", out["nori"]["quick_attack_range"], 192.0)
+report.check("a brawler only they have is untouched", out["mortis"]["attack_range"], 400.0)
+
+report.section("a value they changed themselves is never overwritten")
+tuned = _json.dumps({"shelly": {"attack_range": 900.0, "hold_attack": 0},
+                     "nori": {"attack_range": 448.0, "quick_attack_range": 192.0,
+                              "hold_attack": 2}})
+report.check("their range survives", merged_json(tuned)["shelly"]["attack_range"], 900.0)
+report.check("and an already-complete file is not rewritten at all",
+             merge_json(SHIPPED_JSON, tuned), None)
+
+report.section("a brawler can gain a field, not just a file gain a brawler")
+# Anyone who picked Nori up from the upstream service got him without
+# quick_attack_range, and a record missing that reads as "no second attack".
+partial = _json.dumps({"shelly": {"attack_range": 490.0, "hold_attack": 0},
+                       "nori": {"attack_range": 448.0, "hold_attack": 2}})
+out = merged_json(partial)
+report.check("the missing field is filled in", out["nori"]["quick_attack_range"], 192.0)
+report.check("without disturbing the rest of the record", out["nori"]["hold_attack"], 2)
+
+report.section("names.json merges the same way, with lists instead of records")
+shipped_names = _json.dumps({"shelly": ["shey"], "nori": ["norl", "nor1"]})
+theirs_names = _json.dumps({"shelly": ["shey", "myownalias"]})
+out = merge_json(shipped_names, theirs_names)
+out = _json.loads(out)
+report.check("the new brawler's aliases arrive", out["nori"], ["norl", "nor1"])
+report.check("an alias list they extended is left alone",
+             out["shelly"], ["shey", "myownalias"])
+
+report.section("nonsense in either file is refused rather than guessed at")
+report.check("half-written JSON is refused", merge_json("{oops", "{}"), None)
+report.check("a list at the top level is refused", merge_json("[1,2]", "{}"), None)
+
 
 sys.exit(report.finish())
