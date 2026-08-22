@@ -474,4 +474,51 @@ report.check("and the error people actually see is named",
              "не распознано как имя командлета" in _readme, True)
 
 
+report.section("a brawler whose name OCR gets one letter wrong is still found")
+# What actually happened: the game renders NORI, easyocr read "norz", and
+# difflib scores that 0.75 against "nori" while the fallback needs 0.80. The
+# bot scrolled the whole list forty times, gave up, restarted, and never played
+# a match. 51 of the 105 brawlers have a name of four letters or fewer, so any
+# single misread character lands in that same gap.
+from lobby_automation import LobbyAutomation as _Lobby
+import json as _json4
+
+_seen = ["brawlers105/105", "leasttrophies", "112635", "960",
+         "norz", "grom", "hank", "alli", "lou", "lumi"]
+report.check("the misread card is matched", _Lobby._near_miss("nori", _seen), "norz")
+report.check("an exact name on screen is left to the exact test",
+             _Lobby._near_miss("grom", _seen), None)
+
+# The whole reason the rule is narrow. Each of these pairs is two real
+# brawlers one character apart, and picking the wrong one pushes trophies on
+# a brawler the user did not queue.
+for wanted, decoy in [("colt", "bolt"), ("rico", "mico"),
+                      ("sam", "pam"), ("sandy", "mandy")]:
+    report.check(f"{decoy!r} is never accepted for {wanted!r}",
+                 _Lobby._near_miss(wanted, [decoy, "grom"]), None)
+
+report.check("two near misses at once are refused, not guessed between",
+             _Lobby._near_miss("nori", ["norz", "nora"]), None)
+report.check("a shorter read is not a near miss",
+             _Lobby._near_miss("nori", ["nor"]), None)
+report.check("and neither is a longer one",
+             _Lobby._near_miss("nori", ["noriz"]), None)
+report.check("nothing on screen means no match",
+             _Lobby._near_miss("nori", []), None)
+
+_names = _json4.load(open("cfg/names.json", encoding="utf-8"))
+report.check("the reading seen in the log is in the alias list too",
+             "norz" in _names.get("nori", []), True)
+
+# The guard that makes it safe, checked against the whole roster rather than
+# the four pairs listed above.
+_info = _json4.load(open("cfg/brawlers_info.json", encoding="utf-8"))
+_all = sorted(_info)
+_collisions = [(a, b) for i, a in enumerate(_all) for b in _all[i + 1:]
+               if len(a) == len(b) and a[0] == b[0]
+               and sum(x != y for x, y in zip(a, b)) == 1]
+report.check("no two brawlers are one character apart with the same first letter",
+             _collisions, [])
+
+
 sys.exit(report.finish())

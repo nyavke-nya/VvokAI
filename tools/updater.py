@@ -151,7 +151,10 @@ def merge_json(shipped_text, current_text):
     Two levels deep, because a brawler can gain a field as well as a file
     gaining a brawler - quick_attack_range arrived on a Nori that some people
     already had - and a record that is missing one of those reads as a brawler
-    with no second attack rather than as an error.
+    with no second attack rather than as an error. Lists are unioned rather
+    than left alone for the same reason: names.json holds the spellings OCR
+    produces for a brawler, and a new one has to reach a name the file already
+    knows about.
     """
     try:
         shipped = json.loads(shipped_text)
@@ -170,6 +173,17 @@ def merge_json(shipped_text, current_text):
             for field, value in record.items():
                 if field not in current[name]:
                     current[name][field] = value
+                    changed = True
+        elif isinstance(record, list) and isinstance(current[name], list):
+            # names.json: the OCR spellings a brawler answers to. Purely
+            # additive by nature - a new one is a reading somebody actually saw
+            # on screen - so the two lists are unioned, keeping whatever the
+            # user added themselves. Without this a brawler already in the file
+            # could never gain a spelling, which is exactly the case that broke:
+            # the game renders NORI and easyocr reads "norz".
+            for value in record:
+                if value not in current[name]:
+                    current[name].append(value)
                     changed = True
 
     if not changed:

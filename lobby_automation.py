@@ -102,6 +102,38 @@ class LobbyAutomation:
         # Let the overscroll bounce settle, or the first OCR reads a blur.
         return self._sleep_interruptible(1.0, runtime_control, stop_event)
 
+    @staticmethod
+    def _near_miss(brawler, detected_names):
+        """The brawler's name with exactly one character misread, or None.
+
+        A four-letter name cannot clear the 0.80 fuzzy threshold with a single
+        character wrong - "norz" against "nori" scores 0.75 - and 51 of the 105
+        brawlers are four letters or fewer. That is not a corner case: it is
+        why the bot walked past a Nori sitting on screen the whole time and
+        scrolled the list forty times before giving up, over and over.
+
+        Lowering the threshold is not the fix. bolt/colt, mico/rico, pam/sam
+        and mandy/sandy are each one character apart and each pair is two real
+        brawlers, so a loose rule would confidently pick the wrong one and push
+        trophies on it. All four differ in their FIRST character, and OCR
+        mangles the tail of a word far more often than the head - so requiring
+        the head to match rules out every one of them. Checked across the whole
+        roster: no two brawlers share a length and a first letter while
+        differing by a single character.
+
+        The match must also be the only one of its kind on screen. If two cards
+        are each one character out, neither is worth trusting.
+        """
+        hits = []
+        for name in detected_names:
+            if not name or name == brawler or len(name) != len(brawler):
+                continue
+            if name[0] != brawler[0]:
+                continue
+            if sum(a != b for a, b in zip(name, brawler)) == 1:
+                hits.append(name)
+        return hits[0] if len(hits) == 1 else None
+
     def select_brawler(self, brawler, get_latest_state, stop_event=None, runtime_control=None):
         self.window_controller.screenshot()
         wr = self.window_controller.width_ratio
@@ -185,6 +217,15 @@ class LobbyAutomation:
                     if best_ratio >= 0.8:
                         matched_key = best_match
                         print(f"Fuzzy matched detected name '{best_match}' to brawler '{brawler}' with ratio {best_ratio:.2f}.")
+
+                # Still nothing, and the ratio test cannot help a short name:
+                # see _near_miss.
+                if not matched_key:
+                    near = self._near_miss(brawler, clean_results.keys())
+                    if near:
+                        matched_key = near
+                        print(f"Matched '{near}' to brawler '{brawler}': one character "
+                              f"out, and nothing else on screen was close.")
 
             if self.verbose_debug:
                 print("OCR detected the following potential matches for the brawler name:")

@@ -142,6 +142,18 @@ report.check("the new brawler's aliases arrive", out["nori"], ["norl", "nor1"])
 report.check("an alias list they extended is left alone",
              out["shelly"], ["shey", "myownalias"])
 
+report.section("a new OCR spelling reaches a brawler the file already knows")
+# The add-only rule is not enough on its own here: everyone already has "nori",
+# so the "norz" that easyocr actually produces would never have reached them.
+shipped_more = _json.dumps({"nori": ["norz", "norl"]})
+theirs_more = _json.dumps({"nori": ["norl", "myownspelling"]})
+out = _json.loads(merge_json(shipped_more, theirs_more))
+report.check("the new spelling arrives", "norz" in out["nori"], True)
+report.check("and theirs is still there", "myownspelling" in out["nori"], True)
+report.check("an already-complete list is not rewritten",
+             merge_json(shipped_more, _json.dumps({"nori": ["norz", "norl"]})), None)
+
+
 report.section("nonsense in either file is refused rather than guessed at")
 report.check("half-written JSON is refused", merge_json("{oops", "{}"), None)
 report.check("a list at the top level is refused", merge_json("[1,2]", "{}"), None)
