@@ -51,6 +51,11 @@ class LobbyAutomation:
     # it is stuck, and grinding through it costs minutes before anyone is told.
     MAX_SCANS = 40
 
+    # How long to give the brawler list to appear after tapping the button,
+    # and how many times to tap again if it does not. See _open_brawler_menu.
+    MENU_OPEN_TIMEOUT = 4.0
+    MENU_OPEN_ATTEMPTS = 3
+
     # Swipes to get back to the top. More than the list is tall, because a
     # swipe that lands while the view is still gliding does nothing at all -
     # so the count has to cover the wasted ones as well as the useful ones.
@@ -102,6 +107,36 @@ class LobbyAutomation:
         # Let the overscroll bounce settle, or the first OCR reads a blur.
         return self._sleep_interruptible(1.0, runtime_control, stop_event)
 
+    def _open_brawler_menu(self, get_latest_state, runtime_control=None, stop_event=None):
+        """Tap the brawlers button and wait until the list is actually up.
+
+        It used to tap once, sleep half a second and start swiping. Half a
+        second is not always long enough for the list to animate in, and the
+        tap can land on a popup that opened over the lobby instead - in which
+        case nineteen scroll-to-top swipes went into whatever WAS on screen,
+        and only then did the scan loop notice the state was wrong and bail.
+        From the outside that reads exactly as "it says it is picking a brawler
+        and never opens the menu".
+
+        The state comes from the checker thread, which keeps reading frames
+        while this blocks, so polling it here sees the screen change.
+        """
+        x, y = load_toml_as_dict("cfg/buttons_config.toml")["brawlers_menu"]
+        for attempt in range(self.MENU_OPEN_ATTEMPTS):
+            if self._should_interrupt(runtime_control, stop_event):
+                return "aborted"
+            self.window_controller.click(x, y, already_include_ratio=False)
+            deadline = time.time() + self.MENU_OPEN_TIMEOUT
+            while time.time() < deadline:
+                if self._should_interrupt(runtime_control, stop_event):
+                    return "aborted"
+                if get_latest_state() == "brawler_selection":
+                    return "open"
+                time.sleep(0.2)
+            print(f"The brawler list did not open (attempt {attempt + 1} of "
+                  f"{self.MENU_OPEN_ATTEMPTS}), tapping again.")
+        return "closed"
+
     @staticmethod
     def _near_miss(brawler, detected_names):
         """The brawler's name with exactly one character misread, or None.
@@ -142,10 +177,15 @@ class LobbyAutomation:
         for symbol in [' ', '-', '.', "&"]:
             brawler = brawler.replace(symbol, "")
 
-        x, y = load_toml_as_dict("cfg/buttons_config.toml")["brawlers_menu"]
-        self.window_controller.click(x, y, already_include_ratio=False)
-        time.sleep(0.5)
         print("Automatic brawler selection started for", brawler)
+        opened = self._open_brawler_menu(get_latest_state, runtime_control, stop_event)
+        if opened == "aborted":
+            print("Brawler selection aborted by user.")
+            return "aborted"
+        if opened != "open":
+            print("The brawler list never opened, so there is nothing to scroll. "
+                  "Leaving the selected brawler alone.")
+            return "stuck"
         if self._scroll_to_list_top(runtime_control, stop_event):
             print("Brawler selection aborted by user.")
             return "aborted"

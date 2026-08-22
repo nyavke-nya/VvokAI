@@ -521,4 +521,55 @@ report.check("no two brawlers are one character apart with the same first letter
              _collisions, [])
 
 
+report.section("scrolling only starts once the brawler list is really open")
+# It used to tap the button, sleep half a second and start swiping regardless.
+# If the list had not come up - slow animation, or a popup sitting over the
+# lobby - nineteen scroll-to-top swipes went into whatever was on screen
+# instead, and only then did the scan loop notice and give up. Which looks,
+# from outside, like a bot that says it is picking a brawler and never opens
+# the menu.
+from lobby_automation import LobbyAutomation as _Lobby2
+
+_taps = []
+
+
+class _Clicker:
+    width_ratio = height_ratio = 1.0
+
+    def click(self, x, y, already_include_ratio=True):
+        _taps.append((x, y))
+
+
+def _open(states):
+    """states is consumed one reading per poll, then repeats its last value."""
+    _taps.clear()
+    lobby = object.__new__(_Lobby2)
+    lobby.window_controller = _Clicker()
+    lobby.MENU_OPEN_TIMEOUT = 0.5
+    lobby.MENU_OPEN_ATTEMPTS = 3
+    seq = list(states)
+
+    def latest():
+        return seq.pop(0) if len(seq) > 1 else seq[0]
+
+    return lobby._open_brawler_menu(latest)
+
+
+report.check("it stops as soon as the list is up", _open(["brawler_selection"]), "open")
+report.check("one tap was enough", len(_taps), 1)
+report.check("a slow animation is waited out",
+             _open(["lobby", "lobby", "brawler_selection"]), "open")
+report.check("still one tap", len(_taps), 1)
+report.check("a list that never opens is reported, not scrolled",
+             _open(["lobby"]), "closed")
+report.check("after retrying the tap", len(_taps), 3)
+
+_src = open("lobby_automation.py", encoding="utf-8").read()
+_body = _src[_src.index("def select_brawler("):_src.index("MAX_SCANS)")]
+report.check("select_brawler no longer taps and hopes",
+             "time.sleep(0.5)" in _body, False)
+report.check("and refuses to scroll a list that is not there",
+             _body.index("_open_brawler_menu") < _body.index("_scroll_to_list_top"), True)
+
+
 sys.exit(report.finish())
