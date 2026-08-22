@@ -365,29 +365,63 @@ def get_brawler_info(brawler_name):
         return None
 
 
+# Where a brawler portrait comes from, by numeric id. Brawlify's API used to
+# hand out these URLs; it is behind a Cloudflare check now and answers every
+# request with a 403 and an HTML security page, so that route stopped working
+# and new brawlers quietly shipped without an icon. The CDN itself is still
+# open - it just wants the id instead of the name, and Supercell publishes ids
+# on the same token this bot already uses to read trophies.
+BRAWLER_ICON_CDN = "https://cdn.brawlify.com/brawlers/borderless/{id}.png"
+BRAWLIFY_API = "https://api.brawlify.com/v1/brawlers"
+
+
+def _write_brawler_icon(payload, brawler_name_clean):
+    image = Image.open(BytesIO(payload))
+    safe_name = os.path.basename(brawler_name_clean).replace('/', '').replace(chr(92), '')
+    icon_path = PROJECT_ROOT / "api" / "assets" / "brawler_icons" / f"{safe_name}.png"
+    icon_path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(str(icon_path))
+    return icon_path
+
+
 def save_brawler_icon(brawler_name):
-    # Clean the brawler name for filename
-    brawler_name_clean = brawler_name.lower().replace(' ', '').replace('-', '').replace('.', '').replace('&',
-                                                                                                         '')
-    brawlers_url = "https://api.brawlify.com/v1/brawlers"
-    response = requests.get(brawlers_url)
+    brawler_name_clean = normalize_brawler_filename(brawler_name)
+
+    # Imported lazily because brawl_api imports from this module.
+    from brawl_api import brawler_ids
+    brawler_id = brawler_ids().get(brawler_name_clean)
+    if brawler_id:
+        try:
+            response = requests.get(BRAWLER_ICON_CDN.format(id=brawler_id), timeout=15)
+            if response.status_code == 200:
+                _write_brawler_icon(response.content, brawler_name_clean)
+                print(f"Saved icon for brawler '{brawler_name}'")
+                return
+        except (requests.RequestException, OSError, ValueError):
+            pass
+
+    # The old route, kept because it needs no API token - it is the only way
+    # anybody without one gets an icon at all, and if Brawlify ever drops the
+    # security check it starts working again on its own.
+    try:
+        response = requests.get(BRAWLIFY_API, timeout=15)
+    except requests.RequestException as exc:
+        print(f"Could not reach the icon source for '{brawler_name}': {exc}")
+        return
     if response.status_code != 200:
         print(f"Failed to fetch brawlers from API: {response.status_code}")
         return
-    brawlers_data = response.json()['list']
+    try:
+        brawlers_data = response.json()['list']
+    except (ValueError, KeyError):
+        print(f"The icon source did not answer with brawler data for '{brawler_name}'")
+        return
 
-    # Find the brawler in the API data
     for brawler_obj in brawlers_data:
-        api_brawler_name = brawler_obj['name'].lower().replace(' ', '').replace('-', '').replace('.', '').replace('&', '')
-        if api_brawler_name == brawler_name_clean:
-            icon_url = brawler_obj['imageUrl2']
-            img_response = requests.get(icon_url)
+        if normalize_brawler_filename(brawler_obj['name']) == brawler_name_clean:
+            img_response = requests.get(brawler_obj['imageUrl2'], timeout=15)
             if img_response.status_code == 200:
-                image = Image.open(BytesIO(img_response.content))
-                safe_name = os.path.basename(brawler_name_clean).replace('/', '').replace('\\', '')
-                icon_path = PROJECT_ROOT / "api" / "assets" / "brawler_icons" / f"{safe_name}.png"
-                icon_path.parent.mkdir(parents=True, exist_ok=True)
-                image.save(str(icon_path))
+                _write_brawler_icon(img_response.content, brawler_name_clean)
                 print(f"Saved icon for brawler '{brawler_name}'")
             else:
                 print(f"Failed to download icon for '{brawler_name}'")

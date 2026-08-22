@@ -730,6 +730,28 @@ def check_two_attacks(report):
                  sorted(k for k, v in info.items() if v.get("quick_attack_range", 0)),
                  ["nori"])
 
+    # The queue list draws one of these per brawler, and a missing file is a
+    # blank tile rather than an error - so nothing notices until somebody sees
+    # a hole in the UI.
+    icons = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         "api", "assets", "brawler_icons")
+    report.check("nori has an icon", os.path.exists(os.path.join(icons, "nori.png")), True)
+    report.check("and so does every other brawler in the table",
+                 sorted(name for name in info
+                        if not os.path.exists(os.path.join(icons, f"{name}.png"))),
+                 [])
+
+    # Brawlify's API answers 403 with a Cloudflare page now, which is why new
+    # brawlers stopped getting icons at all. The download goes to the CDN by
+    # numeric id first, and only falls back to the old route.
+    utils_src = open("utils.py", encoding="utf-8").read()
+    report.check("icons are fetched from the CDN, not the blocked API",
+                 "cdn.brawlify.com/brawlers/borderless" in utils_src, True)
+    report.check("with the old route still there for anyone without a token",
+                 "api.brawlify.com/v1/brawlers" in utils_src, True)
+    report.check("and ids come from Supercell, who publish them",
+                 "def brawler_ids(" in open("brawl_api.py", encoding="utf-8").read(), True)
+
     def fire(distance, hold_range, charging=False, must_hold=True):
         """Run do_attack once and report which button press came out."""
         pressed = []

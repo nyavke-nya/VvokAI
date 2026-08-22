@@ -73,6 +73,48 @@ def last_error():
     return _last_error
 
 
+BRAWLER_IDS = {}
+_brawler_ids_tried = False
+
+
+def brawler_ids():
+    """{brawler name, as the bot spells it: numeric id}, from Supercell.
+
+    Only used to name an icon file. Brawlify's API - which is where icons came
+    from - sits behind a Cloudflare check now and answers every request with a
+    403 and an HTML security page, so new brawlers stopped getting one. Its CDN
+    is still open, but the files there are named by the brawler's numeric id,
+    and Supercell publishes those on the same token this bot already uses to
+    read trophies.
+
+    The list is static between game updates, so it is fetched once per run and
+    a failure is remembered as "no" rather than retried on every startup.
+    """
+    global _brawler_ids_tried
+    if _brawler_ids_tried:
+        return BRAWLER_IDS
+    _brawler_ids_tried = True
+
+    token = get_token()
+    if not token:
+        return BRAWLER_IDS
+    try:
+        response = requests.get(
+            f"{API_ROOT}/brawlers",
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+            timeout=REQUEST_TIMEOUT,
+        )
+        if response.status_code != 200:
+            return BRAWLER_IDS
+        for item in response.json().get("items", []):
+            name = normalize_brawler_filename(item.get("name", ""))
+            if name and item.get("id"):
+                BRAWLER_IDS[name] = item["id"]
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        return BRAWLER_IDS
+    return BRAWLER_IDS
+
+
 def clean_tag(tag):
     """Normalise a player tag into the bare uppercase form the API expects."""
     tag = str(tag or "").strip().upper()
