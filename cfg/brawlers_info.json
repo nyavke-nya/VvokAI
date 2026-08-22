@@ -942,7 +942,7 @@
         "super_type": "damage",
         "super_range": 576,
         "ignore_walls_for_attacks": false,
-        "ignore_walls_for_supers": false,
-        "hold_attack": 3
+        "ignore_walls_for_supers": true,
+        "hold_attack": 2.5
     }
 }
