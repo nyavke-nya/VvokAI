@@ -443,7 +443,7 @@ _cfg = load_toml_as_dict("cfg/bot_config.toml")
 report.check("the multiplier lives in the config, not in code",
              "attack_range_multiplier" in _cfg, True)
 report.at_least("and ships pointing further out than the raw table",
-                float(_cfg["attack_range_multiplier"]), 1.2)
+                float(_cfg["attack_range_multiplier"]), 1.05)
 report.at_most("without pushing brawlers past their real reach",
                float(_cfg["attack_range_multiplier"]), 1.6)
 

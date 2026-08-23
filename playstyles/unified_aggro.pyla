@@ -44,6 +44,13 @@ ATTACK_WHILE_DODGING = True
 # Seconds between gadget uses, so a ready gadget is not spammed every frame.
 GADGET_COOLDOWN = 3.0
 
+# Taps per tick for a brawler that has both a tap and a charged shot, once the
+# enemy is inside quick_attack_range. At knife range the tap IS the attack, so
+# it goes out as fast as the loop allows rather than once a frame - and as a
+# plain auto-aimed tap, because dragging the stick to lead a target standing on
+# top of you costs three touch events and buys nothing.
+QUICK_ATTACK_TAPS = 3
+
 # How close to a teammate is "regrouped", in tiles.
 REGROUP_TILES = 3.0
 
@@ -745,7 +752,8 @@ def do_attack(target=None):
     charging = persistent_data["time_since_holding_attack"] is not None
     if not charging and quick_attack_range > 0 and target is not None:
         if get_distance(target, player_pos) <= quick_attack_range:
-            tap_attack(target)
+            for _ in range(QUICK_ATTACK_TAPS):
+                attack()
             return
 
     hold_time = float(brawler_info.get("hold_attack", 0.0))

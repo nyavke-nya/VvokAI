@@ -772,13 +772,21 @@ def check_two_attacks(report):
             aimed_attack=lambda target: pressed.append("aimed"),
         )
         context["time"] = _FakeClock()
-        lift(["do_attack", "tap_attack"], set(), context)
+        lift(["do_attack", "tap_attack"], {"QUICK_ATTACK_TAPS"}, context)
         context["do_attack"]((900.0 + distance, 500.0))
         return pressed
 
-    report.check("point blank, it swings instead of charging", fire(100.0, 192.0), ["tap"])
+    # At knife range the tap is the whole attack, so it goes out several times
+    # per tick instead of once - a charged shot is useless with somebody
+    # standing on top of you, and one tap a frame is not pressure.
+    taps = int(re.search(r"^QUICK_ATTACK_TAPS = (\d+)$",
+                         playstyle_source(), re.M).group(1))
+    report.at_least("close range taps more than once a tick", taps, 2)
+    report.check("point blank, it swings instead of charging",
+                 fire(100.0, 192.0), ["tap"] * taps)
     report.check("at range, it charges", fire(400.0, 192.0), ["press"])
-    report.check("exactly at the tap reach still swings", fire(192.0, 192.0), ["tap"])
+    report.check("exactly at the tap reach still swings",
+                 fire(192.0, 192.0), ["tap"] * taps)
     report.check("one pixel further charges", fire(193.0, 192.0), ["press"])
 
     # The regression that matters: Angelo and Hank have no tap, and a tap
@@ -801,6 +809,8 @@ def check_two_attacks(report):
         text = playstyle_source(path)
         report.check(f"{label}: has the tap path",
                      "def tap_attack(" in text, True)
+        report.check(f"{label}: taps repeatedly at knife range",
+                     "for _ in range(QUICK_ATTACK_TAPS):" in text, True)
         report.check(f"{label}: reads the tap reach from the brawler table",
                      'brawler_info.get("quick_attack_range"' in text, True)
         report.check(f"{label}: and scales it like the other ranges",
