@@ -27,6 +27,8 @@ install. If it is missing, the panel says the one command that installs it.
 
 from __future__ import annotations
 
+import atexit
+import os
 import pathlib
 import re
 import shutil
@@ -54,6 +56,18 @@ INSTALL_HINT = ("cloudflared is not installed. Run start_pyla.bat and answer "
 # never on PATH and would otherwise look like "not installed".
 LOCAL_COPY = pathlib.Path(__file__).resolve().parent / "tools" / "cloudflared.exe"
 
+# The pid of the cloudflared we started last, so the next run can clear it up.
+#
+# Every restart used to leave the previous one running. They pile up, each
+# holding a tunnel to a panel that is no longer there, and the address from an
+# earlier /panel message answers with Cloudflare error 1033 - which reads like
+# the tunnel is broken rather than like it belongs to a bot that has since
+# been restarted.
+#
+# A file rather than only stopping it on the way out, because the way out is
+# often a closed console window, and nothing runs then.
+PID_FILE = pathlib.Path(__file__).resolve().parent / "tools" / ".cloudflared.pid"
+
 
 def executable():
     """The cloudflared to run, or None."""
@@ -65,6 +79,68 @@ def executable():
 
 def is_available():
     return executable() is not None
+
+
+def _remember(pid):
+    try:
+        PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+        PID_FILE.write_text(str(pid), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _forget():
+    try:
+        PID_FILE.unlink()
+    except OSError:
+        pass
+
+
+def _is_cloudflared(pid):
+    """Whether that pid is really our program, before anything gets killed.
+
+    Pids are reused, so after a reboot the number in the file could belong to
+    anything at all. psutil would answer this in one line and is not a
+    dependency of this project; tasklist ships with Windows.
+    """
+    if os.name != "nt":
+        return False
+    try:
+        result = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {pid}", "/NH", "/FO", "CSV"],
+            capture_output=True, text=True, timeout=10,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return "cloudflared" in result.stdout.lower()
+
+
+def stop_previous():
+    """Close the tunnel this bot started last time, if it is still up.
+
+    Only that one pid, never every cloudflared on the machine: somebody may be
+    running their own tunnel for something else, and killing it because it
+    shares a name would be its own bug report.
+    """
+    try:
+        pid = int(PID_FILE.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return False
+
+    if not _is_cloudflared(pid):
+        _forget()
+        return False
+
+    try:
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                       capture_output=True, timeout=15,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        print(f"Remote access: closed the tunnel left over from the last run (pid {pid}).")
+    except (OSError, subprocess.SubprocessError):
+        pass
+    _forget()
+    return True
 
 
 class Tunnel:
@@ -98,6 +174,7 @@ class Tunnel:
             self.error = f"Could not start cloudflared: {exc}"
             return False
 
+        _remember(self._process.pid)
         threading.Thread(target=self._watch, daemon=True,
                          name="pyla-tunnel-watch").start()
         if not self._ready.wait(STARTUP_SECONDS):
@@ -128,6 +205,11 @@ class Tunnel:
     def stop(self):
         if self._process and self._process.poll() is None:
             self._process.terminate()
+            try:
+                self._process.wait(timeout=5)
+            except Exception:  # noqa: BLE001 - it is going away either way
+                pass
+        _forget()
         self.url = None
 
 
@@ -147,6 +229,10 @@ def start_if_enabled(remote, port, setting, account_exists):
         print("Remote access: not starting a tunnel, the panel has no account yet.")
         return None
 
+    # Before starting a new one, so restarts do not leave a trail of tunnels
+    # pointing at panels that are no longer running.
+    stop_previous()
+
     tunnel = Tunnel(port)
     if not tunnel.start():
         remote.set_public_url(None, tunnel.error)
@@ -155,4 +241,9 @@ def start_if_enabled(remote, port, setting, account_exists):
 
     remote.set_public_url(tunnel.url, None)
     print(f"Remote access: the panel is also at {tunnel.url}")
+    # A quick tunnel gets a new name every time, so a link sent yesterday is
+    # dead today. Saying so beats somebody debugging a Cloudflare error page.
+    print("Remote access: this address changes on every restart - ask /panel "
+          "for the current one.")
+    atexit.register(tunnel.stop)
     return tunnel

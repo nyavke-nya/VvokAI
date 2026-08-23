@@ -20,6 +20,7 @@ sys.path.insert(0, "tools")
 
 import installer  # noqa: E402
 import tunnel
+from remote_control import RemoteControl
 from webui import create_app, panel_auth
 
 report = Failures("panel login")
@@ -240,78 +241,90 @@ try:
                  bool(tunnel.URL_PATTERN.search("https://a.trycloudflare.com.attacker.net")),
                  False)
 
-    report.section("start_pyla.bat asks the one question, so nobody has to know")
-    # Turning the panel into a public address by hand is three steps that only
-    # make sense to somebody who already knows what a tunnel is. Most people
-    # running this fork do not, and should not have to.
-    import io
-
-    class _Tty(io.StringIO):
-        def isatty(self):
-            return True
-
+    report.section("setup arranges remote access itself, without a question")
+    # It used to ask. "Answer yes to the thing you do not recognise" is not a
+    # better experience than it working, and the people running this fork
+    # should not have to know what a tunnel is to reach their own panel.
     config = sandbox / "general_config.toml"
     installer.GENERAL_CONFIG = config
-    real_stdin = installer.sys.stdin
     starting_config = 'player_tag = "#ABC"\nbrawl_api_token = "secret"\n'
 
-    def ask(answer, cloudflared_ok=True):
-        config.write_text(starting_config, encoding="utf-8")
-        installer.sys.stdin = _Tty(answer)
+    def set_up(existing=None, cloudflared_ok=True):
+        config.write_text(
+            starting_config + (f'remote_access = "{existing}"\n' if existing else ""),
+            encoding="utf-8")
         installed = installer.install_cloudflared
         installer.install_cloudflared = lambda: cloudflared_ok
         try:
-            installer.ask_about_remote_access()
+            installer.set_up_remote_access()
         finally:
             installer.install_cloudflared = installed
         return config.read_text(encoding="utf-8")
 
-    try:
-        report.check("no leaves it off",
-                     'remote_access = "off"' in ask("n\n"), True)
-        report.check("yes turns it on",
-                     'remote_access = "cloudflare"' in ask("y\n"), True)
-        report.check("and Russian works, since half the users type it",
-                     'remote_access = "cloudflare"' in ask("да\n"), True)
-        report.check("an empty answer is a no - the safe default wins a shrug",
-                     'remote_access = "off"' in ask("\n"), True)
-        report.check("saying yes with no cloudflared leaves it off rather than pretending",
-                     'remote_access = "off"' in ask("y\n", cloudflared_ok=False), True)
-        report.check("the rest of the config is untouched - it holds the API token",
-                     'brawl_api_token = "secret"' in ask("y\n"), True)
-        report.check("and the answer is written once, not appended each launch",
-                     ask("y\n").count("remote_access"), 1)
+    report.check("a fresh install gets it turned on",
+                 'remote_access = "cloudflare"' in set_up(), True)
+    report.check("nothing was asked",
+                 "input(" in open("tools/installer.py", encoding="utf-8").read(), False)
+    report.check("the rest of the config survives - it holds the API token",
+                 'brawl_api_token = "secret"' in set_up(), True)
+    report.check("and the setting is written once, not appended every launch",
+                 set_up().count("remote_access"), 1)
 
-        report.section("and it only asks once")
-        config.write_text('remote_access = "off"\n', encoding="utf-8")
-        report.check("an answered config is recognised", installer.already_answered(), True)
-        installer.sys.stdin = _Tty("y\n")
-        installer.ask_about_remote_access()
-        report.check("so the question is not asked again",
-                     config.read_text(encoding="utf-8").strip(),
-                     'remote_access = "off"')
+    report.section("but a deliberate off is left alone")
+    # Setup runs on every launch. Undoing somebody's choice each time would
+    # make the setting impossible to keep.
+    report.check("off stays off", 'remote_access = "off"' in set_up(existing="off"), True)
+    report.check("and it is not quietly rewritten to cloudflare",
+                 'cloudflare' in set_up(existing="off"), False)
+    report.check("an existing cloudflare stays on",
+                 'remote_access = "cloudflare"' in set_up(existing="cloudflare"), True)
 
-        report.section("a console nobody is sitting at must not block the launch")
-        config.write_text('player_tag = "#ABC"\n', encoding="utf-8")
-        installer.sys.stdin = io.StringIO("y\n")   # not a tty
-        installer.ask_about_remote_access()
-        report.check("it answers itself, with off",
-                     'remote_access = "off"' in config.read_text(encoding="utf-8"), True)
-    finally:
-        installer.sys.stdin = real_stdin
+    report.section("a download that does not get through turns it off, not on")
+    # Better a setting that says off than one that says on and fails at every
+    # start with nothing to point at.
+    text = set_up(cloudflared_ok=False)
+    report.check("the setting reflects reality", 'remote_access = "off"' in text, True)
 
-    report.section("a fresh install has no answer stored, so it gets asked")
-    example = open("cfg/general_config.example.toml", encoding="utf-8").read()
-    report.check("the example config leaves the key out",
-                 "remote_access" in example, False)
+    report.section("reading the setting back")
+    for written, expected in [('remote_access = "cloudflare"', "cloudflare"),
+                              ('remote_access = "off"', "off"),
+                              ("remote_access = 'off'", "'off'"),
+                              ("", None)]:
+        config.write_text(starting_config + (written + chr(10) if written else ""),
+                          encoding="utf-8")
+        report.check(f"{written or 'no line at all'} reads as {expected!r}",
+                     installer.current_remote_access(), expected)
 
-    report.section("the tunnel finds a cloudflared the installer downloaded")
-    report.check("it looks in tools/, not only on PATH",
-                 tunnel.LOCAL_COPY.name, "cloudflared.exe")
-    report.check("and the installer puts it exactly there",
-                 installer.CLOUDFLARED_LOCAL.resolve(), tunnel.LOCAL_COPY.resolve())
-    report.check("the hint points at the script rather than at homework",
-                 "start_pyla.bat" in tunnel.INSTALL_HINT, True)
+    report.section("a tunnel left behind by the last run is closed, not left running")
+    # Every restart used to start another cloudflared and leave the old one up.
+    # They pile up, each holding a tunnel to a panel that is gone, and an
+    # address from an earlier message answers with Cloudflare error 1033 -
+    # which reads like a broken tunnel rather than a stale link.
+    report.check("the pid of the one we started is written down",
+                 tunnel.PID_FILE.name, ".cloudflared.pid")
+    report.check("start_if_enabled closes the previous one first",
+                 open("tunnel.py", encoding="utf-8").read().index("stop_previous()")
+                 < open("tunnel.py", encoding="utf-8").read().index("tunnel = Tunnel(port)"),
+                 True)
+    report.check("and the current one is stopped on the way out",
+                 "atexit.register(tunnel.stop)" in open("tunnel.py", encoding="utf-8").read(),
+                 True)
+    report.check("a pid that is not cloudflared is never killed - pids get reused",
+                 tunnel._is_cloudflared(0), False)
+    report.check("no leftover pid means nothing to do", tunnel.stop_previous(), False)
+    report.check("the cleanup does not import psutil, which is not a dependency "
+                 "of this project and would make it silently never run",
+                 "import psutil" in open("tunnel.py", encoding="utf-8").read(), False)
+
+    report.section("and the address is advertised as temporary")
+    remote_panel = RemoteControl(None, None)
+    remote_panel.set_web_port(5185)
+    remote_panel.set_public_url("https://example-name.trycloudflare.com")
+    panel_text = remote_panel.panel().text
+    report.check("the link is the public one",
+                 "https://example-name.trycloudflare.com" in panel_text, True)
+    report.check("and it says the link expires with the restart",
+                 "changes every time" in panel_text, True)
 
     report.section("the credentials file is not something to commit")
     ignored = open(".gitignore", encoding="utf-8").read()

@@ -518,7 +518,7 @@ if __name__ == "__main__":
     app.config["remote_control"].set_web_port(port)
     # Optional, off by default, and refuses to run before the panel has a
     # login. See tunnel.py.
-    tunnel.start_if_enabled(
+    active_tunnel = tunnel.start_if_enabled(
         app.config["remote_control"],
         port,
         load_toml_as_dict("cfg/general_config.toml").get("remote_access", "off"),

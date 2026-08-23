@@ -267,7 +267,11 @@ class RemoteControl:
         # work from one of those.
         if self.public_url:
             return Reply(self.public_url + chr(10) * 2 +
-                         "Works from anywhere. It asks for the panel login.")
+                         "Works from anywhere, and asks for the panel login." +
+                         chr(10) +
+                         "This address changes every time the bot restarts - "
+                         "ask again for the new one rather than reusing an old "
+                         "message.")
 
         lines = [f"http://{addresses[0]}:{self.web_port}", ""]
         if len(addresses) > 1:

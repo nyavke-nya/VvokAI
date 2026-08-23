@@ -494,59 +494,65 @@ def _set_remote_access(value):
         return False
 
 
-def already_answered():
+def current_remote_access():
+    """The setting as it stands, or None when the file has never had it."""
     try:
         text = GENERAL_CONFIG.read_text(encoding="utf-8")
     except OSError:
-        return False
-    return any(line.strip().startswith("remote_access") for line in text.splitlines())
+        return None
+    for line in text.splitlines():
+        if line.strip().startswith("remote_access"):
+            return line.split("=", 1)[-1].strip().strip('"').lower()
+    return None
 
 
-def ask_about_remote_access():
-    """One question, once. Off unless somebody says otherwise."""
-    if already_answered():
-        return
-    # Started by a scheduler, a service, or anything without a console: a
-    # question nobody can answer must not hold up the launch.
-    if not sys.stdin or not sys.stdin.isatty():
-        _set_remote_access("off")
-        return
+def set_up_remote_access():
+    """Install cloudflared and switch remote access on, without asking.
 
-    section("Opening the panel from your phone")
-    log("  The web panel is where the queue, the settings and the stats live.")
-    log("  Out of the box it only opens on the same Wi-Fi as this computer.")
-    log("")
-    log("  It can also be reachable from anywhere - mobile data, work, a")
-    log("  friend's house - through a Cloudflare tunnel. No router settings,")
-    log("  no account, and the address is HTTPS.")
-    log("")
-    log("  It asks for a username and password either way; you will be asked to")
-    log("  create those the first time the panel opens. Guessing the password")
-    log("  is rate limited, and the account can only be created from home.")
-    log("")
-    log("  Say no if you are unsure - it is one line in cfg/general_config.toml")
-    log("  to change your mind later.")
-    log("")
+    This used to be a question. It is not one any more: the people running
+    this fork should not have to know what a tunnel is to reach their own
+    panel from a phone, and "answer yes to the thing you do not recognise" is
+    not a better experience than it just working.
 
-    try:
-        answer = input("  Reach the panel from outside your home network? [y/N] ")
-    except (EOFError, KeyboardInterrupt):
-        answer = ""
+    What makes that defensible is the login. The panel cannot be opened
+    without an account, the account can only be created from this machine or
+    its own network, and guessing the password is rate limited. Without those
+    this would be handing every install to the internet.
 
-    if answer.strip().lower() not in ("y", "yes", "д", "да"):
-        _set_remote_access("off")
-        log("")
-        log("  Left off. The panel opens on your own network only.")
+    An explicit remote_access = "off" is left alone. Somebody who turned it
+    off meant it, and setup running again should not undo that.
+    """
+    section("Reaching the panel from your phone")
+
+    setting = current_remote_access()
+    if setting == "off":
+        log("  remote_access is set to \"off\" in cfg/general_config.toml, so this")
+        log("  is being left alone. Set it to \"cloudflare\" to turn it back on.")
         return
 
+    log("  The panel is where the queue, the settings and the stats live. It")
+    log("  will be reachable from anywhere - mobile data, work, a friend's")
+    log("  house - over an HTTPS address, not only on this Wi-Fi.")
     log("")
+    log("  It asks for a username and password before it opens anything. You")
+    log("  will be asked to create those the first time you open it, and that")
+    log("  can only be done from this computer or its own network.")
+    log("")
+
     if not install_cloudflared():
         _set_remote_access("off")
+        log("")
+        log("  Remote access is off for now. Run this again once the download")
+        log("  can get through, or install cloudflared yourself:")
+        log("    winget install --id Cloudflare.cloudflared")
         return
+
     if _set_remote_access("cloudflare"):
         log("")
-        log("  Remote access is on. When the bot starts, ask the Telegram bot")
-        log("  for /panel and it will send you the address.")
+        log("  Done. When the bot starts it will print the address, and the")
+        log("  Telegram bot will send it if you ask it for /panel.")
+        log("  The address changes every restart, so ask for it rather than")
+        log("  reusing an old link.")
 
 
 # ---------------------------------------------------------------------------
@@ -691,7 +697,7 @@ def main():
                     pass
             log("")
             log("  Ready.")
-            ask_about_remote_access()
+            set_up_remote_access()
             return 0
         log("")
         log("  Something is missing, so it is being repaired now.")
@@ -726,7 +732,7 @@ def main():
         except OSError:
             pass
         log("  Everything installed and checked.")
-        ask_about_remote_access()
+        set_up_remote_access()
         log("")
         log("  Starting the bot.")
         return 0
