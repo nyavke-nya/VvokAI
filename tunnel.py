@@ -28,12 +28,17 @@ install. If it is missing, the panel says the one command that installs it.
 from __future__ import annotations
 
 import atexit
+import json
 import os
 import pathlib
 import re
 import shutil
+import socket
 import subprocess
 import threading
+import time
+import urllib.error
+import urllib.request
 
 # cloudflared prints the assigned hostname to stderr, in a box, once it is up.
 # The negative lookahead stops it matching the prefix of a longer host -
@@ -143,6 +148,52 @@ def stop_previous():
     return True
 
 
+# cloudflared prefers QUIC, which is UDP on port 7844. Plenty of home routers,
+# work networks and ISPs drop that, and when they do cloudflared still starts,
+# still prints an address, and simply never connects - so the address answers
+# with Cloudflare error 1033 and everything local looks fine. http2 goes over
+# TCP 443 instead, which gets through nearly anywhere.
+PROTOCOLS = ("quic", "http2")
+
+# How long to give it to register with Cloudflare's edge after it prints the
+# address. Connections normally come up in two or three seconds.
+READY_SECONDS = 20
+
+
+# cloudflared honours HTTP_PROXY and HTTPS_PROXY, and its edge connections
+# are raw TCP and UDP on port 7844 - which an HTTP proxy generally will not
+# carry and a UDP one cannot. On a machine with a VPN client exporting those
+# variables (sing-box, v2ray and friends all do) the tunnel then reports
+# "HTTP/2 connection is blocked or unreachable" and quietly never connects,
+# while everything else on the machine works fine.
+#
+# So the edge hosts are added to NO_PROXY for the child rather than the proxy
+# being cleared: somebody behind a restrictive network may genuinely need it
+# for everything else, and this only exempts the two names the tunnel dials.
+EDGE_HOSTS = "argotunnel.com,.argotunnel.com,cloudflare.com,.cloudflare.com"
+
+
+def _environment():
+    environment = dict(os.environ)
+    existing = environment.get("NO_PROXY") or environment.get("no_proxy") or ""
+    merged = ",".join(part for part in (existing, EDGE_HOSTS) if part)
+    environment["NO_PROXY"] = merged
+    environment["no_proxy"] = merged
+    return environment
+
+
+def _free_port():
+    """A port for cloudflared's metrics server, so /ready can be polled.
+
+    Left to itself it picks a random one and only mentions it in a log line.
+    Asking for a known one is the difference between being able to check
+    whether the tunnel works and having to guess.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
 class Tunnel:
     """Runs cloudflared beside the panel and remembers the address it got."""
 
@@ -150,7 +201,11 @@ class Tunnel:
         self.port = port
         self.url = None
         self.error = None
+        self.protocol = None
+        # The lines cloudflared printed about why it could not get out.
+        self.diagnosis = []
         self._process = None
+        self._metrics_port = None
         self._ready = threading.Event()
 
     def start(self):
@@ -158,9 +213,26 @@ class Tunnel:
         if program is None:
             self.error = INSTALL_HINT
             return False
+
+        for protocol in PROTOCOLS:
+            if self._attempt(program, protocol):
+                self.protocol = protocol
+                return True
+            self._shut_down_process()
+            if protocol != PROTOCOLS[-1]:
+                print(f"Remote access: {protocol} could not reach Cloudflare, "
+                      f"trying {PROTOCOLS[PROTOCOLS.index(protocol) + 1]} instead.")
+        return False
+
+    def _attempt(self, program, protocol):
+        self.url = None
+        self._ready = threading.Event()
+        self._metrics_port = _free_port()
         try:
             self._process = subprocess.Popen(
                 [program, "tunnel", "--no-autoupdate",
+                 "--protocol", protocol,
+                 "--metrics", f"127.0.0.1:{self._metrics_port}",
                  "--url", f"http://127.0.0.1:{self.port}"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
@@ -168,6 +240,7 @@ class Tunnel:
                 encoding="utf-8",
                 errors="replace",
                 # No console window popping up on Windows every launch.
+                env=_environment(),
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
         except OSError as exc:
@@ -177,12 +250,42 @@ class Tunnel:
         _remember(self._process.pid)
         threading.Thread(target=self._watch, daemon=True,
                          name="pyla-tunnel-watch").start()
-        if not self._ready.wait(STARTUP_SECONDS):
+
+        if not self._ready.wait(STARTUP_SECONDS) or self.url is None:
             self.error = ("cloudflared did not report an address within "
                           f"{STARTUP_SECONDS}s. The panel is still reachable on "
                           "your own network.")
             return False
+
+        # The address appears before any connection to Cloudflare exists, so
+        # this is the check that matters. Skipping it is how a tunnel that
+        # never connected got announced as working.
+        if not self._wait_until_connected():
+            self.error = ("cloudflared started but never connected to "
+                          "Cloudflare, so the address would answer with error "
+                          "1033. It needs outbound port 7844, which a VPN or a "
+                          "proxy on this machine is the usual thing to be "
+                          "eating.")
+            for line in self.diagnosis[:4]:
+                self.error += chr(10) + "  " + line
+            return False
         return True
+
+    def _wait_until_connected(self):
+        """Poll cloudflared's own /ready until it has a live connection."""
+        deadline = time.time() + READY_SECONDS
+        while time.time() < deadline:
+            if self._process.poll() is not None:
+                return False
+            try:
+                with urllib.request.urlopen(
+                        f"http://127.0.0.1:{self._metrics_port}/ready", timeout=3) as answer:
+                    if json.loads(answer.read().decode("utf-8")).get("readyConnections", 0) > 0:
+                        return True
+            except (urllib.error.URLError, OSError, ValueError):
+                pass
+            time.sleep(1)
+        return False
 
     def _watch(self):
         """Read cloudflared's output for the hostname, then keep draining it.
@@ -190,19 +293,24 @@ class Tunnel:
         Draining matters: a pipe nobody reads fills up, and then the process
         writing to it blocks forever. That would take the tunnel down quietly.
         """
-        for line in self._process.stderr:
+        process = self._process
+        for line in process.stderr:
             if self.url is None:
                 found = URL_PATTERN.search(line)
                 if found:
                     self.url = found.group(0)
                     self._ready.set()
+            # cloudflared runs its own connectivity precheck and says exactly
+            # which port is not getting out. Throwing that away and reporting
+            # "it did not connect" would be discarding the answer.
+            if "ERROR:" in line or "Connectivity" in line:
+                cleaned = line.strip().strip("|").strip()
+                if cleaned and cleaned not in self.diagnosis:
+                    self.diagnosis.append(cleaned)
         # stderr closed: cloudflared exited.
         self._ready.set()
-        if self.url is not None:
-            self.url = None
-            self.error = "The tunnel closed. Restart the bot to open a new one."
 
-    def stop(self):
+    def _shut_down_process(self):
         if self._process and self._process.poll() is None:
             self._process.terminate()
             try:
@@ -210,6 +318,9 @@ class Tunnel:
             except Exception:  # noqa: BLE001 - it is going away either way
                 pass
         _forget()
+
+    def stop(self):
+        self._shut_down_process()
         self.url = None
 
 
@@ -240,7 +351,7 @@ def start_if_enabled(remote, port, setting, account_exists):
         return None
 
     remote.set_public_url(tunnel.url, None)
-    print(f"Remote access: the panel is also at {tunnel.url}")
+    print(f"Remote access: the panel is also at {tunnel.url} (over {tunnel.protocol})")
     # A quick tunnel gets a new name every time, so a link sent yesterday is
     # dead today. Saying so beats somebody debugging a Cloudflare error page.
     print("Remote access: this address changes on every restart - ask /panel "
