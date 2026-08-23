@@ -2,7 +2,7 @@ from io import BytesIO
 
 from discord import app_commands
 import discord
-from PIL import Image
+from remote_control import DISCORD_LIMIT, chunk
 from utils import load_toml_as_dict
 from window_controller import WindowController
 try:
@@ -15,10 +15,12 @@ except ImportError:
 
 
 class DiscordBot:
-    def __init__(self, runtime_manager, data_service):
-        self.runtime_manager = runtime_manager
-        self.data_service = data_service
-        self.window_controller: WindowController = None
+    def __init__(self, remote):
+        # Every decision a command makes lives in remote_control.py, so
+        # Discord and Telegram cannot answer the same question differently.
+        self.remote = remote
+        self.runtime_manager = remote.runtime_manager
+        self.data_service = remote.data_service
         self.started = False
         self.commands_synced = False
 
@@ -32,8 +34,12 @@ class DiscordBot:
         self.register_commands()
         register_early_access_commands(self)
 
+    @property
+    def window_controller(self) -> WindowController:
+        return self.remote.window_controller
+
     def set_window_controller(self, window_controller):
-        self.window_controller = window_controller
+        self.remote.set_window_controller(window_controller)
 
     @staticmethod
     def _extract_discord_id(value):
@@ -110,230 +116,34 @@ class DiscordBot:
             await self.sync_commands()
 
     def register_commands(self):
-        @self.tree.command(
-            name="screenshot",
-            description="Get a screenshot of the current game window",
-        )
-        async def screenshot(interaction: discord.Interaction):
-            if not await self.require_authorized_user(interaction):
-                return
+        def command(name, description, action):
+            """One slash command that hands the work to remote_control."""
 
-            if not self.window_controller:
+            @self.tree.command(name=name, description=description)
+            async def run(interaction: discord.Interaction):
+                if not await self.require_authorized_user(interaction):
+                    return
+                reply = action()
+                pieces = chunk(reply.text, DISCORD_LIMIT)
+                files = []
+                if reply.photo is not None:
+                    files = [discord.File(BytesIO(reply.photo), filename="screenshot.png")]
                 await interaction.response.send_message(
-                    "Failed to take a screenshot, is the bot running ?",
-                    ephemeral=True
-                )
-                return
-            screenshot_frame = self.window_controller.screenshot()
-            if screenshot_frame is None:
-                await interaction.response.send_message(
-                    "Failed to take a screenshot, is the bot running ?",
-                    ephemeral=True
-                )
-                return
+                    pieces[0], files=files, ephemeral=True)
+                for piece in pieces[1:]:
+                    await interaction.followup.send(piece, ephemeral=True)
 
-            screenshot_buffer = BytesIO()
-            Image.fromarray(screenshot_frame).save(screenshot_buffer, format="PNG")
-            screenshot_buffer.seek(0)
+            return run
 
-            await interaction.response.send_message(
-                "Here's a screenshot of the current game window:",
-                files=[discord.File(screenshot_buffer, filename="screenshot.png")],
-                ephemeral=True
-            )
-
-        @self.tree.command(
-            name="stop",
-            description="Makes the bot stop once it reaches the lobby",
-        )
-        async def stop(interaction: discord.Interaction):
-            if not await self.require_authorized_user(interaction):
-                return
-
-            status = self.runtime_manager.get_status()
-            if status.get("state") == "idle" or not status.get("is_running"):
-                await interaction.response.send_message(
-                    "The bot is not currently running.",
-                    ephemeral=True
-                )
-                return
-            elif status.get("state") == "stopping":
-                await interaction.response.send_message(
-                    "The bot is already stopping, please wait.",
-                    ephemeral=True
-                )
-                return
-            elif status.get("state") == "error":
-                await interaction.response.send_message(
-                    f"The bot is in an error state :\n{status['last_error']}\nPlease wait a few seconds or check the logs.",
-                    ephemeral=True
-                )
-                return
-            elif status.get("state") == "pausing":
-                await interaction.response.send_message(
-                    "The bot is currently pausing, please wait before trying to stop it.",
-                    ephemeral=True
-                )
-                return
-            else:
-                stop = self.runtime_manager.stop()
-                await interaction.response.send_message(
-                    f"{('Success' if stop.get('ok') else 'Failed')} ! {stop.get('message', '')}",
-                    ephemeral=True
-                )
-
-        @self.tree.command(
-            name="pause",
-            description="Makes the bot pause once it reaches the lobby",
-        )
-        async def pause(interaction: discord.Interaction):
-            if not await self.require_authorized_user(interaction):
-                return
-
-            status = self.runtime_manager.get_status()
-            if status.get("state") == "idle" or not status.get("is_running"):
-                await interaction.response.send_message(
-                    "The bot is not currently running.",
-                    ephemeral=True
-                )
-                return
-            elif status.get("state") == "pausing":
-                await interaction.response.send_message(
-                    "The bot is already pausing, please wait.",
-                    ephemeral=True
-                )
-                return
-            elif status.get("state") == "paused":
-                await interaction.response.send_message(
-                    "The bot is already paused.",
-                    ephemeral=True
-                )
-                return
-            elif status.get("state") == "error":
-                await interaction.response.send_message(
-                    f"The bot is in an error state :\n{status['last_error']}\nPlease wait a few seconds or check the logs.",
-                    ephemeral=True
-                )
-                return
-            elif status.get("state") == "stopping":
-                await interaction.response.send_message(
-                    "The bot is currently stopping, pausing isn't available.",
-                    ephemeral=True
-                )
-                return
-            else:
-                pause = self.runtime_manager.pause()
-                await interaction.response.send_message(
-                    f"{('Success' if pause.get('ok') else 'Failed')} ! {pause.get('message', '')}",
-                    ephemeral=True
-                )
-
-        @self.tree.command(
-            name="start",
-            description="Starts the bot if it's not already running",
-        )
-        async def start(interaction: discord.Interaction):
-            if not await self.require_authorized_user(interaction):
-                return
-
-            start_result = self.runtime_manager.start_current_queue(self)
-            await interaction.response.send_message(
-                f"{('Success' if start_result.get('ok') else 'Failed')} ! {start_result.get('message', '')}",
-                ephemeral=True
-            )
-
-        @self.tree.command(
-            name="status",
-            description="Returns the current status of the bot",
-        )
-        async def status(interaction: discord.Interaction):
-            if not await self.require_authorized_user(interaction):
-                return
-
-            status = self.runtime_manager.get_status()
-            if not status.get("is_running"):
-                await interaction.response.send_message(
-                    "The bot is currently not running.",
-                    ephemeral=True
-                )
-                return
-
-            state = status.get("state", "unknown").capitalize()
-            last_error = status.get("last_error")
-            message = f"The bot is currently **{state}**."
-            if last_error:
-                message += f"\nLast error: {last_error}"
-
-            active_playstyle = self.data_service.get_playstyles_payload().get("current")
-            playstyle_name = active_playstyle.get("name") if active_playstyle else None
-            message += f"\n Playstyle : {playstyle_name or 'None'}"
-            message += "\n Queue : do `/view_queue` to see the current queue."
-            await interaction.response.send_message(
-                message,
-                ephemeral=True
-            )
-
-        @self.tree.command(
-            name="restart_brawl_stars",
-            description="Restarts Brawl Stars if the bot is running",
-        )
-        async def restart_brawl_stars(interaction: discord.Interaction):
-            if not await self.require_authorized_user(interaction):
-                return
-
-            status = self.runtime_manager.get_status()
-            if status.get("state") == "idle" or not status.get("is_running"):
-                await interaction.response.send_message(
-                    "The bot is not currently running.",
-                    ephemeral=True
-                )
-                return
-            await interaction.response.send_message(
-                f"Restarting brawl stars !",
-                ephemeral=True
-            )
-            self.window_controller.restart_brawl_stars()
-
-        @self.tree.command(
-            name="view_queue",
-            description="View the current queue of the bot",
-        )
-        async def view_queue(interaction: discord.Interaction):
-            if not await self.require_authorized_user(interaction):
-                return
-
-            queue = self.data_service.get_queue_data()
-            if not queue:
-                await interaction.response.send_message(
-                    "The queue is currently empty.",
-                    ephemeral=True
-                )
-                return
-
-            message = "Current queue:\n"
-            responded = False
-
-            for queue_item in queue:
-                brawler = queue_item.get("brawler", "Unknown")
-                push_type = queue_item.get("type", "Unknown")
-                target_amount = queue_item.get("push_until", "Unknown")
-                current_amount = queue_item.get("trophies") if push_type == "trophies" else queue_item.get("wins")
-                auto_pick = queue_item.get("automatically_pick", False)
-                message += f"- {brawler} : {current_amount}/{target_amount} {push_type} {('(Automatically picked)' if auto_pick else '')}\n"
-
-                if len(message) > 1500:
-                    if not responded:
-                        await interaction.response.send_message(message, ephemeral=True)
-                        responded = True
-                    else:
-                        await interaction.followup.send(message, ephemeral=True)
-                    message = ""
-
-            if message:
-                if not responded:
-                    await interaction.response.send_message(message, ephemeral=True)
-                else:
-                    await interaction.followup.send(message, ephemeral=True)
+        command("screenshot", "Get a screenshot of the current game window",
+                self.remote.screenshot)
+        command("stop", "Makes the bot stop once it reaches the lobby", self.remote.stop)
+        command("pause", "Makes the bot pause once it reaches the lobby", self.remote.pause)
+        command("start", "Starts the bot if it's not already running", self.remote.start)
+        command("status", "Returns the current status of the bot", self.remote.status)
+        command("restart_brawl_stars", "Restarts Brawl Stars if the bot is running",
+                self.remote.restart_game)
+        command("view_queue", "View the current queue of the bot", self.remote.queue)
 
         @self.tree.command(
             name="help",

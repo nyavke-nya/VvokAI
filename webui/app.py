@@ -7,6 +7,8 @@ from flask import Flask, jsonify, render_template, request, send_file
 from werkzeug.exceptions import HTTPException
 
 from discord_bot import DiscordBot
+from remote_control import RemoteControl
+from telegram_bot import TelegramBot
 from utils import get_brawler_icon_path, resolve_project_path
 from .runtime import RuntimeManager
 from .services import WebDataService
@@ -72,6 +74,20 @@ def _start_discord_bot_thread(app: Flask):
         discord_thread.start()
 
 
+def _start_telegram_bot_thread(app: Flask):
+    telegram_bot = app.config["telegram_bot"]
+    thread = app.config.get("telegram_bot_thread")
+    if thread and thread.is_alive():
+        return
+    thread = threading.Thread(
+        target=telegram_bot.run_bot,
+        daemon=True,
+        name="pyla-telegram-bot",
+    )
+    app.config["telegram_bot_thread"] = thread
+    thread.start()
+
+
 def create_app(pyla_main, start_discord_bot=False):
     app = Flask(
         __name__,
@@ -81,13 +97,20 @@ def create_app(pyla_main, start_discord_bot=False):
 
     runtime_manager = RuntimeManager(pyla_main)
     data_service = WebDataService(runtime_manager)
-    discord_bot = DiscordBot(runtime_manager, data_service)
+    # One object behind both transports, so a command means the same thing
+    # wherever it came from - and so the run's WindowController has one home.
+    remote = RemoteControl(runtime_manager, data_service)
+    discord_bot = DiscordBot(remote)
+    telegram_bot = TelegramBot(remote)
     runtime_manager.configure_start_gate(data_service.get_queue_data, data_service.get_auth_state)
     app.config["runtime_manager"] = runtime_manager
     app.config["data_service"] = data_service
+    app.config["remote_control"] = remote
     app.config["discord_bot"] = discord_bot
     app.config["discord_bot_thread"] = None
     app.config["discord_bot_lock"] = threading.Lock()
+    app.config["telegram_bot"] = telegram_bot
+    app.config["telegram_bot_thread"] = None
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
     _configure_request_logging()
 
@@ -203,7 +226,7 @@ def create_app(pyla_main, start_discord_bot=False):
 
     @app.post("/api/runtime/start")
     def runtime_start():
-        result = runtime_manager.start_current_queue(discord_bot)
+        result = runtime_manager.start_current_queue(remote)
         if result.get("ok"):
             status_code = 200
         elif result.get("code") == "EMPTY_QUEUE":
@@ -250,5 +273,6 @@ def create_app(pyla_main, start_discord_bot=False):
 
     if start_discord_bot:
         _start_discord_bot_thread(app)
+        _start_telegram_bot_thread(app)
 
     return app

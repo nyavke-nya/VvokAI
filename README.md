@@ -48,6 +48,18 @@ venv\Scripts\python.exe -m pip install torch torchvision --index-url https://dow
 Вторая строка обязательна: CUDA-сборка PyTorch везёт **свой** набор cuDNN, который конфликтует с onnxruntime. В боте torch нужен ровно для одной строки, поэтому CPU-версии достаточно.
 
 
+## Управление с телефона
+
+Телеграм раньше умел только присылать уведомления. Теперь он принимает те же команды, что и Discord:
+
+```
+/start  /stop  /pause  /status  /screenshot  /queue  /restart_game  /help
+```
+
+Нужны те же два значения, что и для уведомлений — `telegram_token` и `telegram_chat_id` в [cfg/webhook_config.toml](cfg/webhook_config.toml). Если они уже стоят, команды заработают сами после перезапуска.
+
+Команды принимаются **только** из чата с указанным `telegram_chat_id`. Токен бота — единственный секрет здесь, и любой, у кого он есть, может боту написать.
+
 ## Уворот
 
 Как это устроено и почему не тонет в шуме — подробно в **[DODGE.md](DODGE.md)**.

@@ -157,6 +157,10 @@
         "Map tile size in pixels used by playstyle movement and wall-aware targeting.":
             "Размер клетки карты в пикселях: по нему считается движение и обход стен.",
         "Attack Range Multiplier": "Множитель дальности атаки",
+        "Telegram bot token used for notifications and for remote control. Send /help in your chat with the bot to see the commands. Only one copy of the bot can use a token at a time.":
+            "Токен телеграм-бота для уведомлений и для управления. Отправь боту /help в личку, чтобы увидеть список команд. Один токен — одна запущенная копия бота.",
+        "Telegram chat ID that receives notifications. Commands are only accepted from this chat; anything sent from anywhere else is ignored.":
+            "ID чата, куда приходят уведомления. Команды принимаются только из него, всё остальное игнорируется.",
         "Scales every brawler's attack and super range. The built-in table is measured short, so the bot used to open fire at about half of its real reach; 1.35 puts it at about three quarters. Raise it to shoot from further out, lower it if shots start missing. 1.0 is the old behaviour.":
             "Множит дальность атаки и супера у всех бойцов. Встроенная таблица занижена, из-за неё бот открывал огонь примерно с половины своей настоящей дистанции; 1.35 поднимает это до трёх четвертей. Больше — стреляет издалека, меньше — если промахивается. 1.0 — как было раньше.",
         "Minimum Movement Delay": "Минимальная пауза движения",
