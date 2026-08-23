@@ -58,7 +58,7 @@ def apply_play_order(queue_data):
     return ordered_data
 
 
-def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
+def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
     class Main:
         def __init__(self):
             current_playstyle = load_toml_as_dict("cfg/bot_config.toml").get("current_playstyle", "unified_dodge.pyla")
@@ -111,7 +111,7 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
             self.cooldown_start_time = 0
             self.cooldown_duration = 3 * 60
             self.window_controller.screenshot()
-            discord_bot.set_window_controller(self.window_controller)
+            remote.set_window_controller(self.window_controller)
             self.start_state_checker()
             print("Initialization complete, starting main loop.")
             self.picked_first_brawler = False
@@ -150,7 +150,7 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
                     self.Play.dodge_service.stop()
                 self.window_controller.release_movement(priority=True)
                 self.window_controller.close()
-                discord_bot.set_window_controller(None)
+                remote.set_window_controller(None)
                 sys.exit(1)
 
         def should_stop(self):
@@ -191,7 +191,7 @@ def pyla_main(discord_bot, queue_data, stop_event=None, runtime_control=None):
             # cannot leave the stick held down after shutdown.
             self.window_controller.release_movement(priority=True)
             self.window_controller.close()
-            discord_bot.set_window_controller(None)
+            remote.set_window_controller(None)
             if by_schedule and self.shutdown_when_done():
                 from utils import shutdown_computer
                 shutdown_computer()
