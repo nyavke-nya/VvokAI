@@ -157,6 +157,9 @@
         "Map tile size in pixels used by playstyle movement and wall-aware targeting.":
             "Размер клетки карты в пикселях: по нему считается движение и обход стен.",
         "Attack Range Multiplier": "Множитель дальности атаки",
+        "Remote Access": "Доступ извне",
+        "\"off\", or \"cloudflare\" to also reach the panel from outside your network over an HTTPS address. Needs cloudflared installed and a panel login already set up. Requires a restart.":
+            "\"off\", либо \"cloudflare\" — тогда панель будет доступна и снаружи, по HTTPS-адресу. Нужен установленный cloudflared и уже созданный логин панели. Требует перезапуска.",
         "Telegram bot token used for notifications and for remote control. Send /help in your chat with the bot to see the commands. Only one copy of the bot can use a token at a time.":
             "Токен телеграм-бота для уведомлений и для управления. Отправь боту /help в личку, чтобы увидеть список команд. Один токен — одна запущенная копия бота.",
         "Telegram chat ID that receives notifications. Commands are only accepted from this chat; anything sent from anywhere else is ignored.":

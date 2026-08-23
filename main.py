@@ -41,7 +41,8 @@ from utils import load_toml_as_dict, current_wall_model_is_latest, api_base_url,
     clean_queue, get_discord_link
 from utils import get_brawler_list, update_missing_brawlers_info, check_version, notify_user, update_wall_model_classes, get_latest_wall_model_file, cprint
 from window_controller import WindowController
-from webui import create_app
+import tunnel
+from webui import create_app, panel_auth
 
 
 def apply_play_order(queue_data):
@@ -515,6 +516,14 @@ if __name__ == "__main__":
     # find_open_port picks it, so this is the only place that knows. Without it
     # /panel has no link to hand out.
     app.config["remote_control"].set_web_port(port)
+    # Optional, off by default, and refuses to run before the panel has a
+    # login. See tunnel.py.
+    tunnel.start_if_enabled(
+        app.config["remote_control"],
+        port,
+        load_toml_as_dict("cfg/general_config.toml").get("remote_access", "off"),
+        panel_auth.is_configured(),
+    )
     local_url = f"http://127.0.0.1:{port}"
     print(f"VvokAI web UI: {local_url}")
     open_browser_later(local_url)

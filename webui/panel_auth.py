@@ -25,6 +25,8 @@ this costs nobody an install.
 from __future__ import annotations
 
 import hashlib
+import threading
+import time
 import hmac
 import os
 import re
@@ -176,3 +178,77 @@ def secret_key() -> str:
     throwaway key is fine and is deliberately not written to disk.
     """
     return _read().get("secret_key") or secrets.token_hex(32)
+
+
+class LoginThrottle:
+    """Backs off after repeated failures, so the password cannot be guessed.
+
+    Unlimited attempts were survivable while the panel only answered your own
+    network. They are not once the address is public: a login page on the
+    internet gets guessed at, constantly and by machines.
+
+    Held in memory rather than on disk on purpose. A restart clearing the
+    counters is the correct trade - the alternative is a file that has to be
+    written on every failed attempt, which is its own way to be attacked, and
+    somebody who can restart the bot to clear a lockout is already at the
+    keyboard.
+
+    Behind a tunnel every remote request arrives from the loopback interface,
+    so this collapses into one shared counter for the whole internet. That is
+    the safe direction to fail: guessing stops. It also means somebody could
+    keep the owner locked out by guessing wrong on purpose, and the answer to
+    that is the same as for a forgotten password - walk over to the computer.
+    """
+
+    FREE_ATTEMPTS = 5
+    BASE_LOCK_SECONDS = 30
+    MAX_LOCK_SECONDS = 900
+
+    def __init__(self):
+        self._failures: dict[str, tuple[int, float]] = {}
+        self._guard = threading.Lock()
+
+    def _lock_length(self, failures: int) -> float:
+        over = failures - self.FREE_ATTEMPTS
+        if over <= 0:
+            return 0.0
+        return min(self.BASE_LOCK_SECONDS * (2 ** (over - 1)), self.MAX_LOCK_SECONDS)
+
+    def locked_for(self, who: str, now: float | None = None) -> float:
+        """Seconds left before this caller may try again. 0 means go ahead."""
+        now = time.time() if now is None else now
+        with self._guard:
+            failures, last = self._failures.get(who, (0, 0.0))
+        return max(0.0, self._lock_length(failures) - (now - last))
+
+    def record_failure(self, who: str, now: float | None = None) -> None:
+        now = time.time() if now is None else now
+        with self._guard:
+            failures, _ = self._failures.get(who, (0, 0.0))
+            self._failures[who] = (failures + 1, now)
+
+    def record_success(self, who: str) -> None:
+        with self._guard:
+            self._failures.pop(who, None)
+
+
+def is_local_request(address: str | None) -> bool:
+    """Whether a request came from this machine or its own network.
+
+    Used to keep account creation at home. Whoever opens a brand new panel
+    first gets to own it, so on a public address that would be whichever
+    stranger found the URL before the owner finished setting up.
+
+    A tunnel makes remote requests look like loopback, which would defeat
+    this - so a tunnel is only ever started once an account exists.
+    """
+    address = str(address or "")
+    if address.startswith("127.") or address == "::1":
+        return True
+    if address.startswith("192.168.") or address.startswith("10."):
+        return True
+    parts = address.split(".")
+    try:
+        return parts[0] == "172" and 16 <= int(parts[1]) <= 31
+    except (IndexError, ValueError):
+        return False

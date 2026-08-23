@@ -16,6 +16,7 @@ from pathlib import Path
 
 from _harness import Failures
 
+import tunnel
 from webui import create_app, panel_auth
 
 report = Failures("panel login")
@@ -140,6 +141,101 @@ try:
     report.check("a new app picks up the same key", restarted.secret_key, key)
     report.check("so a cookie from before it still works",
                  client.get("/api/queue").status_code, 200)
+
+    report.section("the password cannot be guessed at leisure")
+    # Unlimited attempts were survivable while only your own network could
+    # reach the panel. A public address gets guessed at by machines, all day.
+    throttle = panel_auth.LoginThrottle()
+    for attempt in range(panel_auth.LoginThrottle.FREE_ATTEMPTS):
+        throttle.record_failure("1.2.3.4", now=1000)
+    report.check("a few wrong guesses are free - people mistype",
+                 throttle.locked_for("1.2.3.4", now=1000), 0.0)
+    throttle.record_failure("1.2.3.4", now=1000)
+    report.check("then it starts waiting",
+                 throttle.locked_for("1.2.3.4", now=1000),
+                 panel_auth.LoginThrottle.BASE_LOCK_SECONDS)
+    throttle.record_failure("1.2.3.4", now=1000)
+    report.check("and the wait doubles",
+                 throttle.locked_for("1.2.3.4", now=1000),
+                 panel_auth.LoginThrottle.BASE_LOCK_SECONDS * 2)
+    for _ in range(20):
+        throttle.record_failure("1.2.3.4", now=1000)
+    report.check("up to a ceiling, so it cannot run away",
+                 throttle.locked_for("1.2.3.4", now=1000),
+                 panel_auth.LoginThrottle.MAX_LOCK_SECONDS)
+    report.check("the wait runs down with the clock",
+                 throttle.locked_for("1.2.3.4", now=1000 + panel_auth.LoginThrottle.MAX_LOCK_SECONDS),
+                 0.0)
+    report.check("one caller's failures do not lock out another",
+                 throttle.locked_for("5.6.7.8", now=1000), 0.0)
+    throttle.record_success("1.2.3.4")
+    report.check("and getting in clears the record",
+                 throttle.locked_for("1.2.3.4", now=1000), 0.0)
+
+    report.section("the throttle is actually wired to the login route")
+    guessing = app.test_client()
+    codes = []
+    for _ in range(panel_auth.LoginThrottle.FREE_ATTEMPTS + 2):
+        codes.append(guessing.post("/api/auth/login",
+                                   json={"username": "vvok", "password": "wrong"}).status_code)
+    report.check("wrong guesses are refused", codes[0], 401)
+    report.check("and eventually stop being answered at all", codes[-1], 429)
+    report.check("with a wait people can act on",
+                 "Try again in" in guessing.post(
+                     "/api/auth/login",
+                     json={"username": "vvok", "password": "correct horse"}).get_json()["message"],
+                 True)
+
+    report.section("the first account has to be created at home")
+    # Whoever sets up a brand new panel owns it. On a public address that
+    # would be whichever stranger found the URL before the owner finished.
+    for address, allowed in [("127.0.0.1", True), ("192.168.0.5", True),
+                             ("10.0.0.9", True), ("172.18.0.1", True),
+                             ("8.8.8.8", False), ("203.0.113.7", False),
+                             ("", False), (None, False)]:
+        report.check(f"{address!r} counts as local: {allowed}",
+                     panel_auth.is_local_request(address), allowed)
+
+    empty = fresh_app().test_client()
+    refused = empty.post("/api/auth/setup",
+                         environ_overrides={"REMOTE_ADDR": "203.0.113.7"},
+                         json={"username": "stranger", "password": "hunter2222"})
+    report.check("a remote setup attempt is refused", refused.status_code, 403)
+    report.check("and no account was created", panel_auth.is_configured(), False)
+    report.check("the same request from the LAN works",
+                 empty.post("/api/auth/setup",
+                            environ_overrides={"REMOTE_ADDR": "192.168.0.5"},
+                            json={"username": "vvok", "password": "correct horse"}).status_code,
+                 200)
+
+    report.section("the tunnel refuses to run before there is a login")
+    # A tunnel makes every remote request look local, which would defeat the
+    # check above - so the two have to agree.
+    class _Remote:
+        def __init__(self):
+            self.url = self.problem = None
+
+        def set_public_url(self, url, problem=None):
+            self.url, self.problem = url, problem
+
+    remote = _Remote()
+    report.check("off by default", tunnel.start_if_enabled(remote, 5185, "off", True), None)
+    report.check("and an unset value is off too",
+                 tunnel.start_if_enabled(remote, 5185, None, True), None)
+    remote = _Remote()
+    report.check("asked for, but no account yet",
+                 tunnel.start_if_enabled(remote, 5185, "cloudflare", False), None)
+    report.check("the panel is told why", "login" in (remote.problem or ""), True)
+    report.check("and no address was published", remote.url, None)
+
+    report.check("a missing cloudflared is a hint, not a stack trace",
+                 "winget install" in tunnel.INSTALL_HINT, True)
+    report.check("the address it looks for is the quick-tunnel one",
+                 bool(tunnel.URL_PATTERN.search(
+                     "|  https://calm-river-1234.trycloudflare.com  |")), True)
+    report.check("and a lookalike host is not mistaken for one",
+                 bool(tunnel.URL_PATTERN.search("https://a.trycloudflare.com.attacker.net")),
+                 False)
 
     report.section("the credentials file is not something to commit")
     ignored = open(".gitignore", encoding="utf-8").read()

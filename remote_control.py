@@ -134,8 +134,17 @@ class RemoteControl:
         # main.py fills this in once it knows which port Flask picked.
         self.web_port = None
 
+        # Set by tunnel.py when remote access is on: either the public
+        # address, or why there is not one.
+        self.public_url = None
+        self.public_problem = None
+
     def set_web_port(self, port):
         self.web_port = port
+
+    def set_public_url(self, url, problem=None):
+        self.public_url = url
+        self.public_problem = problem
 
     # pyla_main calls this when a run starts, and again with None when it ends.
     def set_window_controller(self, window_controller):
@@ -253,6 +262,13 @@ class RemoteControl:
                          "This machine has no address on a local network, so "
                          "there is no link a phone could open.")
 
+        # A public address, when there is one, is the only one worth sending:
+        # it works from the sofa and from mobile data, and the LAN ones only
+        # work from one of those.
+        if self.public_url:
+            return Reply(self.public_url + chr(10) * 2 +
+                         "Works from anywhere. It asks for the panel login.")
+
         lines = [f"http://{addresses[0]}:{self.web_port}", ""]
         if len(addresses) > 1:
             lines.append("If that one does not open, this machine also answers at:")
@@ -260,6 +276,9 @@ class RemoteControl:
             lines.append("")
         lines.append("Only from the same Wi-Fi as the PC, and it asks for the "
                      "panel login before it opens anything.")
+        if self.public_problem:
+            lines.append("")
+            lines.append(self.public_problem)
         return Reply(chr(10).join(lines))
 
     def help(self, names=None):

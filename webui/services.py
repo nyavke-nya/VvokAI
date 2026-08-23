@@ -103,6 +103,7 @@ class WebDataService:
         "emulator_port": ("int", 5037),
         "trophies_multiplier": ("int", 1),
         "auto_load_queue_on_startup": ("bool", True),
+        "remote_access": ("str", "off"),
     }
 
     DEBUG_FIELDS: dict[str, tuple[str, Any]] = {

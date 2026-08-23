@@ -140,6 +140,9 @@ def create_app(pyla_main, start_discord_bot=False):
     OPEN_ENDPOINTS = {"login_page", "auth_state", "auth_setup", "auth_login",
                       "static", "support_asset"}
 
+    login_throttle = panel_auth.LoginThrottle()
+    app.config["login_throttle"] = login_throttle
+
     @app.before_request
     def require_login():
         if request.endpoint in OPEN_ENDPOINTS:
@@ -174,6 +177,16 @@ def create_app(pyla_main, start_discord_bot=False):
 
     @app.post("/api/auth/setup")
     def auth_setup():
+        # Whoever sets up a brand new panel owns it, so this has to happen at
+        # the machine rather than over a tunnel - otherwise the first stranger
+        # to find the address gets the bot. tunnel.py refuses to start before
+        # an account exists, which keeps the two halves of that consistent.
+        if not panel_auth.is_local_request(request.remote_addr):
+            return jsonify({
+                "ok": False,
+                "message": "The first account has to be created on the computer "
+                           "running the bot, or on its own network.",
+            }), 403
         payload = request.get_json(silent=True) or {}
         result = panel_auth.create(str(payload.get("username", "")).strip(),
                                    str(payload.get("password", "")))
@@ -189,12 +202,27 @@ def create_app(pyla_main, start_discord_bot=False):
     def auth_login():
         payload = request.get_json(silent=True) or {}
         name = str(payload.get("username", "")).strip()
+        caller = request.remote_addr or "unknown"
+
+        # A login page on a public address gets guessed at by machines, all
+        # day. Unlimited attempts were fine when only your own network could
+        # reach this; they are not now.
+        waiting = login_throttle.locked_for(caller)
+        if waiting > 0:
+            return jsonify({
+                "ok": False,
+                "message": f"Too many attempts. Try again in {int(waiting) + 1} seconds.",
+            }), 429
+
         if not panel_auth.is_configured():
             return jsonify({"ok": False, "message": "No account has been set up yet."}), 400
         if not panel_auth.verify(name, str(payload.get("password", ""))):
+            login_throttle.record_failure(caller)
             # One message for both halves, so it cannot be used to find out
             # which usernames exist.
             return jsonify({"ok": False, "message": "Wrong username or password."}), 401
+
+        login_throttle.record_success(caller)
         session.permanent = True
         session["panel_user"] = panel_auth.username()
         return jsonify({"ok": True, "message": "Signed in."})
