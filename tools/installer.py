@@ -406,6 +406,150 @@ def ensure_configs():
 
 
 # ---------------------------------------------------------------------------
+#  Reaching the panel from outside the house
+# ---------------------------------------------------------------------------
+#
+# The panel only answers on the local network, and turning that into a public
+# address by hand is three steps that only make sense if you already know what
+# a tunnel is. Most people running this fork do not, and should not have to.
+#
+# So it is one question, asked once, off by default. The answer is remembered
+# as remote_access in cfg/general_config.toml - present means answered, so
+# nobody gets asked twice, and anybody who changes their mind edits one line.
+
+CLOUDFLARED_URL = ("https://github.com/cloudflare/cloudflared/releases/latest/"
+                   "download/cloudflared-windows-amd64.exe")
+CLOUDFLARED_LOCAL = ROOT / "tools" / "cloudflared.exe"
+GENERAL_CONFIG = ROOT / "cfg" / "general_config.toml"
+
+
+def cloudflared_present():
+    return shutil.which("cloudflared") is not None or CLOUDFLARED_LOCAL.exists()
+
+
+def install_cloudflared():
+    """winget first, then the official binary straight into tools/.
+
+    winget is preferred because it is the machine's own package manager and
+    keeps the thing updated. It is missing on older Windows 10 and disabled on
+    some managed machines, and "install winget first" is not an answer anybody
+    wants, so the fallback fetches the same file winget would.
+    """
+    if cloudflared_present():
+        log("  cloudflared is already installed.")
+        return True
+
+    if shutil.which("winget"):
+        log("  Installing cloudflared with winget...")
+        code, output = run(["winget", "install", "--id", "Cloudflare.cloudflared",
+                            "--silent", "--accept-package-agreements",
+                            "--accept-source-agreements"], timeout=600)
+        if code == 0 and shutil.which("cloudflared"):
+            log("  Installed.")
+            return True
+        log("  winget could not do it, downloading the program directly instead.")
+
+    log(f"  Downloading cloudflared ({CLOUDFLARED_URL.rsplit('/', 1)[-1]}, about 50 MB)...")
+    try:
+        import urllib.request
+        request = urllib.request.Request(CLOUDFLARED_URL,
+                                         headers={"User-Agent": "VvokAI-installer"})
+        with urllib.request.urlopen(request, timeout=300) as response:
+            payload = response.read()
+        CLOUDFLARED_LOCAL.parent.mkdir(parents=True, exist_ok=True)
+        CLOUDFLARED_LOCAL.write_bytes(payload)
+    except Exception as error:  # noqa: BLE001 - any failure here is the same answer
+        log(f"  The download failed ({type(error).__name__}: {error}).")
+        log("  Remote access is being left off. You can turn it on later by")
+        log("  installing cloudflared and setting remote_access = \"cloudflare\".")
+        return False
+
+    log(f"  Saved to {CLOUDFLARED_LOCAL.relative_to(ROOT)}.")
+    return True
+
+
+def _set_remote_access(value):
+    """Write the answer into general_config.toml, replacing any existing line.
+
+    Hand-edited rather than round-tripped through a TOML writer: this file
+    holds the API token and the developer-portal password, and rewriting the
+    whole thing to change one line is a good way to lose them to a formatting
+    bug.
+    """
+    line = f'remote_access = "{value}"'
+    try:
+        text = GENERAL_CONFIG.read_text(encoding="utf-8") if GENERAL_CONFIG.exists() else ""
+        lines = text.splitlines()
+        for index, existing in enumerate(lines):
+            if existing.strip().startswith("remote_access"):
+                lines[index] = line
+                break
+        else:
+            lines.append(line)
+        GENERAL_CONFIG.parent.mkdir(parents=True, exist_ok=True)
+        GENERAL_CONFIG.write_text(chr(10).join(lines) + chr(10), encoding="utf-8")
+        return True
+    except OSError as error:
+        log(f"  Could not write {GENERAL_CONFIG.name} ({error}).")
+        return False
+
+
+def already_answered():
+    try:
+        text = GENERAL_CONFIG.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return any(line.strip().startswith("remote_access") for line in text.splitlines())
+
+
+def ask_about_remote_access():
+    """One question, once. Off unless somebody says otherwise."""
+    if already_answered():
+        return
+    # Started by a scheduler, a service, or anything without a console: a
+    # question nobody can answer must not hold up the launch.
+    if not sys.stdin or not sys.stdin.isatty():
+        _set_remote_access("off")
+        return
+
+    section("Opening the panel from your phone")
+    log("  The web panel is where the queue, the settings and the stats live.")
+    log("  Out of the box it only opens on the same Wi-Fi as this computer.")
+    log("")
+    log("  It can also be reachable from anywhere - mobile data, work, a")
+    log("  friend's house - through a Cloudflare tunnel. No router settings,")
+    log("  no account, and the address is HTTPS.")
+    log("")
+    log("  It asks for a username and password either way; you will be asked to")
+    log("  create those the first time the panel opens. Guessing the password")
+    log("  is rate limited, and the account can only be created from home.")
+    log("")
+    log("  Say no if you are unsure - it is one line in cfg/general_config.toml")
+    log("  to change your mind later.")
+    log("")
+
+    try:
+        answer = input("  Reach the panel from outside your home network? [y/N] ")
+    except (EOFError, KeyboardInterrupt):
+        answer = ""
+
+    if answer.strip().lower() not in ("y", "yes", "д", "да"):
+        _set_remote_access("off")
+        log("")
+        log("  Left off. The panel opens on your own network only.")
+        return
+
+    log("")
+    if not install_cloudflared():
+        _set_remote_access("off")
+        return
+    if _set_remote_access("cloudflare"):
+        log("")
+        log("  Remote access is on. When the bot starts, ask the Telegram bot")
+        log("  for /panel and it will send you the address.")
+
+
+# ---------------------------------------------------------------------------
 #  Verify
 # ---------------------------------------------------------------------------
 
@@ -547,6 +691,7 @@ def main():
                     pass
             log("")
             log("  Ready.")
+            ask_about_remote_access()
             return 0
         log("")
         log("  Something is missing, so it is being repaired now.")
@@ -580,7 +725,10 @@ def main():
             MARKER.write_text(fingerprint(), encoding="utf-8")
         except OSError:
             pass
-        log("  Everything installed and checked. Starting the bot.")
+        log("  Everything installed and checked.")
+        ask_about_remote_access()
+        log("")
+        log("  Starting the bot.")
         return 0
 
     log("  Some of it did not work. The list above says what.")

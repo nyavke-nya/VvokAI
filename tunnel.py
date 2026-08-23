@@ -27,6 +27,7 @@ install. If it is missing, the panel says the one command that installs it.
 
 from __future__ import annotations
 
+import pathlib
 import re
 import shutil
 import subprocess
@@ -43,13 +44,27 @@ URL_PATTERN = re.compile(r"https://[-a-z0-9]+\.trycloudflare\.com(?![-\w.])")
 # How long to wait for that line before deciding it is not coming.
 STARTUP_SECONDS = 45
 
-INSTALL_HINT = ("cloudflared is not installed. In PowerShell:\n"
-                "  winget install --id Cloudflare.cloudflared\n"
-                "Then restart the bot.")
+INSTALL_HINT = ("cloudflared is not installed. Run start_pyla.bat and answer "
+                "yes when it offers to set up remote access, or install it "
+                "yourself: winget install --id Cloudflare.cloudflared")
+
+
+# Where the installer puts it when winget is unavailable or refused. Checked
+# as well as PATH, because a copy downloaded straight into the project is
+# never on PATH and would otherwise look like "not installed".
+LOCAL_COPY = pathlib.Path(__file__).resolve().parent / "tools" / "cloudflared.exe"
+
+
+def executable():
+    """The cloudflared to run, or None."""
+    found = shutil.which("cloudflared")
+    if found:
+        return found
+    return str(LOCAL_COPY) if LOCAL_COPY.exists() else None
 
 
 def is_available():
-    return shutil.which("cloudflared") is not None
+    return executable() is not None
 
 
 class Tunnel:
@@ -63,12 +78,13 @@ class Tunnel:
         self._ready = threading.Event()
 
     def start(self):
-        if not is_available():
+        program = executable()
+        if program is None:
             self.error = INSTALL_HINT
             return False
         try:
             self._process = subprocess.Popen(
-                ["cloudflared", "tunnel", "--no-autoupdate",
+                [program, "tunnel", "--no-autoupdate",
                  "--url", f"http://127.0.0.1:{self.port}"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,

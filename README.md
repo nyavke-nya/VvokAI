@@ -58,17 +58,13 @@ venv\Scripts\python.exe -m pip install torch torchvision --index-url https://dow
 
 ## Доступ снаружи
 
-По умолчанию панель отвечает только в твоей сети. Чтобы она открывалась с мобильного интернета, поставь в [cfg/general_config.toml](cfg/general_config.toml):
+По умолчанию панель отвечает только в твоей сети. **`start_pyla.bat` спросит об этом сам** — один раз, при установке:
 
 ```
-remote_access = "cloudflare"
+Reach the panel from outside your home network? [y/N]
 ```
 
-Нужен `cloudflared` — ставится одной командой:
-
-```bash
-winget install --id Cloudflare.cloudflared
-```
+Ответишь `y` — он поставит `cloudflared` (через winget, а если его нет, скачает программу сам) и пропишет настройку. Ответишь `n` или просто нажмёшь Enter — останется как было. Больше не спросит; передумаешь — поменяй `remote_access` в [cfg/general_config.toml](cfg/general_config.toml) на `"cloudflare"` или `"off"`.
 
 При старте бот поднимет туннель и `/panel` начнёт присылать адрес вида `https://что-то.trycloudflare.com`. HTTPS до самой машины, роутер трогать не надо, работает даже за CGNAT — туннель звонит наружу сам.
 

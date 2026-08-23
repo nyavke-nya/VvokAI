@@ -58,4 +58,3 @@ brawl_api_token = ""
 # fixed address, with the key issued for the proxy.
 brawl_api_email = ""
 brawl_api_password = ""
-remote_access = "off"

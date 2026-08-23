@@ -16,6 +16,9 @@ from pathlib import Path
 
 from _harness import Failures
 
+sys.path.insert(0, "tools")
+
+import installer  # noqa: E402
 import tunnel
 from webui import create_app, panel_auth
 
@@ -236,6 +239,79 @@ try:
     report.check("and a lookalike host is not mistaken for one",
                  bool(tunnel.URL_PATTERN.search("https://a.trycloudflare.com.attacker.net")),
                  False)
+
+    report.section("start_pyla.bat asks the one question, so nobody has to know")
+    # Turning the panel into a public address by hand is three steps that only
+    # make sense to somebody who already knows what a tunnel is. Most people
+    # running this fork do not, and should not have to.
+    import io
+
+    class _Tty(io.StringIO):
+        def isatty(self):
+            return True
+
+    config = sandbox / "general_config.toml"
+    installer.GENERAL_CONFIG = config
+    real_stdin = installer.sys.stdin
+    starting_config = 'player_tag = "#ABC"\nbrawl_api_token = "secret"\n'
+
+    def ask(answer, cloudflared_ok=True):
+        config.write_text(starting_config, encoding="utf-8")
+        installer.sys.stdin = _Tty(answer)
+        installed = installer.install_cloudflared
+        installer.install_cloudflared = lambda: cloudflared_ok
+        try:
+            installer.ask_about_remote_access()
+        finally:
+            installer.install_cloudflared = installed
+        return config.read_text(encoding="utf-8")
+
+    try:
+        report.check("no leaves it off",
+                     'remote_access = "off"' in ask("n\n"), True)
+        report.check("yes turns it on",
+                     'remote_access = "cloudflare"' in ask("y\n"), True)
+        report.check("and Russian works, since half the users type it",
+                     'remote_access = "cloudflare"' in ask("да\n"), True)
+        report.check("an empty answer is a no - the safe default wins a shrug",
+                     'remote_access = "off"' in ask("\n"), True)
+        report.check("saying yes with no cloudflared leaves it off rather than pretending",
+                     'remote_access = "off"' in ask("y\n", cloudflared_ok=False), True)
+        report.check("the rest of the config is untouched - it holds the API token",
+                     'brawl_api_token = "secret"' in ask("y\n"), True)
+        report.check("and the answer is written once, not appended each launch",
+                     ask("y\n").count("remote_access"), 1)
+
+        report.section("and it only asks once")
+        config.write_text('remote_access = "off"\n', encoding="utf-8")
+        report.check("an answered config is recognised", installer.already_answered(), True)
+        installer.sys.stdin = _Tty("y\n")
+        installer.ask_about_remote_access()
+        report.check("so the question is not asked again",
+                     config.read_text(encoding="utf-8").strip(),
+                     'remote_access = "off"')
+
+        report.section("a console nobody is sitting at must not block the launch")
+        config.write_text('player_tag = "#ABC"\n', encoding="utf-8")
+        installer.sys.stdin = io.StringIO("y\n")   # not a tty
+        installer.ask_about_remote_access()
+        report.check("it answers itself, with off",
+                     'remote_access = "off"' in config.read_text(encoding="utf-8"), True)
+    finally:
+        installer.sys.stdin = real_stdin
+
+    report.section("a fresh install has no answer stored, so it gets asked")
+    example = open("cfg/general_config.example.toml", encoding="utf-8").read()
+    report.check("the example config leaves the key out",
+                 "remote_access" in example, False)
+
+    report.section("the tunnel finds a cloudflared the installer downloaded")
+    report.check("it looks in tools/, not only on PATH",
+                 tunnel.LOCAL_COPY.name, "cloudflared.exe")
+    report.check("and the installer puts it exactly there",
+                 installer.CLOUDFLARED_LOCAL.resolve(), tunnel.LOCAL_COPY.resolve())
+    report.check("the hint points at the script rather than at homework",
+                 "start_pyla.bat" in tunnel.INSTALL_HINT, True)
 
     report.section("the credentials file is not something to commit")
     ignored = open(".gitignore", encoding="utf-8").read()

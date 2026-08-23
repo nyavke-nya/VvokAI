@@ -58,3 +58,6 @@ docs/*.gif
 
 # The panel login. Machine-specific, and holds the session-signing key.
 cfg/panel_auth.toml
+
+# cloudflared, when the installer downloads it rather than winget.
+tools/cloudflared.exe
