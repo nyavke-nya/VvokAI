@@ -52,6 +52,10 @@ ALIASES = {
     "view_queue": "queue",
     "q": "queue",
     "screen": "screenshot",
+    "web": "panel",
+    "ui": "panel",
+    "site": "panel",
+    "link": "panel",
 }
 
 

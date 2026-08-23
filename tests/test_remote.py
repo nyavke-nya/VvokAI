@@ -11,7 +11,8 @@ import sys
 
 from _harness import Failures
 
-from remote_control import DISCORD_LIMIT, HELP, RemoteControl, chunk
+from remote_control import (DISCORD_LIMIT, HELP, RemoteControl, _rank,
+                            chunk, lan_addresses)
 from telegram_bot import ALIASES, TelegramBot
 
 report = Failures("remote control")
@@ -247,6 +248,52 @@ report.check("the token is re-read inside the loop, so filling it in later works
              loop.index("self._settings()") < loop.index("self._poll_once("), True)
 report.check("and repeated failures are not printed over and over",
              "if message != said:" in loop, True)
+
+
+report.section("/panel hands out an address a phone can actually reach")
+# The usual trick - ask the routing table which interface leaves the machine -
+# returns the wrong one here. This machine has Wi-Fi at 192.168.0.5, a Docker
+# bridge at 172.18.0.1 and a VPN at 26.35.219.234, and the probe answered with
+# the Docker bridge for every target including 8.8.8.8, because the virtual
+# adapter holds the default route. So the addresses are ranked, not probed.
+report.check("a home Wi-Fi address wins", _rank("192.168.0.5"), 0)
+report.check("a 10/8 network is next", _rank("10.0.0.7"), 1)
+report.check("Docker and WSL sit in 172.16/12, so it ranks below both",
+             _rank("172.18.0.1"), 2)
+report.check("and a VPN address outside the private ranges ranks last",
+             _rank("26.35.219.234"), 3)
+report.check("the real ordering, on the machine this was written on",
+             sorted(["172.18.0.1", "26.35.219.234", "192.168.0.5"],
+                    key=lambda a: (_rank(a), a))[0],
+             "192.168.0.5")
+report.check("a malformed address does not crash the ranking",
+             _rank("172.notanumber.0.1"), 3)
+
+found = lan_addresses()
+report.check("loopback is never offered as a link",
+             [a for a in found if a.startswith("127.")], [])
+report.check("nor is a link-local address nothing routes to",
+             [a for a in found if a.startswith("169.254.")], [])
+
+remote = RemoteControl(_Runtime(), _Data())
+report.check("with no port yet it says so rather than inventing a link",
+             remote.panel().text, "The web interface has not started yet.")
+remote.set_web_port(5185)
+text = remote.panel().text
+report.check("the port is in the link", ":5185" in text, True)
+report.check("it is an http link a phone can tap", "http://" in text, True)
+report.check("127.0.0.1 is never handed to a phone - it would open its own",
+             "http://127.0.0.1" in text, len(found) == 0)
+report.check("and the reply says why it only works on the same network",
+             "same Wi-Fi" in text or "no local network" in text.lower(), True)
+report.check("the reason the link is not public is stated, not assumed",
+             "no password" in text or "no address" in text, True)
+
+report.section("panel is a first-class command, not a hidden one")
+report.check("it is in the help list", "panel" in {name for name, _ in HELP}, True)
+report.check("and the words people will actually type reach it",
+             sorted({ALIASES.get(w) for w in ("web", "ui", "site", "link")}),
+             ["panel"])
 
 
 sys.exit(report.finish())

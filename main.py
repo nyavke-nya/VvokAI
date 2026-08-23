@@ -512,6 +512,9 @@ if __name__ == "__main__":
     print("Fork of PylaAI (ivanyordanovgt, AngelFireLA, awarzu), CC BY-NC 4.0")
     port = find_open_port()
     app = create_app(pyla_main, start_discord_bot=True)
+    # find_open_port picks it, so this is the only place that knows. Without it
+    # /panel has no link to hand out.
+    app.config["remote_control"].set_web_port(port)
     local_url = f"http://127.0.0.1:{port}"
     print(f"VvokAI web UI: {local_url}")
     open_browser_later(local_url)

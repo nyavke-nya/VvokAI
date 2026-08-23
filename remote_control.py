@@ -15,6 +15,7 @@ bots can see: the run puts its WindowController here when it starts and clears
 it when it stops, and a screenshot asked for from either side finds it.
 """
 
+import socket
 from io import BytesIO
 
 from PIL import Image
@@ -56,6 +57,62 @@ def chunk(text, limit):
     return out or [""]
 
 
+def _rank(address):
+    """How likely an address is to be the one a phone can reach.
+
+    A machine has several. This one, while being written, had three: the
+    Wi-Fi at 192.168.0.5, a Docker bridge at 172.18.0.1 and a Radmin VPN at
+    26.35.219.234. Asking the routing table which interface leaves the machine
+    - the usual trick - returned the Docker bridge for every target tried,
+    including 8.8.8.8, because the virtual adapter holds the default route.
+    So the routing table cannot be trusted to answer this and the addresses
+    are ranked instead.
+
+    192.168/16 and 10/8 are where home networks live. 172.16/12 is a real
+    private range too, but on Windows it is nearly always Docker, WSL or
+    Hyper-V. Anything outside the private ranges is a VPN or worse.
+    """
+    if address.startswith("192.168."):
+        return 0
+    if address.startswith("10."):
+        return 1
+    parts = address.split(".")
+    try:
+        if parts[0] == "172" and 16 <= int(parts[1]) <= 31:
+            return 2
+    except (IndexError, ValueError):
+        pass
+    return 3
+
+
+def lan_addresses(limit=3):
+    """Every address this machine might be reachable at, best guess first.
+
+    Ranked rather than picked, and more than one is offered, because the
+    ranking is a heuristic and a confidently wrong link is worse than two to
+    try.
+    """
+    found = set()
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            found.add(info[4][0])
+    except (socket.gaierror, OSError):
+        pass
+    # The routing table as well: it can know about an interface that the
+    # hostname lookup does not.
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.settimeout(0.2)
+            probe.connect(("8.8.8.8", 1))
+            found.add(probe.getsockname()[0])
+    except OSError:
+        pass
+
+    usable = [a for a in found
+              if not a.startswith("127.") and not a.startswith("169.254.")]
+    return sorted(usable, key=lambda a: (_rank(a), a))[:limit]
+
+
 HELP = [
     ("start", "Start the bot on the current queue"),
     ("stop", "Stop the bot once it reaches the lobby"),
@@ -64,6 +121,7 @@ HELP = [
     ("screenshot", "A screenshot of the game window"),
     ("queue", "The brawlers left to push"),
     ("restart_game", "Restart Brawl Stars"),
+    ("panel", "A link to the web interface"),
     ("help", "This list"),
 ]
 
@@ -73,6 +131,11 @@ class RemoteControl:
         self.runtime_manager = runtime_manager
         self.data_service = data_service
         self.window_controller = None
+        # main.py fills this in once it knows which port Flask picked.
+        self.web_port = None
+
+    def set_web_port(self, port):
+        self.web_port = port
 
     # pyla_main calls this when a run starts, and again with None when it ends.
     def set_window_controller(self, window_controller):
@@ -171,6 +234,35 @@ class RemoteControl:
             lines.append(f"- {item.get('brawler', 'Unknown')}: {current}/"
                          f"{item.get('push_until', 'Unknown')} {push_type}{picked}")
         return Reply("\n".join(lines))
+
+    def panel(self):
+        """Where to open the web interface from.
+
+        LAN addresses only, never a public one. The panel has no password and
+        its settings page hands out the Brawl Stars API token, so anybody who
+        can reach it can drive the bot and read that token. Being reachable
+        only from your own network is the whole of what keeps that safe, and
+        the reply says so rather than leaving somebody to find out.
+        """
+        if not self.web_port:
+            return Reply("The web interface has not started yet.")
+
+        addresses = lan_addresses()
+        if not addresses:
+            return Reply(f"On this machine: http://127.0.0.1:{self.web_port}"
+                         + chr(10) +
+                         "This machine has no address on a local network, so "
+                         "there is no link a phone could open.")
+
+        lines = [f"http://{addresses[0]}:{self.web_port}", ""]
+        if len(addresses) > 1:
+            lines.append("If that one does not open, this machine also answers at:")
+            lines.extend(f"http://{other}:{self.web_port}" for other in addresses[1:])
+            lines.append("")
+        lines.append("Only from the same Wi-Fi as the PC. It will not connect "
+                     "from anywhere else, which is deliberate: the panel has no "
+                     "password and its settings page shows your API token.")
+        return Reply(chr(10).join(lines))
 
     def help(self):
         return Reply("\n".join(f"/{name} - {what}" for name, what in HELP))

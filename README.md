@@ -53,8 +53,10 @@ venv\Scripts\python.exe -m pip install torch torchvision --index-url https://dow
 Телеграм раньше умел только присылать уведомления. Теперь он принимает те же команды, что и Discord:
 
 ```
-/start  /stop  /pause  /status  /screenshot  /queue  /restart_game  /help
+/start  /stop  /pause  /status  /screenshot  /queue  /restart_game  /panel  /help
 ```
+
+`/panel` присылает ссылку на веб-интерфейс — открывается с телефона, **если он в той же Wi-Fi сети**, что и компьютер. Из мобильного интернета не откроется, и это намеренно: у панели нет пароля, а на странице настроек виден API-токен. Пробрасывать её наружу через туннель можно, но тогда управление ботом и токен получит любой, у кого есть адрес.
 
 Нужны те же два значения, что и для уведомлений — `telegram_token` и `telegram_chat_id` в [cfg/webhook_config.toml](cfg/webhook_config.toml). Если они уже стоят, команды заработают сами после перезапуска.
 
