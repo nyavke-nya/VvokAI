@@ -107,7 +107,6 @@ const state = {
 const SETTINGS_META = {
     general: [
         { key: "player_tag", label: "Player Tag", type: "text", placeholder: "#PLAYER", help: "Used to autofill live trophies and win streaks inside the brawler editor. Use your Brawl Stars player tag, not your Supercell ID." },
-        { key: "remote_access", label: "Remote Access", type: "text", help: "\"off\", or \"cloudflare\" to also reach the panel from outside your network over an HTTPS address. Needs cloudflared installed and a panel login already set up. Requires a restart." },
         { key: "brawl_api_token", label: "Brawl Stars API Token", type: "text", placeholder: "eyJ0eXAiOiJKV1Qi...", help: "Free from developer.brawlstars.com. Log in, open My Account, Create New Key. The key is tied to the one IP address you create it from and stops working when your provider changes it - ranges like 0.0.0.0/0 are refused, whatever you may have read. Fill in the two fields below and the bot will reissue the key by itself when that happens. Paste the whole key here. (Win streaks are not published by the API, so those stay as you set them.)" },
         { key: "brawl_api_email", label: "Developer Portal Email", type: "text", placeholder: "you@example.com", help: "Every key is tied to one IP address, so this is how trophy sync survives your provider changing it: the bot logs in, reissues the key for the new address and carries on. Without it, sync stops working the next time your address moves." },
         { key: "brawl_api_password", label: "Developer Portal Password", type: "password", help: "The same password you use on developer.brawlstars.com. Stored in cfg/general_config.toml on this machine, never shown back here and never written to logs - but it is a password in a plain file. Leave both fields empty if that bothers you; trophies then stop syncing whenever your address changes, and nothing else breaks." },
@@ -165,8 +164,8 @@ const SETTINGS_META = {
         { key: "ping_every_x_match", label: "Ping Every X Matches", type: "number", help: "0 disables periodic match pings." },
         { key: "ping_every_x_minutes", label: "Ping Every X Minutes", type: "number", help: "0 disables periodic minute pings." },
         { key: "discord_guild_id", label: "Discord Guild ID", type: "text", help: "Discord server ID where slash commands should be synced." },
-        { key: "telegram_token", label: "Telegram Bot Token", type: "password", help: "Telegram bot token used for notifications and for remote control. Send /help in your chat with the bot to see the commands. Only one copy of the bot can use a token at a time." },
-        { key: "telegram_chat_id", label: "Telegram Chat ID", type: "text", help: "Telegram chat ID that receives notifications. Commands are only accepted from this chat; anything sent from anywhere else is ignored." },
+        { key: "telegram_token", label: "Telegram Bot Token", type: "password", help: "Telegram bot token used for notifications." },
+        { key: "telegram_chat_id", label: "Telegram Chat ID", type: "text", help: "Telegram chat ID that should receive notifications." },
     ],
 };
 
@@ -2623,14 +2622,6 @@ function formatSignedNumber(value) {
 
 async function fetchJSON(url, options = {}, allowFailure = false) {
     const response = await fetch(url, options);
-
-    // The session expired, or the bot restarted with a new one. Without this
-    // every panel on the page would just stop updating, with no clue why.
-    if (response.status === 401) {
-        window.location.href = "/login";
-        throw new Error("Not signed in.");
-    }
-
     const payload = await response.json().catch(() => ({}));
 
     if (!response.ok && !allowFailure) {
@@ -2639,15 +2630,6 @@ async function fetchJSON(url, options = {}, allowFailure = false) {
 
     return payload;
 }
-
-document.addEventListener("DOMContentLoaded", () => {
-    const signOut = document.getElementById("signOutButton");
-    if (!signOut) return;
-    signOut.addEventListener("click", async () => {
-        await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
-        window.location.href = "/login";
-    });
-});
 
 function showToast(message, variant = "success") {
     const toast = document.getElementById("toast");

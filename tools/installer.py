@@ -406,156 +406,6 @@ def ensure_configs():
 
 
 # ---------------------------------------------------------------------------
-#  Reaching the panel from outside the house
-# ---------------------------------------------------------------------------
-#
-# The panel only answers on the local network, and turning that into a public
-# address by hand is three steps that only make sense if you already know what
-# a tunnel is. Most people running this fork do not, and should not have to.
-#
-# So it is one question, asked once, off by default. The answer is remembered
-# as remote_access in cfg/general_config.toml - present means answered, so
-# nobody gets asked twice, and anybody who changes their mind edits one line.
-
-CLOUDFLARED_URL = ("https://github.com/cloudflare/cloudflared/releases/latest/"
-                   "download/cloudflared-windows-amd64.exe")
-CLOUDFLARED_LOCAL = ROOT / "tools" / "cloudflared.exe"
-GENERAL_CONFIG = ROOT / "cfg" / "general_config.toml"
-
-
-def cloudflared_present():
-    return shutil.which("cloudflared") is not None or CLOUDFLARED_LOCAL.exists()
-
-
-def install_cloudflared():
-    """winget first, then the official binary straight into tools/.
-
-    winget is preferred because it is the machine's own package manager and
-    keeps the thing updated. It is missing on older Windows 10 and disabled on
-    some managed machines, and "install winget first" is not an answer anybody
-    wants, so the fallback fetches the same file winget would.
-    """
-    if cloudflared_present():
-        log("  cloudflared is already installed.")
-        return True
-
-    if shutil.which("winget"):
-        log("  Installing cloudflared with winget...")
-        code, output = run(["winget", "install", "--id", "Cloudflare.cloudflared",
-                            "--silent", "--accept-package-agreements",
-                            "--accept-source-agreements"], timeout=600)
-        if code == 0 and shutil.which("cloudflared"):
-            log("  Installed.")
-            return True
-        log("  winget could not do it, downloading the program directly instead.")
-
-    log(f"  Downloading cloudflared ({CLOUDFLARED_URL.rsplit('/', 1)[-1]}, about 50 MB)...")
-    try:
-        import urllib.request
-        request = urllib.request.Request(CLOUDFLARED_URL,
-                                         headers={"User-Agent": "VvokAI-installer"})
-        with urllib.request.urlopen(request, timeout=300) as response:
-            payload = response.read()
-        CLOUDFLARED_LOCAL.parent.mkdir(parents=True, exist_ok=True)
-        CLOUDFLARED_LOCAL.write_bytes(payload)
-    except Exception as error:  # noqa: BLE001 - any failure here is the same answer
-        log(f"  The download failed ({type(error).__name__}: {error}).")
-        log("  Remote access is being left off. You can turn it on later by")
-        log("  installing cloudflared and setting remote_access = \"cloudflare\".")
-        return False
-
-    log(f"  Saved to {CLOUDFLARED_LOCAL.relative_to(ROOT)}.")
-    return True
-
-
-def _set_remote_access(value):
-    """Write the answer into general_config.toml, replacing any existing line.
-
-    Hand-edited rather than round-tripped through a TOML writer: this file
-    holds the API token and the developer-portal password, and rewriting the
-    whole thing to change one line is a good way to lose them to a formatting
-    bug.
-    """
-    line = f'remote_access = "{value}"'
-    try:
-        text = GENERAL_CONFIG.read_text(encoding="utf-8") if GENERAL_CONFIG.exists() else ""
-        lines = text.splitlines()
-        for index, existing in enumerate(lines):
-            if existing.strip().startswith("remote_access"):
-                lines[index] = line
-                break
-        else:
-            lines.append(line)
-        GENERAL_CONFIG.parent.mkdir(parents=True, exist_ok=True)
-        GENERAL_CONFIG.write_text(chr(10).join(lines) + chr(10), encoding="utf-8")
-        return True
-    except OSError as error:
-        log(f"  Could not write {GENERAL_CONFIG.name} ({error}).")
-        return False
-
-
-def current_remote_access():
-    """The setting as it stands, or None when the file has never had it."""
-    try:
-        text = GENERAL_CONFIG.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    for line in text.splitlines():
-        if line.strip().startswith("remote_access"):
-            return line.split("=", 1)[-1].strip().strip('"').lower()
-    return None
-
-
-def set_up_remote_access():
-    """Install cloudflared and switch remote access on, without asking.
-
-    This used to be a question. It is not one any more: the people running
-    this fork should not have to know what a tunnel is to reach their own
-    panel from a phone, and "answer yes to the thing you do not recognise" is
-    not a better experience than it just working.
-
-    What makes that defensible is the login. The panel cannot be opened
-    without an account, the account can only be created from this machine or
-    its own network, and guessing the password is rate limited. Without those
-    this would be handing every install to the internet.
-
-    An explicit remote_access = "off" is left alone. Somebody who turned it
-    off meant it, and setup running again should not undo that.
-    """
-    section("Reaching the panel from your phone")
-
-    setting = current_remote_access()
-    if setting == "off":
-        log("  remote_access is set to \"off\" in cfg/general_config.toml, so this")
-        log("  is being left alone. Set it to \"cloudflare\" to turn it back on.")
-        return
-
-    log("  The panel is where the queue, the settings and the stats live. It")
-    log("  will be reachable from anywhere - mobile data, work, a friend's")
-    log("  house - over an HTTPS address, not only on this Wi-Fi.")
-    log("")
-    log("  It asks for a username and password before it opens anything. You")
-    log("  will be asked to create those the first time you open it, and that")
-    log("  can only be done from this computer or its own network.")
-    log("")
-
-    if not install_cloudflared():
-        _set_remote_access("off")
-        log("")
-        log("  Remote access is off for now. Run this again once the download")
-        log("  can get through, or install cloudflared yourself:")
-        log("    winget install --id Cloudflare.cloudflared")
-        return
-
-    if _set_remote_access("cloudflare"):
-        log("")
-        log("  Done. When the bot starts it will print the address, and the")
-        log("  Telegram bot will send it if you ask it for /panel.")
-        log("  The address changes every restart, so ask for it rather than")
-        log("  reusing an old link.")
-
-
-# ---------------------------------------------------------------------------
 #  Verify
 # ---------------------------------------------------------------------------
 
@@ -697,7 +547,6 @@ def main():
                     pass
             log("")
             log("  Ready.")
-            set_up_remote_access()
             return 0
         log("")
         log("  Something is missing, so it is being repaired now.")
@@ -731,10 +580,7 @@ def main():
             MARKER.write_text(fingerprint(), encoding="utf-8")
         except OSError:
             pass
-        log("  Everything installed and checked.")
-        set_up_remote_access()
-        log("")
-        log("  Starting the bot.")
+        log("  Everything installed and checked. Starting the bot.")
         return 0
 
     log("  Some of it did not work. The list above says what.")
