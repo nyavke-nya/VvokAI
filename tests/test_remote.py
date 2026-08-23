@@ -13,7 +13,7 @@ from _harness import Failures
 
 from remote_control import (DISCORD_LIMIT, HELP, RemoteControl, _rank,
                             chunk, lan_addresses)
-from telegram_bot import ALIASES, TelegramBot
+from telegram_bot import ALIASES, COMMANDS, TelegramBot
 
 report = Failures("remote control")
 
@@ -191,8 +191,9 @@ report.check("plain", parse("/status"), "status")
 report.check("with the bot suffix groups add", parse("/status@my_pyla_bot"), "status")
 report.check("with arguments after it", parse("/queue now please"), "queue")
 report.check("capitals", parse("/STATUS"), "status")
-report.check("an alias people will guess", parse("/restart"), "restart_game")
-report.check("the old Discord name still works", parse("/view_queue"), "queue")
+report.check("an alias people will guess", parse("/web"), "panel")
+report.check("and the /start Telegram itself sends opens the panel",
+             parse("/start"), "panel")
 report.check("ordinary chat is not a command", parse("how is it going"), None)
 report.check("a bare slash is not a command", parse("/"), None)
 report.check("empty", parse(""), None)
@@ -203,9 +204,8 @@ missing = [name for name, _ in HELP if not hasattr(RemoteControl, name)]
 report.check("no help entry points at a method that does not exist", missing, [])
 report.check("help lists itself, so /help is never 'unknown'",
              "help" in {name for name, _ in HELP}, True)
-report.check("the aliases all resolve to real commands",
-             sorted(t for t in ALIASES.values()
-                    if t not in {name for name, _ in HELP}), [])
+report.check("the aliases all resolve to commands Telegram actually offers",
+             sorted(t for t in ALIASES.values() if t not in COMMANDS), [])
 
 
 report.section("the README lists the commands that actually exist")
@@ -286,14 +286,38 @@ report.check("127.0.0.1 is never handed to a phone - it would open its own",
              "http://127.0.0.1" in text, len(found) == 0)
 report.check("and the reply says why it only works on the same network",
              "same Wi-Fi" in text or "no local network" in text.lower(), True)
-report.check("the reason the link is not public is stated, not assumed",
-             "no password" in text or "no address" in text, True)
+report.check("and that the panel will ask for the login",
+             "login" in text, True)
 
 report.section("panel is a first-class command, not a hidden one")
 report.check("it is in the help list", "panel" in {name for name, _ in HELP}, True)
 report.check("and the words people will actually type reach it",
              sorted({ALIASES.get(w) for w in ("web", "ui", "site", "link")}),
              ["panel"])
+
+
+report.section("Telegram is now the way into the panel, not a second panel")
+# Everything else is on the site, the site asks for a login, and /panel puts
+# it one tap away. Keeping a worse copy of the interface in a chat window in
+# step with the real one was never going to hold.
+report.check("it offers the link and the list, nothing else",
+             sorted(COMMANDS), ["help", "panel"])
+report.check("its help lists only what it answers",
+             sorted(line.split()[0].lstrip("/")
+                    for line in RemoteControl(None, None).help(COMMANDS).text.splitlines()),
+             ["help", "panel"])
+report.check("Discord still has the full set, so nothing was lost",
+             len(RemoteControl(None, None).help().text.splitlines()), len(HELP))
+report.check("a command that moved is answered by name, not by silence",
+             sorted(name for name, _ in HELP if name not in COMMANDS),
+             ["pause", "queue", "restart_game", "screenshot", "start",
+              "status", "stop"])
+
+source = open("telegram_bot.py", encoding="utf-8").read()
+report.check("and the reply points at /panel",
+             "lives in the panel now" in source, True)
+report.check("the published Telegram menu is the short set too",
+             "for name, what in HELP if name in COMMANDS" in source, True)
 
 
 sys.exit(report.finish())

@@ -262,8 +262,16 @@ class RemoteControl:
                      "panel login before it opens anything.")
         return Reply(chr(10).join(lines))
 
-    def help(self):
-        return Reply("\n".join(f"/{name} - {what}" for name, what in HELP))
+    def help(self, names=None):
+        """The command list, optionally narrowed to one transport's set.
+
+        Discord offers all of these. Telegram offers a handful - see
+        telegram_bot.COMMANDS - so it passes the ones it actually has rather
+        than advertising commands that will not answer.
+        """
+        offered = set(names) if names else None
+        return Reply(chr(10).join(f"/{name} - {what}" for name, what in HELP
+                                  if offered is None or name in offered))
 
 
 # Message length caps. Discord's hard limit is 2000 characters and Telegram's

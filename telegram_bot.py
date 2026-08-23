@@ -21,7 +21,7 @@ import time
 
 import requests
 
-from remote_control import HELP, chunk
+from remote_control import HELP, Reply, chunk
 from utils import load_toml_as_dict
 
 API = "https://api.telegram.org/bot{token}/{method}"
@@ -44,18 +44,27 @@ RETRY_SECONDS = 5
 # answer only changes when somebody edits the settings page.
 IDLE_SECONDS = 60
 
-# Commands are matched with and without the @botname suffix, which Telegram
-# appends in group chats.
+# What Telegram offers, which is deliberately a fraction of what Discord has.
+#
+# Everything the other commands did is on the panel, the panel asks for a login
+# now, and /panel puts it one tap away on a phone. A second, worse copy of the
+# interface in a chat window is not worth keeping in step with the first - and
+# a queue read out as forty lines of text was never the good way to look at a
+# queue. So Telegram's job is to get you to the panel.
+#
+# Anything still in HELP but not here answers with a line saying where it went.
+COMMANDS = ("panel", "help")
+
+# Matched with and without the @botname suffix Telegram appends in groups.
+# /start is in here because it is the first thing Telegram itself sends when
+# somebody opens a chat with a bot, and a link is the right answer to it.
 ALIASES = {
-    "restart": "restart_game",
-    "restart_brawl_stars": "restart_game",
-    "view_queue": "queue",
-    "q": "queue",
-    "screen": "screenshot",
     "web": "panel",
     "ui": "panel",
     "site": "panel",
     "link": "panel",
+    "open": "panel",
+    "start": "panel",
 }
 
 
@@ -92,7 +101,8 @@ class TelegramBot:
     def _publish_command_list(self, token):
         """So the commands show up in Telegram's own menu, not just in /help."""
         self._call(token, "setMyCommands", json={"commands": [
-            {"command": name, "description": what} for name, what in HELP
+            {"command": name, "description": what}
+            for name, what in HELP if name in COMMANDS
         ]})
 
     # ── receiving ────────────────────────────────────────────────────
@@ -111,13 +121,24 @@ class TelegramBot:
         return ALIASES.get(word, word) or None
 
     def _handle(self, token, chat_id, command):
+        if command not in COMMANDS:
+            # A command that exists but is not offered here gets an answer
+            # that points somewhere, rather than a bare list that leaves
+            # somebody wondering whether it broke.
+            if command in {name for name, _ in HELP}:
+                self._reply(token, chat_id, Reply(
+                    f"/{command} lives in the panel now. Send /panel for the link."))
+            else:
+                self._reply(token, chat_id, self.remote.help(COMMANDS))
+            return
+
         action = getattr(self.remote, command, None)
-        known = {name for name, _ in HELP}
-        if command not in known or action is None:
-            self._reply(token, chat_id, self.remote.help())
+        if action is None:
+            self._reply(token, chat_id, self.remote.help(COMMANDS))
             return
         try:
-            self._reply(token, chat_id, action())
+            self._reply(token, chat_id,
+                        self.remote.help(COMMANDS) if command == "help" else action())
         except Exception as exc:  # noqa: BLE001 - a command must not kill the loop
             print(f"Telegram command /{command} failed: {exc}")
             self._call(token, "sendMessage",
