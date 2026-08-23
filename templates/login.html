@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VvokAI</title>
+    <link rel="icon" type="image/png" href="/api/assets/support/logo.png">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/vvok.css') }}">
+    <style>
+        /* Its own small sheet rather than the panel's layout: this page is one
+           card on an empty background and shares nothing else with it. */
+        .gate-wrap {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .gate {
+            width: 100%;
+            max-width: 380px;
+            background: var(--bg-solid);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-lg, 16px);
+            padding: 32px 28px;
+        }
+        .gate h1 { font-size: 22px; font-weight: 700; color: var(--text-primary); }
+        .gate p.sub { color: var(--text-secondary); font-size: 14px; margin-top: 8px; line-height: 1.5; }
+        .gate label {
+            display: block;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            color: var(--text-muted);
+            margin: 18px 0 6px;
+        }
+        .gate input {
+            width: 100%;
+            background: var(--bg-base);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-sm, 8px);
+            color: var(--text-primary);
+            padding: 11px 13px;
+            font-size: 15px;
+        }
+        .gate input:focus { outline: none; border-color: var(--border-brand); }
+        .gate button {
+            width: 100%;
+            margin-top: 24px;
+            padding: 12px;
+            border-radius: var(--radius-sm, 8px);
+            border: 1px solid var(--border-strong);
+            background: var(--brand-main);
+            color: #000;
+            font-weight: 700;
+            font-size: 15px;
+            cursor: pointer;
+        }
+        .gate button:disabled { opacity: .5; cursor: default; }
+        .gate .msg { margin-top: 16px; font-size: 13px; line-height: 1.5; min-height: 1em; }
+        .gate .msg.bad { color: var(--error); }
+        .gate .msg.good { color: var(--success); }
+        .gate .note {
+            margin-top: 22px;
+            padding-top: 18px;
+            border-top: 1px solid var(--border-light);
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+<div id="vfx-bg"></div>
+<div class="gate-wrap">
+    <form class="gate" id="gate" autocomplete="on">
+        <h1 id="title">Sign in</h1>
+        <p class="sub" id="subtitle">Enter your panel credentials.</p>
+
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" autocomplete="username"
+               autocapitalize="none" spellcheck="false" required>
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password"
+               autocomplete="current-password" required>
+
+        <div id="confirm-row" hidden>
+            <label for="confirm">Repeat password</label>
+            <input id="confirm" name="confirm" type="password" autocomplete="new-password">
+        </div>
+
+        <button type="submit" id="submit">Sign in</button>
+        <div class="msg" id="msg"></div>
+
+        <div class="note" id="note" hidden>
+            This account is stored on this machine only, in
+            <code>cfg/panel_auth.toml</code>, and the password is hashed rather
+            than saved. Forgotten it? Delete that file and set one up again.
+        </div>
+    </form>
+</div>
+
+<script>
+(function () {
+    const form = document.getElementById("gate");
+    const title = document.getElementById("title");
+    const subtitle = document.getElementById("subtitle");
+    const submit = document.getElementById("submit");
+    const message = document.getElementById("msg");
+    const confirmRow = document.getElementById("confirm-row");
+    const confirmField = document.getElementById("confirm");
+    const passwordField = document.getElementById("password");
+    const note = document.getElementById("note");
+    let creating = false;
+
+    function say(text, ok) {
+        message.textContent = text || "";
+        message.className = "msg" + (text ? (ok ? " good" : " bad") : "");
+    }
+
+    // Which of the two pages this is depends on whether an account exists,
+    // and only the server knows that.
+    fetch("/api/auth/state").then(r => r.json()).then(state => {
+        creating = !state.configured;
+        if (!creating) return;
+        title.textContent = "Create your login";
+        subtitle.textContent =
+            "The panel can start and stop the bot and shows your API token, so it " +
+            "needs an account before it will open. Pick any username and password.";
+        submit.textContent = "Create account";
+        confirmRow.hidden = false;
+        confirmField.required = true;
+        passwordField.autocomplete = "new-password";
+        note.hidden = false;
+    }).catch(() => say("Could not reach the panel.", false));
+
+    form.addEventListener("submit", async event => {
+        event.preventDefault();
+        const username = document.getElementById("username").value.trim();
+        const password = passwordField.value;
+
+        if (creating && password !== confirmField.value) {
+            say("The two passwords do not match.", false);
+            return;
+        }
+
+        submit.disabled = true;
+        say("");
+        try {
+            const response = await fetch(creating ? "/api/auth/setup" : "/api/auth/login", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({username, password})
+            });
+            const result = await response.json();
+            if (result.ok) {
+                say(creating ? "Account created. Opening the panel…" : "Signed in…", true);
+                window.location.href = "/";
+                return;
+            }
+            say(result.message || "That did not work.", false);
+        } catch (error) {
+            say("Could not reach the panel.", false);
+        }
+        submit.disabled = false;
+    });
+})();
+</script>
+</body>
+</html>

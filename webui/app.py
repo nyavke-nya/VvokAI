@@ -3,13 +3,17 @@ from __future__ import annotations
 import logging
 import threading
 
-from flask import Flask, jsonify, render_template, request, send_file
+from datetime import timedelta
+
+from flask import (Flask, jsonify, redirect, render_template, request,
+                   send_file, session)
 from werkzeug.exceptions import HTTPException
 
 from discord_bot import DiscordBot
 from remote_control import RemoteControl
 from telegram_bot import TelegramBot
 from utils import get_brawler_icon_path, resolve_project_path
+from . import panel_auth
 from .runtime import RuntimeManager
 from .services import WebDataService
 
@@ -113,6 +117,92 @@ def create_app(pyla_main, start_discord_bot=False):
     app.config["telegram_bot_thread"] = None
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
     _configure_request_logging()
+
+    # ── the login gate ───────────────────────────────────────────────
+    #
+    # Everything below this point used to be open to anyone who could reach
+    # the port, which was only ever defensible while that meant "somebody at
+    # this PC". The panel starts and stops the bot, rewrites the queue, and
+    # its settings page hands the Brawl Stars API token to the browser - so
+    # the moment the address goes to a phone, or through a tunnel, it needs an
+    # account.
+    app.secret_key = panel_auth.secret_key()
+    app.config.update(
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+        # Long enough that the phone in your pocket stays signed in between
+        # sessions; the cookie is signed with a key that survives restarts.
+        PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+    )
+
+    # Reachable without being signed in: the login page itself, the three
+    # calls it makes, and the static files and logo it is built from.
+    OPEN_ENDPOINTS = {"login_page", "auth_state", "auth_setup", "auth_login",
+                      "static", "support_asset"}
+
+    @app.before_request
+    def require_login():
+        if request.endpoint in OPEN_ENDPOINTS:
+            return None
+        if session.get("panel_user") and panel_auth.is_configured():
+            return None
+        # Deliberately no exemption for 127.0.0.1. Tunnels connect to the
+        # loopback interface, so requests arriving through one look local -
+        # a loopback exemption would hand the panel to the whole internet the
+        # first time somebody forwarded the port.
+        if request.path.startswith("/api/"):
+            return jsonify({
+                "ok": False,
+                "error": "Not signed in.",
+                "code": "LOGIN_REQUIRED",
+            }), 401
+        return redirect("/login")
+
+    @app.get("/login")
+    def login_page():
+        if session.get("panel_user") and panel_auth.is_configured():
+            return redirect("/")
+        return render_template("login.html")
+
+    @app.get("/api/auth/state")
+    def auth_state():
+        return jsonify({
+            "configured": panel_auth.is_configured(),
+            "authenticated": bool(session.get("panel_user")),
+            "username": session.get("panel_user", ""),
+        })
+
+    @app.post("/api/auth/setup")
+    def auth_setup():
+        payload = request.get_json(silent=True) or {}
+        result = panel_auth.create(str(payload.get("username", "")).strip(),
+                                   str(payload.get("password", "")))
+        if not result.get("ok"):
+            return jsonify(result), 400
+        # The key only becomes real once there is an account to sign in to.
+        app.secret_key = panel_auth.secret_key()
+        session.permanent = True
+        session["panel_user"] = panel_auth.username()
+        return jsonify(result)
+
+    @app.post("/api/auth/login")
+    def auth_login():
+        payload = request.get_json(silent=True) or {}
+        name = str(payload.get("username", "")).strip()
+        if not panel_auth.is_configured():
+            return jsonify({"ok": False, "message": "No account has been set up yet."}), 400
+        if not panel_auth.verify(name, str(payload.get("password", ""))):
+            # One message for both halves, so it cannot be used to find out
+            # which usernames exist.
+            return jsonify({"ok": False, "message": "Wrong username or password."}), 401
+        session.permanent = True
+        session["panel_user"] = panel_auth.username()
+        return jsonify({"ok": True, "message": "Signed in."})
+
+    @app.post("/api/auth/logout")
+    def auth_logout():
+        session.pop("panel_user", None)
+        return jsonify({"ok": True})
 
     @app.get("/")
     def index():

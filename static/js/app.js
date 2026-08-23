@@ -2622,6 +2622,14 @@ function formatSignedNumber(value) {
 
 async function fetchJSON(url, options = {}, allowFailure = false) {
     const response = await fetch(url, options);
+
+    // The session expired, or the bot restarted with a new one. Without this
+    // every panel on the page would just stop updating, with no clue why.
+    if (response.status === 401) {
+        window.location.href = "/login";
+        throw new Error("Not signed in.");
+    }
+
     const payload = await response.json().catch(() => ({}));
 
     if (!response.ok && !allowFailure) {
@@ -2630,6 +2638,15 @@ async function fetchJSON(url, options = {}, allowFailure = false) {
 
     return payload;
 }
+
+document.addEventListener("DOMContentLoaded", () => {
+    const signOut = document.getElementById("signOutButton");
+    if (!signOut) return;
+    signOut.addEventListener("click", async () => {
+        await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+        window.location.href = "/login";
+    });
+});
 
 function showToast(message, variant = "success") {
     const toast = document.getElementById("toast");

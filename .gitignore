@@ -55,3 +55,6 @@ PylaAI.egg-info/
 
 # Rendered by tools/dodge_animation.py on demand; not worth shipping.
 docs/*.gif
+
+# The panel login. Machine-specific, and holds the session-signing key.
+cfg/panel_auth.toml

@@ -238,11 +238,10 @@ class RemoteControl:
     def panel(self):
         """Where to open the web interface from.
 
-        LAN addresses only, never a public one. The panel has no password and
-        its settings page hands out the Brawl Stars API token, so anybody who
-        can reach it can drive the bot and read that token. Being reachable
-        only from your own network is the whole of what keeps that safe, and
-        the reply says so rather than leaving somebody to find out.
+        LAN addresses only. The panel has a login now, so this is no longer
+        the only thing between a stranger and the bot - but a link that cannot
+        be reached from outside the house is still worth more than one that
+        can, so the reply says which network it needs.
         """
         if not self.web_port:
             return Reply("The web interface has not started yet.")
@@ -259,9 +258,8 @@ class RemoteControl:
             lines.append("If that one does not open, this machine also answers at:")
             lines.extend(f"http://{other}:{self.web_port}" for other in addresses[1:])
             lines.append("")
-        lines.append("Only from the same Wi-Fi as the PC. It will not connect "
-                     "from anywhere else, which is deliberate: the panel has no "
-                     "password and its settings page shows your API token.")
+        lines.append("Only from the same Wi-Fi as the PC, and it asks for the "
+                     "panel login before it opens anything.")
         return Reply(chr(10).join(lines))
 
     def help(self):
