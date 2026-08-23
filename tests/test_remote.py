@@ -213,4 +213,40 @@ undocumented = [name for name, _ in HELP if f"/{name}" not in readme]
 report.check("every command is written down", undocumented, [])
 
 
+report.section("a bad moment at startup must not switch remote control off for good")
+# What it did before: one failed request on the way up printed "could not reach
+# the API" and returned, so the thread was gone for the rest of the session and
+# nothing said so again. Silence that looks like everything is fine.
+import requests as _requests
+
+
+def _http_error(status):
+    response = _requests.Response()
+    response.status_code = status
+    return _requests.HTTPError(f"{status}", response=response)
+
+
+explain = TelegramBot._explain
+report.check("a second copy of the bot is named as such",
+             "another copy" in explain(_http_error(409)), True)
+report.check("and the fix is in the message",
+             "Close the other one" in explain(_http_error(409)), True)
+report.check("a rejected token points at the setting",
+             "telegram_token" in explain(_http_error(401)), True)
+report.check("anything else says it will retry",
+             "Retrying" in explain(_requests.ConnectionError("no route")), True)
+
+source = open("telegram_bot.py", encoding="utf-8").read()
+loop = source[source.index("def run_bot("):]
+# The old code returned from inside the try; the new one only ever waits and
+# loops. Anything after the try that returns would put the thread back in the
+# grave this section exists to keep it out of.
+report.check("nothing inside the retry block returns",
+             "return" in loop.split("try:", 1)[1], False)
+report.check("the token is re-read inside the loop, so filling it in later works",
+             loop.index("self._settings()") < loop.index("self._poll_once("), True)
+report.check("and repeated failures are not printed over and over",
+             "if message != said:" in loop, True)
+
+
 sys.exit(report.finish())

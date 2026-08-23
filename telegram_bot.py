@@ -40,6 +40,10 @@ REQUEST_TIMEOUT = POLL_SECONDS + 15
 # enough that the bot is controllable again quickly once it comes back.
 RETRY_SECONDS = 5
 
+# Between checks when Telegram is not configured at all. Long, because the
+# answer only changes when somebody edits the settings page.
+IDLE_SECONDS = 60
+
 # Commands are matched with and without the @botname suffix, which Telegram
 # appends in group chats.
 ALIASES = {
@@ -83,12 +87,9 @@ class TelegramBot:
 
     def _publish_command_list(self, token):
         """So the commands show up in Telegram's own menu, not just in /help."""
-        try:
-            self._call(token, "setMyCommands", json={"commands": [
-                {"command": name, "description": what} for name, what in HELP
-            ]})
-        except (requests.RequestException, ValueError) as exc:
-            print(f"Telegram: could not publish the command list ({exc})")
+        self._call(token, "setMyCommands", json={"commands": [
+            {"command": name, "description": what} for name, what in HELP
+        ]})
 
     # ── receiving ────────────────────────────────────────────────────
     @staticmethod
@@ -140,36 +141,71 @@ class TelegramBot:
     def stop(self):
         self._stop.set()
 
+    def _skip_backlog(self, token):
+        """Ignore whatever piled up while the bot was off.
+
+        Acting on a /stop sent yesterday, the moment the bot starts today, is
+        not helpful. offset=-1 asks for the last update only; confirming past
+        it discards the rest.
+        """
+        backlog = self._call(token, "getUpdates", json={"timeout": 0, "offset": -1})
+        for update in backlog.get("result", []):
+            self._offset = update.get("update_id", 0) + 1
+
+    @staticmethod
+    def _explain(exc):
+        """What went wrong, in words that point at the fix."""
+        response = getattr(exc, "response", None)
+        if response is not None and response.status_code == 409:
+            return ("Telegram: another copy of the bot is already using this token. "
+                    "Close the other one - remote control will take over when it exits.")
+        if response is not None and response.status_code == 401:
+            return ("Telegram: the API rejected the token. Check telegram_token in "
+                    "cfg/webhook_config.toml.")
+        return f"Telegram: {exc}. Retrying."
+
     def run_bot(self):
-        token, chat_id = self._settings()
-        if not token or not chat_id:
-            print("Telegram remote control is off: telegram_token and "
-                  "telegram_chat_id are not both set in cfg/webhook_config.toml.")
-            return
         if self.started:
             return
         self.started = True
 
-        # Skip whatever piled up while the bot was off. Acting on a /stop sent
-        # yesterday, the moment the bot starts today, is not helpful.
-        try:
-            backlog = self._call(token, "getUpdates", json={"timeout": 0, "offset": -1})
-            for update in backlog.get("result", []):
-                self._offset = update.get("update_id", 0) + 1
-        except (requests.RequestException, ValueError) as exc:
-            print(f"Telegram: could not reach the API ({exc}); remote control is off.")
-            self.started = False
-            return
+        # Nothing here is fatal. Remote control that switches itself off for
+        # the rest of the session because one request failed at startup is
+        # worse than useless - it looks like it is working. So the token is
+        # re-read every pass (a token typed into the settings page starts
+        # working within a poll), every failure is retried, and a message is
+        # only printed when it changes, so an outage does not fill the console.
+        published = False
+        skipped = False
+        said = None
 
-        self._publish_command_list(token)
-        print("Telegram remote control is on. Send /help in your chat with the bot.")
+        def say(message):
+            nonlocal said
+            if message != said:
+                print(message)
+                said = message
 
         try:
             while not self._stop.is_set():
+                token, chat_id = self._settings()
+                if not token or not chat_id:
+                    say("Telegram remote control is off: telegram_token and "
+                        "telegram_chat_id are not both set in cfg/webhook_config.toml.")
+                    self._stop.wait(IDLE_SECONDS)
+                    continue
                 try:
+                    if not skipped:
+                        self._skip_backlog(token)
+                        skipped = True
+                    if not published:
+                        self._publish_command_list(token)
+                        published = True
+                        say("Telegram remote control is on. Send /help in your "
+                            "chat with the bot.")
                     self._poll_once(token, chat_id)
+                    said = None
                 except (requests.RequestException, ValueError) as exc:
-                    print(f"Telegram polling hiccup ({exc}); retrying.")
+                    say(self._explain(exc))
                     self._stop.wait(RETRY_SECONDS)
         finally:
             self.started = False

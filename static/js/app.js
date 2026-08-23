@@ -164,7 +164,7 @@ const SETTINGS_META = {
         { key: "ping_every_x_match", label: "Ping Every X Matches", type: "number", help: "0 disables periodic match pings." },
         { key: "ping_every_x_minutes", label: "Ping Every X Minutes", type: "number", help: "0 disables periodic minute pings." },
         { key: "discord_guild_id", label: "Discord Guild ID", type: "text", help: "Discord server ID where slash commands should be synced." },
-        { key: "telegram_token", label: "Telegram Bot Token", type: "password", help: "Telegram bot token used for notifications and for remote control. Send /help in your chat with the bot to see the commands. Requires full restart to apply." },
+        { key: "telegram_token", label: "Telegram Bot Token", type: "password", help: "Telegram bot token used for notifications and for remote control. Send /help in your chat with the bot to see the commands. Only one copy of the bot can use a token at a time." },
         { key: "telegram_chat_id", label: "Telegram Chat ID", type: "text", help: "Telegram chat ID that receives notifications. Commands are only accepted from this chat; anything sent from anywhere else is ignored." },
     ],
 };
