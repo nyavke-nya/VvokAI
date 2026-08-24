@@ -38,7 +38,16 @@ from pathlib import Path
 
 REPO = "nyavke-nya/VvokAI"
 BRANCH = "main"
+
+# For asking GitHub a question. Short: these are small answers, and a slow one
+# means something is wrong rather than something is large.
 TIMEOUT = 30
+
+# For pulling down the project, Python or a new copy of the exe. urlopen's
+# timeout is per read rather than for the whole transfer, but on a slow
+# connection a single read can stall for a while, and 30 seconds was short
+# enough to fail on the project archive here.
+DOWNLOAD_TIMEOUT = 300
 USER_AGENT = "VvokAI-launcher"
 
 # What the built executable is called, on disk and in a release.
@@ -71,8 +80,10 @@ def home():
 
 
 def fetch(url, binary=False):
+    """A GitHub answer, or a file. Binary means a file, and files take longer."""
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+    limit = DOWNLOAD_TIMEOUT if binary else TIMEOUT
+    with urllib.request.urlopen(request, timeout=limit) as response:
         payload = response.read()
     return payload if binary else json.loads(payload.decode("utf-8"))
 
@@ -157,28 +168,53 @@ def update_self():
 # ---------------------------------------------------------------------------
 
 
-# The folder the project is unpacked into, when it is not already beside the
-# exe. It has to be a subfolder: people put the exe on their Desktop, and
-# unpacking sixty files and a dozen folders onto somebody's Desktop is not a
-# thing to do to them - especially when uninstalling then means picking our
-# files out of theirs one by one.
-PROJECT_DIR = "VvokAI"
+# Where the project goes. One fixed path rather than "next to the exe":
+# people put an exe on their Desktop, and unpacking sixty files and a dozen
+# folders across somebody's Desktop is not a thing to do to them - uninstalling
+# would then mean picking our files out of theirs one at a time.
+#
+# The root of C: is writable without administrator rights on a default Windows,
+# checked rather than assumed. A short path also avoids the other thing that
+# bites here: some of the dependencies build paths deep enough to run into the
+# 260 character limit when the project starts somewhere like
+# C:/Users/Somebody/OneDrive/Documents/Downloads/VvokAI-main.
+INSTALL_DIR = "C:/VvokAI"
 
 
 def project_present(root):
     return (root / "main.py").exists() and (root / "tools" / "installer.py").exists()
 
 
-def project_root(base):
-    """Where the project lives, given where the exe is.
+def usable_root(candidate):
+    """Whether the project can actually be written there."""
+    try:
+        candidate.mkdir(parents=True, exist_ok=True)
+        probe = candidate / ".vvok_write_test"
+        probe.write_text("", encoding="utf-8")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
 
-    Beside the exe when the exe was dropped into a checkout that is already
-    there - that is how somebody building from source will run it, and moving
-    their files would be rude. A VvokAI subfolder in every other case.
+
+def project_root(base):
+    """Where the project lives.
+
+    C:/VvokAI, unless the exe was dropped into a checkout that is already
+    there - that is how somebody running from source does it, and moving their
+    files out from under them would be rude. If C: cannot be written to at
+    all, which happens on locked-down machines, it falls back to a folder
+    beside the exe rather than refusing to start.
     """
     if project_present(base):
         return base
-    return base / PROJECT_DIR
+
+    fixed = Path(INSTALL_DIR)
+    if project_present(fixed) or usable_root(fixed):
+        return fixed
+
+    say(f"Could not use {fixed}, so the files go next to the program instead.")
+    return base / "VvokAI"
 
 
 def download_project(root):
