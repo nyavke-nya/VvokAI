@@ -55,3 +55,8 @@ PylaAI.egg-info/
 
 # Rendered by tools/dodge_animation.py on demand; not worth shipping.
 docs/*.gif
+
+# Build output of build_exe.bat.
+VvokAI.exe
+new-VvokAI.exe
+build/launcher/

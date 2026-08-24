@@ -1,0 +1,343 @@
+"""VvokAI.exe - the one file people download, and everything before the window.
+
+Built into a single executable by build_exe.bat. It is deliberately small,
+around fifteen megabytes, and contains no part of the bot: torch, opencv and
+the detection models are three gigabytes between them, and a three gigabyte
+executable that unpacks itself into the temp folder on every launch is both
+slow and the exact shape antivirus software treats as suspicious.
+
+Instead this is the thing start_pyla.bat used to be, compiled:
+
+  1. Check whether a newer VvokAI.exe has been published, and replace itself
+     with it if so.
+  2. Make sure the project files next to it are present and current.
+  3. Make sure there is a Python and an environment with the dependencies in
+     it, which tools/installer.py already knows how to do.
+  4. Open the application window.
+
+Everything it fetches comes from the project's own GitHub releases and the
+python.org installer, over HTTPS, and every step says what it is doing on the
+console - somebody watching a fresh download run for the first time can see
+exactly what it touches. That is worth more against "is this a virus" than any
+amount of reassurance in a README.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+import zipfile
+from pathlib import Path
+
+REPO = "nyavke-nya/VvokAI"
+BRANCH = "main"
+TIMEOUT = 30
+USER_AGENT = "VvokAI-launcher"
+
+# What the built executable is called, on disk and in a release.
+EXE_NAME = "VvokAI.exe"
+
+# Written beside the exe so the next run knows what it already has.
+VERSION_FILE = ".vvok_version"
+
+# The Pythons the dependencies publish Windows builds for. On anything newer
+# pip falls back to compiling them and stops at a missing C++ compiler, which
+# sounds like a toolchain problem and is really a Python that is too new.
+PYTHON_RANGE = ((3, 10), (3, 12))
+PYTHON_INSTALLER = ("https://www.python.org/ftp/python/3.11.9/"
+                    "python-3.11.9-amd64.exe")
+
+
+def say(message=""):
+    print(message, flush=True)
+
+
+def home():
+    """The folder the exe lives in, which is where the project goes.
+
+    sys.executable is the exe when frozen and the interpreter when running
+    from source, so this has to ask which it is rather than assume.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+def fetch(url, binary=False):
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+        payload = response.read()
+    return payload if binary else json.loads(payload.decode("utf-8"))
+
+
+# ---------------------------------------------------------------------------
+#  Step 1: replace itself, if a newer exe has been published
+# ---------------------------------------------------------------------------
+#
+# A running executable on Windows cannot be deleted or written to, so it
+# cannot update itself in place. What works is: write the new one beside the
+# old one, start it, and exit. The new copy renames itself over the old name
+# on its next start, once nothing is holding the file open.
+
+
+def pending_swap():
+    """Finish an update started by the previous run, if there is one."""
+    current = Path(sys.executable).resolve()
+    if not getattr(sys, "frozen", False) or current.name != f"new-{EXE_NAME}":
+        return False
+    target = current.with_name(EXE_NAME)
+    for _ in range(20):
+        try:
+            if target.exists():
+                target.unlink()
+            current.replace(target)
+            say(f"Updated. Restarting {EXE_NAME}.")
+            subprocess.Popen([str(target)], cwd=str(target.parent))
+            return True
+        except OSError:
+            # The old copy is still shutting down. It only takes a moment.
+            time.sleep(0.25)
+    say("Could not put the update in place; carrying on with this copy.")
+    return False
+
+
+def update_self():
+    """Download a newer VvokAI.exe if the latest release has one."""
+    if not getattr(sys, "frozen", False):
+        return False  # Running from source; the exe is not what is out of date.
+    try:
+        release = fetch(f"https://api.github.com/repos/{REPO}/releases/latest")
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        say(f"Could not check for a newer launcher ({exc}); carrying on.")
+        return False
+
+    asset = next((a for a in release.get("assets", [])
+                  if a.get("name") == EXE_NAME), None)
+    tag = release.get("tag_name", "")
+    if not asset or not tag:
+        return False
+
+    current = Path(sys.executable).resolve()
+    stamp = current.parent / VERSION_FILE
+    try:
+        if stamp.read_text(encoding="utf-8").strip() == f"exe:{tag}":
+            return False
+    except OSError:
+        pass
+
+    say(f"A newer VvokAI is available ({tag}). Downloading it.")
+    try:
+        payload = fetch(asset["browser_download_url"], binary=True)
+    except (urllib.error.URLError, OSError) as exc:
+        say(f"That download failed ({exc}); carrying on with this copy.")
+        return False
+
+    beside = current.with_name(f"new-{EXE_NAME}")
+    try:
+        beside.write_bytes(payload)
+        stamp.write_text(f"exe:{tag}", encoding="utf-8")
+    except OSError as exc:
+        say(f"Could not save the update ({exc}); carrying on.")
+        return False
+
+    say("Restarting into the new version.")
+    subprocess.Popen([str(beside)], cwd=str(current.parent))
+    return True
+
+
+# ---------------------------------------------------------------------------
+#  Step 2: the project files
+# ---------------------------------------------------------------------------
+
+
+def project_present(root):
+    return (root / "main.py").exists() and (root / "tools" / "installer.py").exists()
+
+
+def download_project(root):
+    """First run: there is an exe in an empty folder and nothing else."""
+    say("Downloading VvokAI. This is a few tens of megabytes.")
+    try:
+        blob = fetch(f"https://github.com/{REPO}/archive/{BRANCH}.zip", binary=True)
+    except (urllib.error.URLError, OSError) as exc:
+        say(f"The download failed: {exc}")
+        return False
+
+    holding = Path(tempfile.mkdtemp(prefix="vvok-"))
+    try:
+        archive = holding / "source.zip"
+        archive.write_bytes(blob)
+        with zipfile.ZipFile(archive) as bundle:
+            bundle.extractall(holding)
+        roots = [p for p in holding.iterdir() if p.is_dir()]
+        if len(roots) != 1:
+            say("The archive did not look the way it should.")
+            return False
+        for item in roots[0].iterdir():
+            target = root / item.name
+            if item.is_dir():
+                shutil.copytree(item, target, dirs_exist_ok=True)
+            else:
+                shutil.copy2(item, target)
+    except (OSError, zipfile.BadZipFile) as exc:
+        say(f"The download could not be unpacked: {exc}")
+        return False
+    finally:
+        shutil.rmtree(holding, ignore_errors=True)
+
+    say("Downloaded.")
+    return True
+
+
+# ---------------------------------------------------------------------------
+#  Step 3: a Python to run it with
+# ---------------------------------------------------------------------------
+
+
+def python_version(candidate):
+    try:
+        result = subprocess.run(
+            [*candidate, "-c",
+             "import sys; print('%d.%d' % sys.version_info[:2])"],
+            capture_output=True, text=True, timeout=20,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        major, minor = (int(part) for part in result.stdout.strip().split("."))
+    except ValueError:
+        return None
+    return (major, minor)
+
+
+def find_python():
+    """The same search start_pyla.bat does, in a language that can express it.
+
+    Preferred versions first, so a machine with several gets the one the
+    dependencies are actually built for.
+    """
+    candidates = [["py", "-3.11"], ["py", "-3.12"], ["py", "-3.10"], ["python"]]
+    for version in ("311", "312", "310"):
+        for base in (os.environ.get("LocalAppData", ""), os.environ.get("ProgramFiles", ""),
+                     os.environ.get("SystemDrive", "C:")):
+            if not base:
+                continue
+            candidates.append([str(Path(base) / "Programs" / "Python" / f"Python{version}" / "python.exe")])
+            candidates.append([str(Path(base) / f"Python{version}" / "python.exe")])
+
+    for candidate in candidates:
+        found = python_version(candidate)
+        if found and PYTHON_RANGE[0] <= found <= PYTHON_RANGE[1]:
+            return candidate
+    return None
+
+
+def install_python():
+    say("No suitable Python found. Downloading Python 3.11.9 (about 25 MB).")
+    try:
+        payload = fetch(PYTHON_INSTALLER, binary=True)
+    except (urllib.error.URLError, OSError) as exc:
+        say(f"That download failed: {exc}")
+        return None
+
+    installer = Path(tempfile.gettempdir()) / "vvok-python-3.11.9.exe"
+    target = Path(os.environ.get("LocalAppData", tempfile.gettempdir()))
+    target = target / "Programs" / "Python" / "Python311"
+    try:
+        installer.write_bytes(payload)
+        say(f"Installing to {target}. A permission prompt may appear - accept it.")
+        subprocess.run([str(installer), "/quiet", "InstallAllUsers=0",
+                        "PrependPath=1", "Include_test=0", "Include_launcher=1",
+                        f"TargetDir={target}"], timeout=1800)
+    except (OSError, subprocess.SubprocessError) as exc:
+        say(f"The install did not finish: {exc}")
+        return None
+    finally:
+        try:
+            installer.unlink()
+        except OSError:
+            pass
+
+    direct = [str(target / "python.exe")]
+    if python_version(direct):
+        return direct
+    return find_python()
+
+
+# ---------------------------------------------------------------------------
+
+
+def run(command, root):
+    try:
+        return subprocess.run(command, cwd=str(root)).returncode
+    except (OSError, subprocess.SubprocessError) as exc:
+        say(f"Could not run {command[0]}: {exc}")
+        return 1
+
+
+def main():
+    if pending_swap():
+        return 0
+
+    root = home()
+    say("=" * 62)
+    say("  VvokAI")
+    say("=" * 62)
+    say(f"  Folder: {root}")
+    say()
+
+    if update_self():
+        return 0
+
+    if not project_present(root) and not download_project(root):
+        say()
+        say("Nothing to run. Check the connection and start VvokAI again.")
+        input("Press Enter to close. ")
+        return 1
+
+    python = find_python() or install_python()
+    if python is None:
+        say()
+        say("VvokAI needs Python 3.10, 3.11 or 3.12 and could not install it.")
+        say("Install 3.11.9 from python.org, tick 'Add python.exe to PATH',")
+        say("then start VvokAI again.")
+        input("Press Enter to close. ")
+        return 1
+
+    # From here the project's own tooling takes over: it already knows how to
+    # update itself, build the environment and explain what went wrong.
+    updater = root / "tools" / "updater.py"
+    if updater.exists():
+        run([*python, str(updater)], root)
+
+    if run([*python, str(root / "tools" / "installer.py")], root) != 0:
+        say()
+        say("Setup did not finish. The reason is above, and install_log.txt")
+        say("has the full output.")
+        input("Press Enter to close. ")
+        return 1
+
+    window = root / "venv" / "Scripts" / "pythonw.exe"
+    script = root / "desktop.py"
+    if not window.exists() or not script.exists():
+        say("The application is missing after setup, which should not happen.")
+        input("Press Enter to close. ")
+        return 1
+
+    say()
+    say("Opening VvokAI.")
+    subprocess.Popen([str(window), str(script)], cwd=str(root))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

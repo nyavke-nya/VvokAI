@@ -52,6 +52,10 @@ MAX_PYTHON = (3, 12)
 CORE_PACKAGES = [
     "aiohttp", "numpy", "requests", "toml", "pillow", "discord.py",
     "packaging", "pywin32", "easyocr", "Flask", "pycryptodome",
+    # The desktop window. Addons is the heavy half - about 600 MB - and it is
+    # the half with QtWebEngine in it, which is what puts the existing
+    # interface inside a real window instead of a browser tab.
+    "PySide6-Essentials", "PySide6-Addons",
 ]
 
 # Pinned because scrcpy's frame handling is sensitive to both.
@@ -59,6 +63,7 @@ PINNED_PACKAGES = ["adbutils==2.12.0", "av==12.3.0"]
 
 # module name -> package that provides it, for the final check.
 IMPORT_CHECKS = [
+    ("PySide6.QtWebEngineWidgets", "PySide6-Addons"),
     ("cv2", "opencv-python"),
     ("numpy", "numpy"),
     ("requests", "requests"),
