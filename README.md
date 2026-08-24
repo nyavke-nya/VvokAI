@@ -1,3 +1,6 @@
+# СКАЧИВАТЬ EXE ИЗ RELEASE ЕСЛИ ВЫ НЕ РАЗРОБОТЧИК
+# Download the EXE from Releases if you are not a developer.
+
 # VvokAI
 
 Бот для Brawl Stars, который **уворачивается от снарядов**, **стреляет с упреждением** и **двигается как человек**.
