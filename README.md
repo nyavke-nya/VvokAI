@@ -1,4 +1,4 @@
-# СКАЧИВАТЬ EXE ИЗ RELEASE ЕСЛИ ВЫ НЕ РАЗРОБОТЧИК
+# СКАЧИВАТЬ EXE ИЗ RELEASE ЕСЛИ ВЫ НЕ РАЗРАБОТЧИК
 # Download the EXE from Releases if you are not a developer.
 
 # VvokAI
