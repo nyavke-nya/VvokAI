@@ -73,18 +73,32 @@ if errorlevel 1 (
 if exist "build\launcher" rmdir /s /q "build\launcher"
 mkdir "build\launcher" >nul 2>&1
 
-:: PyInstaller wants a .ico, and resolves --icon relative to --specpath, so
-:: the logo is converted once to a known absolute path. Pillow is in the venv;
-:: without it the build goes ahead without an icon rather than failing over a
-:: picture.
+:: The mark from the corner of the panel, as a Windows icon. It is a styled
+
+:: letter in CSS there and no use to Windows, so tools/make_icon.py redraws it
+
+:: from the same numbers. The file is in the repository; this only rebuilds it
+
+:: if it has gone missing. --icon resolves relative to --specpath, hence the
+
+:: absolute path.
+
 set "ICONARG="
-%BUILD_PY% -c "from PIL import Image; Image.open(r'api/assets/support/logo.png').save(r'%~dp0build\launcher\VvokAI.ico', sizes=[(16,16),(32,32),(48,48),(256,256)])" >nul 2>&1
-if exist "%~dp0build\launcher\VvokAI.ico" (
-    set "ICONARG=--icon=%~dp0build\launcher\VvokAI.ico"
-    echo [INFO] Icon prepared.
+
+if not exist "images\vvokai.ico" %BUILD_PY% tools\make_icon.py >nul 2>&1
+
+if exist "%~dp0images\vvokai.ico" (
+
+    set "ICONARG=--icon=%~dp0images\vvokai.ico"
+
+    echo [INFO] Icon: images\vvokai.ico
+
 ) else (
-    echo [INFO] No icon could be made; building without one.
+
+    echo [WARN] images\vvokai.ico is missing; building without an icon.
+
 )
+
 if exist "VvokAI.spec" del /q "VvokAI.spec"
 
 echo.

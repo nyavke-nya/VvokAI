@@ -106,7 +106,7 @@ def main():
     window.resize(*DEFAULT_SIZE)
     window.setMinimumSize(*MINIMUM_SIZE)
 
-    icon = resolve_project_path("api", "assets", "support", "logo.png")
+    icon = resolve_project_path("images", "vvokai.png")
     if icon.exists():
         window.setWindowIcon(QIcon(str(icon)))
 

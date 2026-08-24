@@ -157,8 +157,28 @@ def update_self():
 # ---------------------------------------------------------------------------
 
 
+# The folder the project is unpacked into, when it is not already beside the
+# exe. It has to be a subfolder: people put the exe on their Desktop, and
+# unpacking sixty files and a dozen folders onto somebody's Desktop is not a
+# thing to do to them - especially when uninstalling then means picking our
+# files out of theirs one by one.
+PROJECT_DIR = "VvokAI"
+
+
 def project_present(root):
     return (root / "main.py").exists() and (root / "tools" / "installer.py").exists()
+
+
+def project_root(base):
+    """Where the project lives, given where the exe is.
+
+    Beside the exe when the exe was dropped into a checkout that is already
+    there - that is how somebody building from source will run it, and moving
+    their files would be rude. A VvokAI subfolder in every other case.
+    """
+    if project_present(base):
+        return base
+    return base / PROJECT_DIR
 
 
 def download_project(root):
@@ -288,16 +308,24 @@ def main():
     if pending_swap():
         return 0
 
-    root = home()
+    base = home()
+    root = project_root(base)
     say("=" * 62)
     say("  VvokAI")
     say("=" * 62)
-    say(f"  Folder: {root}")
+    say(f"  Files: {root}")
     say()
 
     if update_self():
         return 0
 
+    if not project_present(root):
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            say(f"Could not create {root}: {exc}")
+            input("Press Enter to close. ")
+            return 1
     if not project_present(root) and not download_project(root):
         say()
         say("Nothing to run. Check the connection and start VvokAI again.")
