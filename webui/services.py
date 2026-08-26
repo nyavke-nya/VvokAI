@@ -592,7 +592,7 @@ class WebDataService:
                 "trophies": current_trophies,
                 "wins": int(existing.get("wins", 0) or 0),
                 "automatically_pick": bool(existing.get("automatically_pick", True)),
-                "win_streak": int(win_streak or 0),
+                "win_streak": int(win_streak if win_streak is not None else existing.get("win_streak", 0)),
             }
 
         updated_queue = []
@@ -856,10 +856,11 @@ class WebDataService:
             trophies, win_streak = get_brawler_stats(player_info, brawler)
             if trophies is None and win_streak is None:
                 continue
-            stats[brawler] = {
-                "trophies": int(trophies or 0),
-                "win_streak": int(win_streak or 0),
-            }
+            
+            brawler_stats = {"trophies": int(trophies or 0)}
+            if win_streak is not None:
+                brawler_stats["win_streak"] = int(win_streak)
+            stats[brawler] = brawler_stats
 
         if brawler_catalog and not stats:
             return {
