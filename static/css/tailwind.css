@@ -222,7 +222,7 @@ input:focus, select:focus { border-color: var(--brand-main); box-shadow: 0 0 0 3
     border: 1px solid var(--border-brand); min-height: 260px; position: relative; overflow: hidden;
 }
 .btn-huge {
-    font-size: 1.15rem; font-weight: 500; padding: 15px 44px; border-radius: 980px; letter-spacing: -0.01em; text-transform: none;
+    font-size: 1.15rem; font-weight: 500; padding: 15px 44px; border-radius: 20px; letter-spacing: -0.01em;
     box-shadow: 0 0 60px var(--brand-glow), inset 0 2px 0 rgba(255,255,255,0.2); 
 }
 .btn-huge svg { width: 34px; height: 34px; margin-right: 10px; }

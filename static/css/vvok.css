@@ -1292,12 +1292,10 @@ body {
     color: var(--text-secondary);
 }
 
-/* Pills, filled blue, no shadow and no border. */
+/* Rounded rectangles, as they were. Only the fill and the shadow changed. */
 .btn,
 .btn-primary,
-.btn-reset-settings,
-.badge {
-    border-radius: var(--radius-pill);
+.btn-reset-settings {
     box-shadow: none;
 }
 
@@ -1353,7 +1351,7 @@ body {
     letter-spacing: -0.01em;
     text-transform: none;
     padding: 15px 44px;
-    border-radius: var(--radius-pill);
+    border-radius: 20px;
 }
 
 /* Destructive controls are grey until you are on them. A red dot on every row
