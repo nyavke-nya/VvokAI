@@ -225,6 +225,37 @@ def find_pythons():
     return ordered
 
 
+# onnxruntime-gpu 1.28 is built against CUDA 13, and CUDA 13 dropped Maxwell,
+# Pascal and Volta. Anything below compute capability 7.5 - a GT 1030 is 6.1,
+# a GTX 1060 is 6.1, a GTX 1650 is 7.5 - loads the CUDA provider, fails inside
+# cuBLAS and takes the run down with "hardware incompatibility".
+#
+# Which is worth spelling out, because that failure does not look like "wrong
+# graphics card": it looks like the build is broken. Somebody on a GT 1030 was
+# running happily on DirectML, an update moved them onto CUDA, and they left.
+MINIMUM_COMPUTE = (7, 5)
+
+
+def compute_capability(text):
+    """(major, minor) out of what nvidia-smi prints, or None."""
+    parts = str(text or "").strip().split(".")
+    try:
+        return int(parts[0]), int(parts[1])
+    except (IndexError, ValueError):
+        return None
+
+
+def cuda_is_usable(cap):
+    """Whether this card can run the CUDA build we install.
+
+    An unreadable capability counts as no. A card old enough that nvidia-smi
+    will not say is old enough to be below the line, and guessing yes costs
+    somebody a working setup while guessing no costs them some speed.
+    """
+    parsed = compute_capability(cap)
+    return parsed is not None and parsed >= MINIMUM_COMPUTE
+
+
 def gpu_info():
     code, output = run(["nvidia-smi", "--query-gpu=name,compute_cap",
                         "--format=csv,noheader"])
@@ -274,7 +305,7 @@ def report_system():
         for name in missing:
             log(f"    {name}")
         log("  The download is incomplete - unzip it again, all of it.")
-    return free, pythons, vendor, missing
+    return free, pythons, vendor, cap, missing
 
 
 # ---------------------------------------------------------------------------
@@ -342,7 +373,7 @@ def ensure_venv(python_path):
     return True
 
 
-def install_accelerator(vendor):
+def install_accelerator(vendor, cap=""):
     """One ONNX runtime, and a torch that does not fight it.
 
     Both onnxruntime distributions unpack into the same folder, so having two
@@ -352,6 +383,15 @@ def install_accelerator(vendor):
     log("  Removing any conflicting runtimes first")
     run([str(VENV_PYTHON), "-m", "pip", "uninstall", "-y",
          "onnxruntime", "onnxruntime-gpu", "onnxruntime-directml"])
+
+    if vendor == "nvidia" and not cuda_is_usable(cap):
+        shown = cap or "unknown"
+        log(f"  NVIDIA card, but compute capability {shown} is below "
+            f"{MINIMUM_COMPUTE[0]}.{MINIMUM_COMPUTE[1]}.")
+        log("  The CUDA build we install is compiled against CUDA 13, which")
+        log("  dropped cards this old - it would load and then fail inside")
+        log("  cuBLAS. Using DirectML instead, which runs on this card.")
+        vendor = "other"
 
     if vendor == "nvidia":
         log("  NVIDIA card detected - trying CUDA, which is about 3.7x faster")
@@ -500,7 +540,7 @@ def main():
     log("  VvokAI setup")
     log("=" * 62)
 
-    free, pythons, vendor, missing_files = report_system()
+    free, pythons, vendor, compute, missing_files = report_system()
     ensure_configs()
 
     if args.report:
@@ -572,7 +612,7 @@ def main():
         return 6
 
     section("Graphics acceleration")
-    runtime = install_accelerator(vendor)
+    runtime = install_accelerator(vendor, compute)
     if runtime is None:
         log("  No accelerator could be installed; the bot will run on the CPU.")
 

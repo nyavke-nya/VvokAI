@@ -157,6 +157,27 @@
         "Map tile size in pixels used by playstyle movement and wall-aware targeting.":
             "Размер клетки карты в пикселях: по нему считается движение и обход стен.",
         "Attack Range Multiplier": "Множитель дальности атаки",
+        // ---- playstyles page
+        "Search by playstyle, brawler, or gamemode":
+            "Поиск по стилю, бойцу или режиму",
+        "Import": "Импорт",
+        "Active playstyle": "Активный стиль",
+        "No playstyles found": "Стилей не найдено",
+
+        // The descriptions come from the JSON header of each .pyla file. They
+        // are translated here rather than in the files so the files stay
+        // readable to everyone who is not Russian - the playstyle format is
+        // shared with upstream.
+        "All four official playstyles merged into one archetype-aware brain, plus projectile dodging. Glides smoothly by default and snaps hard only while evading.":
+            "Все четыре официальных стиля, объединённые в один мозг с пониманием архетипов, плюс уворот от снарядов. По умолчанию движется плавно и рвёт с места только в уворот.",
+        "The unified brain tuned to press rather than trade. Takes fights the cautious style declines, chases further, and holds ground while outnumbered - with dodging still on, because that is what keeps an aggressive bot alive.":
+            "Тот же мозг, настроенный давить, а не разменивать. Берёт бои, от которых осторожный стиль отказывается, преследует дальше и держит позицию в меньшинстве — уворот при этом включён, потому что именно он и оставляет агрессивного бота в живых.",
+        "Same tactics as Unified + Dodge - archetype spacing, regrouping, health awareness, smooth movement - with the projectile stack removed. The tracker thread never starts, so it costs no CPU.":
+            "Та же тактика, что у Unified + Dodge — дистанция по архетипу, сбор к союзнику, учёт здоровья, плавное движение — но без слежения за снарядами. Поток трекера не запускается вовсе, так что процессор он не ест.",
+
+        "Automatic Updates": "Автообновление",
+        "Check for a newer version on startup and install it. Turn this off to freeze the setup you have - an update cannot then change anything under you.":
+            "Проверять обновления при запуске и ставить их. Выключи, чтобы заморозить текущую сборку — тогда обновление ничего не поменяет без спроса.",
         "Telegram bot token used for notifications and for remote control. Send /help in your chat with the bot to see the commands. Only one copy of the bot can use a token at a time.":
             "Токен телеграм-бота для уведомлений и для управления. Отправь боту /help в личку, чтобы увидеть список команд. Один токен — одна запущенная копия бота.",
         "Telegram chat ID that receives notifications. Commands are only accepted from this chat; anything sent from anywhere else is ignored.":

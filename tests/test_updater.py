@@ -159,4 +159,98 @@ report.check("half-written JSON is refused", merge_json("{oops", "{}"), None)
 report.check("a list at the top level is refused", merge_json("[1,2]", "{}"), None)
 
 
+report.section("CUDA is only chosen on a card that can run it")
+# What happened: onnxruntime-gpu 1.28 is built against CUDA 13, which dropped
+# Maxwell, Pascal and Volta. Any NVIDIA card got the CUDA build regardless, so
+# an update moved somebody on a GT 1030 - compute capability 6.1 - off a
+# working DirectML setup and onto a provider that loads and then dies inside
+# cuBLAS. It does not read as "wrong graphics card", it reads as a broken
+# build, and they stopped using the project over it.
+#
+# gpu_info() was already asking nvidia-smi for the capability. The number was
+# just being thrown away before the decision.
+sys.path.insert(0, "tools")
+import installer as _installer  # noqa: E402
+
+for card, cap, wanted in [
+    ("GT 1030", "6.1", False),
+    ("GTX 1060", "6.1", False),
+    ("GTX 980", "5.2", False),
+    ("Tesla V100", "7.0", False),
+    ("GTX 1650", "7.5", True),
+    ("RTX 3080 Ti", "8.6", True),
+    ("RTX 4090", "8.9", True),
+]:
+    report.check(f"{card} (cap {cap}) -> {'CUDA' if wanted else 'DirectML'}",
+                 _installer.cuda_is_usable(cap), wanted)
+
+report.check("a capability nvidia-smi would not say falls back rather than guessing",
+             _installer.cuda_is_usable(""), False)
+report.check("and so does something unparseable",
+             _installer.cuda_is_usable("not-a-number"), False)
+report.check("the threshold is the one CUDA 13 actually needs",
+             _installer.MINIMUM_COMPUTE, (7, 5))
+report.check("the capability reaches the decision instead of being dropped",
+             "def install_accelerator(vendor, cap" in
+             open("tools/installer.py", encoding="utf-8").read(), True)
+
+
+report.section("automatic updates can be turned off")
+# An update that breaks a working machine and cannot be refused is worse than
+# no updater. The only way to say no used to be an environment variable nobody
+# could be expected to find.
+import updater as _updater  # noqa: E402
+import tempfile as _tempfile  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
+
+sandbox = _Path(_tempfile.mkdtemp(prefix="vvok-cfg-"))
+(sandbox / "cfg").mkdir()
+config = sandbox / "cfg" / "general_config.toml"
+real_root = _updater.ROOT
+_updater.ROOT = sandbox
+try:
+    for written, allowed in [
+        ('auto_update = true', True),
+        ('auto_update = false', False),
+        ('auto_update = "off"', False),
+        ('auto_update = "no"', False),
+        ('auto_update = 0', False),
+        ('player_tag = "#ABC"', True),
+    ]:
+        config.write_text(written + chr(10), encoding="utf-8")
+        report.check(f"{written} -> {'updates' if allowed else 'frozen'}",
+                     _updater.auto_update_wanted(), allowed)
+    config.unlink()
+    report.check("no config at all still updates, so nothing changes for anyone "
+                 "who has not asked", _updater.auto_update_wanted(), True)
+finally:
+    _updater.ROOT = real_root
+    import shutil as _shutil
+    _shutil.rmtree(sandbox, ignore_errors=True)
+
+report.check("the launcher honours the same setting",
+             "def auto_update_wanted(root)" in open("launcher.py", encoding="utf-8").read(),
+             True)
+report.check("and it ships switched on",
+             'auto_update = true' in
+             open("cfg/general_config.example.toml", encoding="utf-8").read(), True)
+
+
+report.section("the exe keeps a log, now that there is no console to watch")
+_desktop = open("desktop.py", encoding="utf-8").read()
+report.check("output is written to a file", "vvokai_log.txt" in _desktop, True)
+report.check("and to the console as well, for anybody watching one",
+             "class Tee:" in _desktop, True)
+report.check("flushed on every line, because the interesting case is a crash",
+             "self.handle.flush()" in _desktop, True)
+_launcher = open("launcher.py", encoding="utf-8").read()
+_picks = [line for line in _launcher.splitlines()
+           if "window = root" in line and "Scripts" in line]
+report.check("the launcher picks an interpreter for the app", len(_picks), 1)
+report.check("and it is the one with a console",
+             "pythonw.exe" in _picks[0], False)
+report.check("so the output has somewhere to go",
+             "python.exe" in _picks[0], True)
+
+
 sys.exit(report.finish())

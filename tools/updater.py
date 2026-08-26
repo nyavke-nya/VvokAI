@@ -191,6 +191,28 @@ def merge_json(shipped_text, current_text):
     return json.dumps(current, indent=4, ensure_ascii=False) + chr(10)
 
 
+def auto_update_wanted():
+    """Whether updating is allowed at all.
+
+    Somebody whose setup works has a real reason to freeze it, and until now
+    the only way was an environment variable nobody could be expected to
+    discover. An update that breaks a working machine and cannot be refused is
+    worse than no updater: the person who reported that one stopped using the
+    project.
+
+    Missing means yes, so nothing changes for anybody who has not asked.
+    """
+    try:
+        text = (ROOT / "cfg" / "general_config.toml").read_text(encoding="utf-8")
+    except OSError:
+        return True
+    for line in text.splitlines():
+        if line.strip().startswith("auto_update"):
+            value = line.split("=", 1)[-1].strip().strip('"').strip("'").lower()
+            return value not in ("false", "no", "off", "0")
+    return True
+
+
 def say(message):
     print(f"[update] {message}")
 
@@ -376,6 +398,9 @@ def apply(source):
 def main():
     if (ROOT / ".git").exists():
         return 0  # Development copy; its working tree IS the published version.
+    if not auto_update_wanted():
+        say("skipped (auto_update is off in cfg/general_config.toml)")
+        return 0
     if os.environ.get("VVOK_NO_UPDATE"):
         say("skipped (VVOK_NO_UPDATE is set)")
         return 0

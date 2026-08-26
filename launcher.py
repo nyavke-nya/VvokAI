@@ -119,10 +119,26 @@ def pending_swap():
     return False
 
 
-def update_self():
+def auto_update_wanted(root):
+    """Whether updating is allowed. Missing means yes; see tools/updater.py."""
+    try:
+        text = (root / "cfg" / "general_config.toml").read_text(encoding="utf-8")
+    except OSError:
+        return True
+    for line in text.splitlines():
+        if line.strip().startswith("auto_update"):
+            value = line.split("=", 1)[-1].strip().strip('"').strip("'").lower()
+            return value not in ("false", "no", "off", "0")
+    return True
+
+
+def update_self(root):
     """Download a newer VvokAI.exe if the latest release has one."""
     if not getattr(sys, "frozen", False):
         return False  # Running from source; the exe is not what is out of date.
+    if not auto_update_wanted(root):
+        say("Automatic updates are off in cfg/general_config.toml.")
+        return False
     try:
         release = fetch(f"https://api.github.com/repos/{REPO}/releases/latest")
     except (urllib.error.URLError, OSError, ValueError) as exc:
@@ -352,7 +368,7 @@ def main():
     say(f"  Files: {root}")
     say()
 
-    if update_self():
+    if update_self(root):
         return 0
 
     if not project_present(root):
@@ -390,7 +406,10 @@ def main():
         input("Press Enter to close. ")
         return 1
 
-    window = root / "venv" / "Scripts" / "pythonw.exe"
+    # python.exe rather than pythonw.exe, and not detached: the bot prints a
+    # lot and all of it is useful, so it goes to this console. desktop.py
+    # copies the same thing into vvokai_log.txt for anybody who closed it.
+    window = root / "venv" / "Scripts" / "python.exe"
     script = root / "desktop.py"
     if not window.exists() or not script.exists():
         say("The application is missing after setup, which should not happen.")
@@ -398,9 +417,21 @@ def main():
         return 1
 
     say()
-    say("Opening VvokAI.")
-    subprocess.Popen([str(window), str(script)], cwd=str(root))
-    return 0
+    say("Opening VvokAI. Leave this window open - the log goes here.")
+    say()
+    # Waited on rather than launched and forgotten, so the console stays with
+    # the program it belongs to and closing it closes the bot.
+    code = subprocess.call([str(window), str(script)], cwd=str(root))
+    if code != 0:
+        # The window died rather than being closed. Without this the console
+        # goes with it and takes the reason along - which from the outside is
+        # exactly "it starts and then everything disappears".
+        say()
+        say(f"VvokAI stopped with an error (exit code {code}).")
+        say(f"The last lines above say why, and {root / 'vvokai_log.txt'}")
+        say("has the whole run.")
+        input("Press Enter to close. ")
+    return code
 
 
 if __name__ == "__main__":

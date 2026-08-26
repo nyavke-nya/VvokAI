@@ -30,6 +30,18 @@ import urllib.request
 # The window title and what the taskbar calls it.
 APP_NAME = "VvokAI"
 
+# Everything the bot prints goes here as well as to the console. It printed a
+# great deal and all of it was useful - which brawler it picked, why it gave
+# up on one, what the state checker saw - and none of that survives being
+# started from a window with no console attached. A log nobody can find is the
+# same as no log when somebody is asking for help in Discord.
+LOG_NAME = "vvokai_log.txt"
+
+# Rewritten at each start rather than appended to. One run is what anybody
+# ever wants to read, and an append-only file from a bot that prints every
+# frame reaches hundreds of megabytes in a weekend.
+LOG_BYTES_KEPT = 8 * 1024 * 1024
+
 # Where the window starts. Big enough for the queue and the settings form
 # side by side, small enough to fit a 1366x768 laptop.
 DEFAULT_SIZE = (1280, 820)
@@ -38,6 +50,60 @@ MINIMUM_SIZE = (900, 600)
 # How long to wait for Flask to answer before giving up and saying so. It
 # imports torch and opencv on the way up, which on a cold disk is not quick.
 SERVER_TIMEOUT = 90
+
+
+class Tee:
+    """Write to the console and to the log at once.
+
+    Both, not one or the other: somebody running from source is watching the
+    console and would lose it, and somebody running the exe has no console and
+    would otherwise have nothing at all.
+    """
+
+    def __init__(self, stream, handle):
+        self.stream = stream
+        self.handle = handle
+
+    def write(self, text):
+        if self.stream is not None:
+            try:
+                self.stream.write(text)
+            except (OSError, ValueError):
+                pass
+        try:
+            self.handle.write(text)
+            # Unbuffered on purpose. The interesting case is a crash, and a
+            # buffered line is one that never reached the file.
+            self.handle.flush()
+        except (OSError, ValueError):
+            pass
+        return len(text)
+
+    def flush(self):
+        for target in (self.stream, self.handle):
+            try:
+                target.flush()
+            except (OSError, ValueError, AttributeError):
+                pass
+
+    def isatty(self):
+        return getattr(self.stream, "isatty", lambda: False)()
+
+
+def start_logging():
+    """Point stdout and stderr at the log file as well. Returns its path."""
+    from utils import resolve_project_path
+
+    path = resolve_project_path(LOG_NAME)
+    try:
+        handle = open(path, "w", encoding="utf-8", errors="replace", buffering=1)
+    except OSError:
+        return None
+
+    handle.write(f"VvokAI log - {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+    sys.stdout = Tee(sys.stdout, handle)
+    sys.stderr = Tee(sys.stderr, handle)
+    return path
 
 
 def free_port():
@@ -95,6 +161,10 @@ def main():
 
     from utils import resolve_project_path
 
+    log_path = start_logging()
+    if log_path:
+        print(f"Log: {log_path}")
+
     port = free_port()
     serve(port)
 
@@ -120,8 +190,8 @@ def main():
     application.processEvents()
 
     if not wait_for_server(port):
-        splash.setText("The interface did not start.\n"
-                       "Close this window and check the console for the reason.")
+        splash.setText("The interface did not start.\n\n"
+                       f"The reason is in {log_path or LOG_NAME}.")
         return application.exec()
 
     view = QWebEngineView()

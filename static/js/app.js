@@ -119,6 +119,7 @@ const SETTINGS_META = {
         { key: "emulator_port", label: "Emulator Port", type: "number", help: "ADB port used for the emulator instance." },
         { key: "brawl_stars_package", label: "Package Name", type: "text", help: "Android package used when restarting Brawl Stars." },
         { key: "auto_load_queue_on_startup", label: "Load Queue On Startup", type: "checkbox", help: "Load the latest saved queue when the web UI starts." },
+        { key: "auto_update", label: "Automatic Updates", type: "checkbox", help: "Check for a newer version on startup and install it. Turn this off to freeze the setup you have - an update cannot then change anything under you." },
     ],
     debug: [
         { key: "verbose_debug", label: "Verbose Debug", type: "checkbox", help: "Enable extra runtime debugging output." },
