@@ -68,10 +68,10 @@
     --success-dim: rgba(74, 222, 128, 0.13);
     --error: #f87171;
 
-    --radius-sm: 10px;
-    --radius-md: 14px;
-    --radius-lg: 20px;
-    --radius-pill: 980px;
+    --radius-sm: 0;
+    --radius-md: 0;
+    --radius-lg: 0;
+    --radius-pill: 0;
 
     /* ---- LIGHT MODEL -----------------------------------------------------
        One light, above and slightly left. Every surface below uses these, so
@@ -1952,11 +1952,13 @@ body:has(#view-dashboard.active) .queue-dock { display: none; }
    scattered. A rounded corner in this design has to earn its place, and only
    two things do - a portrait, which is an image and not a container, and a
    status dot, which is round because it is a dot. */
-*,
-*::before,
-*::after {
-    border-radius: 0;
-}
+/* The radius tokens above are all 0, which squares everything that asks for
+   one. This catches the handful of rules that hardcode a pixel value instead
+   of using a token. Written with two class selectors so it outranks them -
+   a bare `*` has zero specificity and loses to every one. */
+.app-layout [class],
+.app-layout [class]::before,
+.app-layout [class]::after { border-radius: 0; }
 
 /* Photographs of brawlers. Just enough to stop the corner pixels reading as
    a hard artefact against the row. */
@@ -1976,3 +1978,164 @@ img.avatar { border-radius: 2px; }
    track reads as a rendering fault rather than a decision. */
 ::-webkit-scrollbar-thumb,
 ::-webkit-scrollbar-track { border-radius: 999px; }
+
+
+/* ── the playstyle library ──────────────────────────────────────────────
+   It was three cards of centred prose, each with an empty bordered box inside
+   it, and a round red disc for delete. Centred body copy is hard to read at
+   any width and unreadable at 260px - the ragged left edge gives the eye
+   nothing to return to - and a box inside a box is the thing this whole
+   design is trying to stop doing. */
+.ps-library { gap: 0; align-items: stretch; }
+
+.ps-card {
+    width: 300px;
+    min-width: 300px;
+    background: transparent;
+    border: 0;
+    border-right: 1px solid var(--rule);
+    border-radius: 0;
+    padding: 20px 24px;
+    gap: 0;
+    text-align: left;
+}
+
+.ps-card:hover {
+    background: rgba(255, 255, 255, 0.02);
+    border-color: var(--rule);
+    box-shadow: none;
+    transform: none;
+}
+
+/* Centred headings over left-aligned copy is worse than either on its own.
+   The whole card reads from one edge. */
+.playstyle-showcase-head {
+    align-items: flex-start;
+    text-align: left;
+}
+
+.playstyle-showcase {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    gap: 6px;
+}
+
+.playstyle-showcase.selected {
+    background: transparent;
+    border: 0;
+    max-width: none;
+    padding: 0;
+}
+
+.playstyle-showcase-head h4 { font-weight: 600; letter-spacing: -0.015em; }
+.playstyle-showcase.selected .playstyle-showcase-head h4 { font-size: 1.5rem; letter-spacing: -0.025em; }
+
+.playstyle-showcase-head span {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: var(--text-muted);
+}
+
+.playstyle-card-description {
+    font-size: 0.8rem;
+    line-height: 1.6;
+    margin-top: 12px;
+    text-wrap: pretty;
+}
+.ps-card-head h4 { font-size: 1.02rem; font-weight: 600; letter-spacing: -0.015em; margin-bottom: 5px; }
+
+.ps-card-head span {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: var(--text-muted);
+}
+
+.ps-card .desc,
+.ps-card p {
+    font-size: 0.8rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    margin-top: 14px;
+    text-wrap: pretty;
+}
+
+/* The visual was an empty framed box saying "Universal". A framed void is
+   worse than nothing - it promises content it does not have. Where a
+   playstyle really has brawlers or modes to show, they show; where it is
+   universal, that is a line of text, not a room. */
+.ps-vis {
+    background: transparent;
+    border: 0;
+    border-top: 1px solid var(--border-light);
+    border-radius: 0;
+    aspect-ratio: auto;
+    max-height: none;
+    min-height: 0;
+    padding: 12px 0 0;
+    margin-top: 16px;
+    justify-content: flex-start;
+    gap: 10px;
+}
+
+.ps-vis.large { background: transparent; border-color: var(--border-light); box-shadow: none; min-height: 0; }
+.ps-part { justify-content: flex-start; flex: 0 1 auto; }
+.ps-div { width: 1px; height: 28px; background: var(--border-light); }
+.ps-b-img { width: 30px; height: 30px; border-radius: 2px; box-shadow: none; border: 0; }
+.ps-vis.large .ps-b-img { width: 34px; height: 34px; border-radius: 2px; }
+
+.ps-m-pill {
+    border-radius: 0;
+    border: 1px solid var(--border-light);
+    background: transparent;
+    padding: 5px 10px;
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: var(--text-secondary);
+}
+
+.ps-univ {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    letter-spacing: 0;
+}
+
+/* Destructive and selection controls: square, grey, and only under the
+   pointer. A red disc on every card reads as three errors. */
+.ps-delete-btn,
+.ps-activate-btn {
+    border-radius: 0;
+    background: transparent;
+    border: 0;
+    color: var(--text-muted);
+    width: 22px;
+    height: 22px;
+    font-weight: 400;
+    box-shadow: none;
+}
+
+.ps-delete-btn:hover,
+.ps-activate-btn:hover {
+    color: var(--text-primary);
+    background: transparent;
+    transform: none;
+    box-shadow: none;
+}
+
+
+/* Restated after the square rule, which outranks the earlier exceptions. */
+.app-layout .qi-img,
+.app-layout .sq-img,
+.app-layout .ps-b-img,
+.app-layout .b-cell img,
+.app-layout img { border-radius: 2px; }
+
+.app-layout .status-indicator,
+.app-layout .dot { border-radius: 50%; }
+
+.app-layout ::-webkit-scrollbar-thumb,
+.app-layout ::-webkit-scrollbar-track { border-radius: 999px; }
