@@ -69,6 +69,15 @@ class RuntimeControl:
     def mark_paused(self):
         self._state_callback("paused")
 
+    def note_ips(self, value) -> None:
+        try:
+            self._ips = max(0.0, float(value))
+        except (TypeError, ValueError):
+            self._ips = 0.0
+
+    def current_ips(self) -> float:
+        return self._ips
+
 
 class RuntimeManager:
     def __init__(self, pyla_main):
@@ -92,15 +101,6 @@ class RuntimeManager:
     ):
         self.queue_provider = queue_provider
         self._auth_provider = auth_provider
-
-    def note_ips(self, value) -> None:
-        try:
-            self._ips = max(0.0, float(value))
-        except (TypeError, ValueError):
-            self._ips = 0.0
-
-    def current_ips(self) -> float:
-        return self._ips
 
     def get_status(self) -> dict[str, Any]:
         with self._lock:
