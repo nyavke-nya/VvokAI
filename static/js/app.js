@@ -92,6 +92,7 @@ const state = {
     queueTargetType: "trophies",
     brawlerSearch: "",
     playerInfo: { ok: true, player_tag: "", player_name: "", stats: {} },
+    settingsTab: "general",
     historySearch: "",
     historySort: "matches",
     historyChartRange: "recent",
@@ -1507,6 +1508,17 @@ function formatResultLabel(value) {
     return String(value || "unknown").replaceAll("_", " ");
 }
 
+// The five groups, in the order they are shown. Data rather than markup: the
+// navigation, the pane and the reset button all read from the same row, so a
+// section cannot end up in the list without a page or the other way round.
+const SETTINGS_TABS = [
+    { id: "general", label: "General", blurb: "Runtime and environment" },
+    { id: "bot", label: "Behavior", blurb: "Combat and recovery" },
+    { id: "timers", label: "Timers", blurb: "Timing controls" },
+    { id: "webhook", label: "Integrations", blurb: "Webhook and alerts" },
+    { id: "debug", label: "Debug", blurb: "Diagnostics" },
+];
+
 function renderSettings() {
     const view = document.getElementById("view-settings");
 
@@ -1523,74 +1535,66 @@ function renderSettings() {
         return;
     }
 
+    // All five used to be stacked on one page: about sixty controls at once,
+    // which is a wall rather than a page. One at a time, with the others a
+    // click away.
+    const active = SETTINGS_TABS.find((tab) => tab.id === state.settingsTab)
+        || SETTINGS_TABS[0];
+
+    // Settings arrive with the bootstrap. Opening the page before that lands -
+    // which happens on a cold start, and is how this came up - used to throw
+    // inside the field map and leave the pane blank with nothing to explain
+    // it.
+    const values = (state.bootstrap.settings || {})[active.id];
+    if (!values) {
+        view.innerHTML = `<div class="set-layout"><div></div>
+            <section class="panel settings-section">
+                <p class="muted">Loading settings...</p>
+            </section></div>`;
+        return;
+    }
+
+    const fields = active.id === "timers"
+        ? SETTINGS_META.timers.map((field) =>
+            renderTimerField(field, values[field.key])).join("")
+        : SETTINGS_META[active.id].map((field) =>
+            renderSettingField(active.id, field, values[field.key])).join("");
+
     view.innerHTML = `
-        <div class="set-grid">
+        <div class="set-layout">
+            <nav class="set-nav" aria-label="Settings sections">
+                ${SETTINGS_TABS.map((tab) => `
+                    <button class="set-nav-item ${tab.id === active.id ? "is-active" : ""}"
+                            data-settings-tab="${tab.id}"
+                            aria-current="${tab.id === active.id ? "page" : "false"}">
+                        <strong>${escapeHtml(tab.label)}</strong>
+                        <span>${escapeHtml(tab.blurb)}</span>
+                    </button>
+                `).join("")}
+            </nav>
+
             <section class="panel settings-section">
                 <div class="panel-header compact-header">
                     <div>
-                        <p class="eyebrow">General</p>
-                        <h3 class="panel-title">Runtime and environment</h3>
+                        <p class="eyebrow">${escapeHtml(active.label)}</p>
+                        <h3 class="panel-title">${escapeHtml(active.blurb)}</h3>
                     </div>
-                    <button class="btn-reset-settings" data-reset-section="general">Reset Settings</button>
+                    <button class="btn-reset-settings" data-reset-section="${active.id}">Reset Settings</button>
                 </div>
-                <div class="settings-list">
-                    ${SETTINGS_META.general.map((field) => renderSettingField("general", field, state.bootstrap.settings.general[field.key])).join("")}
-                </div>
-            </section>
- 
-            <section class="panel settings-section">
-                <div class="panel-header compact-header">
-                    <div>
-                        <p class="eyebrow">Behavior</p>
-                        <h3 class="panel-title">Combat and recovery</h3>
-                    </div>
-                    <button class="btn-reset-settings" data-reset-section="bot">Reset Settings</button>
-                </div>
-                <div class="settings-list">
-                    ${SETTINGS_META.bot.map((field) => renderSettingField("bot", field, state.bootstrap.settings.bot[field.key])).join("")}
-                </div>
-            </section>
- 
-            <section class="panel settings-section">
-                <div class="panel-header compact-header">
-                    <div>
-                        <p class="eyebrow">Timers</p>
-                        <h3 class="panel-title">Timing controls</h3>
-                    </div>
-                    <button class="btn-reset-settings" data-reset-section="timers">Reset Settings</button>
-                </div>
-                <div class="settings-list">
-                    ${SETTINGS_META.timers.map((field) => renderTimerField(field, state.bootstrap.settings.timers[field.key])).join("")}
-                </div>
-            </section>
- 
-            <section class="panel settings-section">
-                <div class="panel-header compact-header">
-                    <div>
-                        <p class="eyebrow">Integrations</p>
-                        <h3 class="panel-title">Webhook</h3>
-                    </div>
-                    <button class="btn-reset-settings" data-reset-section="webhook">Reset Settings</button>
-                </div>
-                <div class="settings-list">
-                    ${SETTINGS_META.webhook.map((field) => renderSettingField("webhook", field, state.bootstrap.settings.webhook[field.key])).join("")}
-                </div>
-            </section>
- 
-            <section class="panel settings-section">
-                <div class="panel-header compact-header">
-                    <div>
-                        <p class="eyebrow">Debug</p>
-                        <h3 class="panel-title">Diagnostics</h3>
-                    </div>
-                    <button class="btn-reset-settings" data-reset-section="debug">Reset Settings</button>
-                </div>
-                <div class="settings-list">
-                    ${SETTINGS_META.debug.map((field) => renderSettingField("debug", field, state.bootstrap.settings.debug[field.key])).join("")}
-                </div>
+                <div class="settings-list">${fields}</div>
             </section>
         </div>
     `;
+
+    view.querySelectorAll("[data-settings-tab]").forEach((button) => {
+        button.addEventListener("click", () => {
+            state.settingsTab = button.dataset.settingsTab;
+            renderSettings();
+            // Otherwise a short section opens halfway down, at whatever scroll
+            // position the long one was left at.
+            view.scrollIntoView({ block: "start" });
+        });
+    });
 
     bindSettingsEvents();
 }

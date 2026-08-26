@@ -157,6 +157,8 @@
         "Map tile size in pixels used by playstyle movement and wall-aware targeting.":
             "Размер клетки карты в пикселях: по нему считается движение и обход стен.",
         "Attack Range Multiplier": "Множитель дальности атаки",
+        "Webhook and alerts": "Вебхуки и уведомления",
+        "Loading settings...": "Загрузка настроек...",
         // ---- playstyles page
         "Search by playstyle, brawler, or gamemode":
             "Поиск по стилю, бойцу или режиму",

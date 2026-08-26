@@ -1386,3 +1386,65 @@ body {
 
 .queue-item:hover .qi-del { opacity: 1; }
 .qi-del:hover { color: var(--text-primary); background: transparent; }
+
+
+/* --------------------------------------------------------------------------
+   Settings, one section at a time.
+   -------------------------------------------------------------------------- */
+.set-layout {
+    display: grid;
+    grid-template-columns: 232px minmax(0, 1fr);
+    gap: 26px;
+    align-items: start;
+}
+
+.set-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    position: sticky;
+    top: 12px;
+}
+
+.set-nav-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 12px 14px;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.15s var(--ease-soft), color 0.15s var(--ease-soft);
+}
+
+.set-nav-item strong {
+    display: block;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+}
+
+.set-nav-item span {
+    display: block;
+    font-size: 0.8rem;
+    margin-top: 2px;
+    color: var(--text-muted);
+}
+
+.set-nav-item:hover { background: var(--bg-card); }
+
+/* The selected one is a filled row, not an outlined one - a border here would
+   be the only line on the page. */
+.set-nav-item.is-active { background: var(--bg-card); }
+.set-nav-item.is-active strong { color: var(--text-primary); }
+.set-nav-item.is-active span { color: var(--text-secondary); }
+
+@media (max-width: 900px) {
+    .set-layout { grid-template-columns: 1fr; }
+    .set-nav { position: static; flex-direction: row; overflow-x: auto; }
+    .set-nav-item { min-width: 160px; }
+    .set-nav-item span { display: none; }
+}
