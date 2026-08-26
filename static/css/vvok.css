@@ -41,24 +41,26 @@
        surfaces that are only just distinguishable from one another - the
        spacing between these values IS the design. */
     --bg-void: #000000;
-    --bg-base: #000000;
-    --bg-surface: #000000;
+    --bg-base: #0a0a0b;
+    --bg-surface: #0a0a0b;
     --bg-raised: #2a2a2c;
-    --bg-card: #1d1d1f;
-    --bg-card-hover: #242426;
-    --bg-solid: #1d1d1f;
+    --bg-card: #0a0a0b;
+    --bg-card-hover: rgba(255, 255, 255, 0.02);
+    --bg-solid: #0e0e10;
 
     /* White is the accent. Not a colour - an intensity. */
-    --brand-main: #ffffff;
-    --brand-ink: #000000;
+    --brand-main: #ffb020;
+    --brand-ink: #0a0a0b;
+    --live: #ffb020;
     --brand-dim: rgba(255, 255, 255, 0.14);
     --brand-glow: rgba(255, 255, 255, 0.24);
 
-    --text-primary: #f5f5f7;
-    --text-secondary: #86868b;
-    --text-muted: #6e6e73;
+    --text-primary: #ededef;
+    --text-secondary: #9a9aa1;
+    --text-muted: #6c6c73;
 
     --border-light: rgba(255, 255, 255, 0.05);
+    --rule: rgba(255, 255, 255, 0.08);
     --border-strong: rgba(255, 255, 255, 0.12);
     --border-brand: rgba(255, 255, 255, 0.40);
 
@@ -87,9 +89,9 @@
     --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
 
-    --font-display: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
-    --font-mono: 'Cascadia Mono', 'Consolas', ui-monospace, monospace;
-    --font: -apple-system, 'SF Pro Text', 'Inter', system-ui, sans-serif;
+    --font-display: 'Archivo', 'Helvetica Neue', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Cascadia Mono', ui-monospace, monospace;
+    --font: 'Archivo', 'Helvetica Neue', system-ui, sans-serif;
 
     --sidebar-width: 232px;
 
@@ -1446,3 +1448,531 @@ body {
     .set-nav-item { min-width: 160px; }
     .set-nav-item span { display: none; }
 }
+
+
+/* ==========================================================================
+   Instrument panel
+   --------------------------------------------------------------------------
+   The program watches a screen seventy times a second and solves intercept
+   equations against what it sees. It was drawn as cards on black, which is
+   what every dark dashboard looks like. This is the version that looks like
+   what it is: a spec sheet with a live trace across the top.
+
+   Three rules hold the whole thing together.
+
+     1. No cards. Sections are separated by hairline rules and air.
+     2. Every number is a measurement, so every number is tabular monospace -
+        columns do not shift when a value updates sixty times a second.
+     3. The accent means "happening right now" and nothing else. Everything
+        static is greyscale, so the eye finds the live thing immediately.
+   ========================================================================== */
+
+/* Rule 2, applied once at the root: proportional text, tabular figures. */
+body {
+    font-family: var(--font);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+}
+
+/* Rule 1. Panels stop being objects and become regions of one sheet. */
+.panel,
+.hist-card,
+.check-card,
+.stat-card,
+.ps-card,
+.history-chart-panel,
+.history-insights-panel,
+.history-playstyle-panel,
+.history-recent-panel,
+.support-panel,
+.settings-section {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.panel { padding: 26px 36px; }
+
+/* Regions are told apart by a line, the way a document does it. */
+.set-layout { gap: 0; grid-template-columns: 250px minmax(0, 1fr); }
+.set-nav { padding: 22px 0; border-right: 1px solid var(--rule); }
+.set-nav-item { border-radius: 0; padding: 13px 28px; border-left: 2px solid transparent; }
+.set-nav-item:hover { background: rgba(255, 255, 255, 0.02); }
+.set-nav-item.is-active {
+    background: rgba(255, 255, 255, 0.02);
+    border-left-color: var(--live);
+}
+
+/* A settings row is a line of a spec sheet: what it is, what it does, and
+   its value in a column that lines up all the way down the page. */
+.setting-row,
+.check-card {
+    border-radius: 0;
+    border: 0;
+    border-bottom: 1px solid var(--border-light);
+    padding: 17px 0;
+    background: transparent;
+}
+
+.settings-list { padding: 0 36px; }
+
+.setting-row input,
+.timer-header input,
+.set-pane input,
+input[type="text"],
+input[type="number"],
+input[type="password"],
+input[type="url"] {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    border-radius: 0;
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    text-align: right;
+}
+
+input:focus { border-color: var(--live); outline: none; }
+
+/* The rail reads as an index, not a list of links. Numbers are drawn in
+   ::before so the markup does not have to carry them. */
+.nav-item {
+    border-radius: 0;
+    border-left: 2px solid transparent;
+    padding-left: 22px;
+    counter-increment: rail;
+    gap: 12px;
+}
+
+.nav-menu { counter-reset: rail; }
+
+.nav-item::before {
+    content: "0" counter(rail);
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.nav-item.active,
+.nav-item[aria-current="page"] {
+    background: rgba(255, 255, 255, 0.02);
+    border-left-color: var(--text-primary);
+}
+
+.sidebar { border-right: 1px solid var(--rule); }
+
+/* The queue is a table of sixty rows, not sixty objects. The portrait stays -
+   in a dense row it is the fastest way to find a brawler, faster than the
+   name - but it sits flat against the row instead of floating on a card. */
+.queue-strip { gap: 0; }
+
+.queue-item {
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--border-light);
+    border-left: 2px solid transparent;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 11px 14px;
+    gap: 14px;
+}
+
+.queue-item:hover {
+    background: rgba(255, 255, 255, 0.02);
+    border-color: transparent;
+    border-bottom-color: var(--border-light);
+}
+
+/* The one being pushed right now is the only coloured thing in the list. */
+.queue-item:first-child { border-left-color: var(--live); }
+.queue-item:first-child .queue-index { color: var(--live); }
+
+.qi-img {
+    border-radius: 2px;
+    box-shadow: none;
+    border: 0;
+    width: 30px;
+    height: 30px;
+}
+
+.queue-index {
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    width: auto;
+    height: auto;
+}
+
+.qi-text strong { font-weight: 500; font-size: 0.88rem; letter-spacing: -0.005em; }
+.qi-text span { font-family: var(--font-mono); font-size: 0.72rem; }
+
+/* Measurements: mono, and large enough to read across a desk. */
+.stat-value,
+.hist-stat strong,
+.history-kpi strong,
+.kpi-value,
+.metric-value,
+.timer-header input,
+.badge {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+}
+
+.badge { border-radius: 0; border: 1px solid var(--border-strong); background: transparent; color: var(--text-secondary); font-weight: 400; }
+
+/* Type. Tight tracking at display sizes only - body text set this tight is
+   harder to read, not more designed. */
+.page-title { font-size: 2.15rem; letter-spacing: -0.03em; font-weight: 600; }
+.panel-title { font-size: 1.3rem; letter-spacing: -0.022em; font-weight: 600; }
+
+.eyebrow {
+    font-family: var(--font);
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
+/* Buttons are rectangles that fill, not objects that float. */
+.btn, .btn-primary, .btn-reset-settings {
+    border-radius: 0;
+    box-shadow: none;
+    font-weight: 500;
+}
+
+.btn-primary { background: var(--text-primary); color: var(--bg-base); border: 0; }
+.btn-primary:hover { background: #ffffff; }
+
+.btn-start, .start-button, .btn-primary.btn-start { border-radius: 0; }
+
+/* Rule 3: the only moving thing is the thing that is live. */
+.slider::-webkit-slider-thumb { border-radius: 0; background: var(--live); }
+
+/* The trace itself. It lives in the header, spans whatever width is left
+   between the title and the status, and is one pixel tall. */
+.trace {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-grow: 1;
+    min-width: 0;
+    margin: 0 28px;
+}
+
+.trace-line { flex-grow: 1; height: 26px; min-width: 0; display: block; }
+.trace-base { stroke: rgba(255, 255, 255, 0.07); stroke-width: 1; }
+
+.trace-path {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.18);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+    transition: stroke 0.3s var(--ease-soft);
+}
+
+.trace-path.is-live { stroke: var(--live); }
+
+.trace-readout { text-align: right; flex-shrink: 0; }
+
+.trace-readout strong {
+    display: block;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 1rem;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--text-muted);
+}
+
+.trace-readout strong.is-live { color: var(--live); }
+
+.trace-readout span {
+    display: block;
+    font-size: 0.6rem;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-top: 1px;
+}
+
+.topbar { align-items: center; border-bottom: 1px solid var(--rule); }
+
+/* ── the dashboard as a sheet ────────────────────────────────────────────
+   Regions, not cards: a command band, a strip of measurements, two columns.
+   Every division is a hairline; every measurement is monospace. */
+.sheet { display: flex; flex-direction: column; }
+
+.command-band {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 32px;
+    padding: 26px 0 28px;
+    border-bottom: 1px solid var(--rule);
+}
+
+.command-title { font-size: 2.4rem; font-weight: 600; letter-spacing: -0.035em; line-height: 1; }
+.command-sub { font-size: 0.84rem; color: var(--text-secondary); margin-top: 9px; }
+.command-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.command-actions .eyebrow { display: none; }
+
+.measure-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border-bottom: 1px solid var(--rule);
+}
+
+.measure { padding: 20px 26px 20px 0; }
+.measure + .measure { padding-left: 26px; border-left: 1px solid var(--border-light); }
+.measure-label { font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+
+.measure-value {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 1.6rem;
+    letter-spacing: -0.02em;
+    margin-top: 8px;
+}
+
+.measure-value.is-live { color: var(--live); }
+
+.sheet-cols { display: grid; grid-template-columns: 380px minmax(0, 1fr); }
+.sheet-col-left { padding: 24px 32px 24px 0; border-right: 1px solid var(--rule); }
+.sheet-col-right { padding: 18px 0 24px 32px; }
+.sheet-col-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 14px; border-bottom: 1px solid var(--rule); }
+
+.sheet-col .panel-title { margin-top: 10px; }
+.sheet-col .meta { font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); margin-top: 6px; }
+.sheet-col .desc { font-size: 0.84rem; color: var(--text-secondary); line-height: 1.62; margin-top: 16px; text-wrap: pretty; }
+.sheet-browse { margin-top: 18px; }
+
+.spec-list { margin-top: 24px; border-top: 1px solid var(--rule); }
+.spec-row { display: flex; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid var(--border-light); font-size: 0.78rem; color: var(--text-secondary); }
+.spec-value { font-family: var(--font-mono); color: var(--text-primary); }
+.spec-value.is-live { color: var(--live); }
+
+.sheet-queue { display: flex; flex-direction: column; }
+
+.sq-row {
+    display: grid;
+    grid-template-columns: 26px 30px minmax(0, 1fr) 74px 74px 60px;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border-light);
+    border-left: 2px solid transparent;
+    padding-left: 10px;
+}
+
+/* Only the brawler being pushed right now carries the accent. */
+.sq-row.is-current { border-left-color: var(--live); }
+.sq-row.is-current .sq-index { color: var(--live); }
+
+.sq-index { font-family: var(--font-mono); font-size: 0.64rem; color: var(--text-muted); }
+.sq-img { width: 30px; height: 30px; border-radius: 2px; object-fit: cover; }
+.sq-name { font-size: 0.86rem; font-weight: 500; text-transform: capitalize; }
+.sq-now, .sq-target { font-family: var(--font-mono); font-size: 0.74rem; text-align: right; }
+.sq-now { color: var(--text-secondary); }
+.sq-target { color: var(--text-muted); }
+
+.sq-bar { justify-self: end; width: 54px; height: 2px; background: rgba(255, 255, 255, 0.10); position: relative; }
+.sq-bar span { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(255, 255, 255, 0.34); }
+.sq-row.is-current .sq-bar span { background: var(--live); }
+
+.sheet-more, .sheet-empty { font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); padding-top: 14px; }
+
+.btn-quiet { background: transparent; border: 0; color: var(--text-secondary); padding: 6px 0; }
+.btn-quiet:hover { color: var(--text-primary); background: transparent; }
+
+/* The rail's number sits before the icon, with room of its own. */
+.nav-item::before { width: 15px; }
+.badge { white-space: nowrap; }
+
+/* ── the two controls in the command band ───────────────────────────────
+   They were a white slab with an oversized play glyph next to a box with two
+   unrelated words crammed into it. Both are controls of the same rank, so
+   they get the same height, the same type size and a real gap - one filled,
+   one outlined, which is the whole difference between them. */
+.command-actions {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.command-actions .start-hero,
+.command-actions .runtime-hero { display: contents; }
+
+/* The note under the button and the empty-queue prompt belong on a panel with
+   room for them, not wedged into a 48px band. */
+.command-actions .runtime-note,
+.command-actions p { display: none; }
+
+.command-actions .btn-huge,
+.command-actions .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    height: 46px;
+    padding: 0 34px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    border-radius: 0;
+    box-shadow: none;
+    width: auto;
+    min-width: 0;
+}
+
+/* The glyph reads as a mark beside the word, not as the button's subject. */
+.command-actions .btn-huge svg,
+.command-actions .btn-primary svg {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+}
+
+/* Schedule: a label and its current value, stacked, in an outlined control of
+   the same height. Two lines with a hierarchy instead of two words in a row. */
+.command-actions .runtime-schedule {
+    display: flex;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.command-actions .runtime-schedule > summary {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    height: 46px;
+    padding: 0 18px;
+    border: 1px solid var(--border-strong);
+    background: transparent;
+    border-radius: 0;
+    cursor: pointer;
+    list-style: none;
+    box-sizing: border-box;
+}
+
+.command-actions .runtime-schedule > summary::-webkit-details-marker { display: none; }
+.command-actions .runtime-schedule > summary:hover { border-color: var(--text-secondary); }
+
+.command-actions .sched-title {
+    font-size: 0.58rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    line-height: 1;
+}
+
+.command-actions .sched-summary {
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    line-height: 1;
+    white-space: nowrap;
+}
+
+/* Opened, the whole thing drops below the summary as one panel - not three
+   absolutely positioned siblings landing on each other, which is what made it
+   unclosable: the toggle ended up underneath its own content. */
+.command-actions .runtime-schedule { position: relative; }
+
+.command-actions .sched-panel { display: none; }
+
+.command-actions .runtime-schedule[open] .sched-panel {
+    display: block;
+    position: absolute;
+    right: 0;
+    top: 52px;
+    z-index: 30;
+    width: 380px;
+    background: var(--bg-solid);
+    border: 1px solid var(--rule);
+    padding: 18px;
+    box-sizing: border-box;
+}
+
+.command-actions .sched-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.command-actions .sched-fields label { display: flex; flex-direction: column; gap: 6px; }
+.command-actions .sched-fields span { font-size: 0.72rem; color: var(--text-secondary); }
+.command-actions .sched-fields small { font-size: 0.66rem; color: var(--text-muted); }
+
+.command-actions .sched-toggle {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-top: 16px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+.command-actions .sched-help {
+    font-size: 0.7rem;
+    line-height: 1.55;
+    color: var(--text-muted);
+    margin-top: 14px;
+}
+
+.command-actions .sched-close {
+    width: 100%;
+    margin-top: 16px;
+    padding: 10px;
+    border: 1px solid var(--border-strong);
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 0.8rem;
+}
+
+.command-actions .sched-close:hover { border-color: var(--text-secondary); }
+
+/* The dock repeats the queue that now sits in the right column. One list is
+   enough; the dock stays on every other page, where there is no other copy. */
+body:has(#view-dashboard.active) .queue-dock { display: none; }
+
+
+/* ── one corner rule for the whole interface ────────────────────────────
+   109 border-radius declarations were spread across two stylesheets, and
+   chasing them one screenshot at a time was never going to end - the footer
+   button, the player-tag card and the Target Trophies toggle were only the
+   three that happened to be visible.
+
+   So: everything is square, and the exceptions are named here rather than
+   scattered. A rounded corner in this design has to earn its place, and only
+   two things do - a portrait, which is an image and not a container, and a
+   status dot, which is round because it is a dot. */
+*,
+*::before,
+*::after {
+    border-radius: 0;
+}
+
+/* Photographs of brawlers. Just enough to stop the corner pixels reading as
+   a hard artefact against the row. */
+.qi-img,
+.sq-img,
+.brawler-card img,
+.hero-link-icon img,
+img.avatar { border-radius: 2px; }
+
+/* A dot is a dot. */
+.status-indicator,
+.dot,
+.sched-toggle input[type="checkbox"],
+.queue-item .status-dot { border-radius: 50%; }
+
+/* Scrollbars keep their pill, because a square scrollbar thumb in a 4px
+   track reads as a rendering fault rather than a decision. */
+::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-track { border-radius: 999px; }

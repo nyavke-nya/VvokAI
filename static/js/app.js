@@ -269,6 +269,7 @@ function updateChrome() {
 
     document.getElementById("sidebarVersion").textContent = version;
     document.getElementById("sidebarStatus").textContent = runtimeLabel(runtime);
+    pushIpsSample(Number(runtime.ips));
     document.getElementById("runtimeStatusPill").textContent = runtimeLabel(runtime);
     document.getElementById("runtimeStatusPill").className = `badge ${runtimeBadgeClass(runtime)}`;
     document.getElementById("authStatusPill").textContent = auth.required ? (auth.authenticated ? "Authenticated" : "Login required") : "Local mode";
@@ -436,6 +437,7 @@ function renderRuntimeSchedule() {
                 <span class="sched-title">Schedule</span>
                 <span class="sched-summary">${summary}</span>
             </summary>
+            <div class="sched-panel">
             <div class="sched-fields">
                 <label>
                     <span>Pause at this time</span>
@@ -461,6 +463,8 @@ function renderRuntimeSchedule() {
             game as a crash and reopens it. Trophies and the queue are saved. The
             window may cross midnight, so 23:30 to 08:00 works. Leave both empty
             and it runs until you stop it yourself.</p>
+            <button type="button" class="btn sched-close">Done</button>
+            </div>
         </details>`;
 }
 
@@ -526,48 +530,110 @@ function renderDashboard() {
         `;
     }
 
-    view.innerHTML = `
-        <div class="dash-grid">
-            <div class="hero-row">
-                <section class="panel panel-accent start-hero">
-                    <p class="eyebrow">Runtime</p>
-                    ${runtimePanel}
-                </section>
+    const stats = state.bootstrap.history?.summary || {};
+    const measure = (label, value, live) => `
+        <div class="measure">
+            <div class="measure-label">${escapeHtml(label)}</div>
+            <div class="measure-value${live ? " is-live" : ""}">${escapeHtml(String(value))}</div>
+        </div>`;
 
-                <section class="panel act-ps">
-                    <div class="panel-header compact-header">
-                        <div>
-                            <p class="ps-eyebrow">Active Playstyle</p>
-                            <h3>${escapeHtml(activePlaystyle?.name || "No playstyle selected")}</h3>
-                            <p class="meta">${escapeHtml(metaLine(activePlaystyle))}</p>
-                        </div>
-                        <button id="browsePlaystylesBtn" class="btn">Browse</button>
-                    </div>
-                    <p class="desc">${escapeHtml(activePlaystyle?.description || "Select a playstyle to surface its brawlers and gamemodes here.")}</p>
-                    ${renderPlaystyleVisual(activePlaystyle, true)}
-                </section>
+    // The layout is the design: a command band across the top, a strip of
+    // measurements under it, then the two things you actually read - what it
+    // is playing, and what is left to play. No cards, no boxes; the rules
+    // between regions do that work.
+    view.innerHTML = `
+        <div class="sheet">
+            <div class="command-band">
+                <div class="command-state">
+                    <div class="command-title">${escapeHtml(runtimeLabel(runtime))}</div>
+                    <div class="command-sub">${queue.length} ${queue.length === 1 ? "brawler" : "brawlers"} queued</div>
+                </div>
+                <div class="command-actions">${runtimePanel}</div>
             </div>
 
-            <section class="panel support-panel">
-                <div class="support-copy">
-                    <div>
-                        <p class="eyebrow">Community</p>
-                        <h3 class="panel-title support-title">VvokAI &mdash; projectile dodging, aimed fire, smooth movement</h3>
-                        <p class="support-lead">A fork of PylaAI with a camera-compensated projectile tracker, lead-solving aimed shots and map-boundary detection. Questions and builds on Telegram.</p>
-                    </div>
-                </div>
+            <div class="measure-strip">
+                ${measure("Matches", stats.total_matches ?? 0)}
+                ${measure("Won", stats.wins ?? 0)}
+                ${measure("Win rate", stats.win_rate != null ? stats.win_rate + "%" : "—", true)}
+                ${measure("Queue", queue.length)}
+            </div>
 
-                <div class="link-row support-link-row">
-                    ${renderSupportLink("https://t.me/nyavke", "Telegram @nyavke", "Questions, builds and updates", "telegram")}
-                    ${renderSupportLink("https://github.com/PylaAI/PylaAI", "Upstream PylaAI", "The original project this fork is built on (CC BY-NC 4.0)", "github")}
-                </div>
-            </section>
+            <div class="sheet-cols">
+                <section class="sheet-col sheet-col-left">
+                    <p class="eyebrow">Active playstyle</p>
+                    <h3 class="panel-title">${escapeHtml(activePlaystyle?.name || "No playstyle selected")}</h3>
+                    <p class="meta">${escapeHtml(metaLine(activePlaystyle))}</p>
+                    <p class="desc">${escapeHtml(activePlaystyle?.description || "Select a playstyle to surface its brawlers and gamemodes here.")}</p>
+                    <button id="browsePlaystylesBtn" class="btn sheet-browse">Browse playstyles</button>
+
+                    <div class="spec-list">
+                        <div class="spec-row"><span>Dodging</span><span class="spec-value${runtime.state === "running" ? " is-live" : ""}">${runtime.state === "running" ? "RUNNING" : "IDLE"}</span></div>
+                        <div class="spec-row"><span>Telegram</span><span class="spec-value"><a href="https://t.me/nyavke" target="_blank" rel="noreferrer">@nyavke</a></span></div>
+                        <div class="spec-row"><span>Upstream</span><span class="spec-value"><a href="https://github.com/PylaAI/PylaAI" target="_blank" rel="noreferrer">PylaAI</a></span></div>
+                    </div>
+                </section>
+
+                <section class="sheet-col sheet-col-right">
+                    <div class="sheet-col-head">
+                        <p class="eyebrow">Queue</p>
+                        <button id="goToBrawlersBtn" class="btn btn-quiet">Edit</button>
+                    </div>
+                    ${renderSheetQueue(queue)}
+                </section>
+            </div>
         </div>
     `;
 
     document.getElementById("browsePlaystylesBtn")?.addEventListener("click", () => setView("playstyles"));
     document.getElementById("goToBrawlersBtn")?.addEventListener("click", () => setView("queue"));
     bindRuntimeButtons();
+    bindScheduleDismiss();
+}
+
+function bindScheduleDismiss() {
+    const panel = document.querySelector(".runtime-schedule");
+    if (!panel || panel.dataset.dismissBound) return;
+    panel.dataset.dismissBound = "1";
+
+    panel.querySelector(".sched-close")?.addEventListener("click", () => {
+        panel.removeAttribute("open");
+    });
+
+    document.addEventListener("click", (event) => {
+        if (panel.hasAttribute("open") && !panel.contains(event.target)) {
+            panel.removeAttribute("open");
+        }
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") panel.removeAttribute("open");
+    });
+}
+
+function renderSheetQueue(queue) {
+    if (!queue.length) {
+        return `<p class="sheet-empty">Nothing queued. Add brawlers from the Brawlers tab.</p>`;
+    }
+
+    return `<div class="sheet-queue">${queue.slice(0, 9).map((item, index) => {
+        const type = item.type === "wins" ? "wins" : "trophies";
+        const current = Number(type === "wins" ? item.wins : item.trophies) || 0;
+        const target = Number(item.push_until) || 0;
+        // Progress from where it started is unknowable, so the bar shows how
+        // much of the target is already banked - which is what people read it
+        // as anyway.
+        const done = target > 0 ? Math.max(0, Math.min(100, (current / target) * 100)) : 0;
+        return `
+            <div class="sq-row${index === 0 ? " is-current" : ""}">
+                <span class="sq-index">${String(index + 1).padStart(2, "0")}</span>
+                <img class="sq-img" src="${escapeHtml(item.icon_url)}" alt="${escapeHtml(item.brawler)}">
+                <span class="sq-name">${escapeHtml(item.brawler)}</span>
+                <span class="sq-now">${current}</span>
+                <span class="sq-target">${target}</span>
+                <span class="sq-bar"><span style="width: ${done.toFixed(1)}%"></span></span>
+            </div>`;
+    }).join("")}</div>
+    ${queue.length > 9 ? `<p class="sheet-more">${queue.length - 9} more</p>` : ""}`;
 }
 
 function renderSupportLink(url, title, subtitle = "", icon = "link") {
@@ -2634,6 +2700,34 @@ async function fetchJSON(url, options = {}, allowFailure = false) {
     }
 
     return payload;
+}
+
+// The trace keeps the last sixty readings and redraws them as one polyline.
+// Sixty is what fits across the header at one sample per pixel-ish; older
+// than that is history, and history has its own page.
+const IPS_HISTORY = 60;
+const ipsSamples = [];
+
+function pushIpsSample(value) {
+    const path = document.getElementById("ipsTracePath");
+    const readout = document.getElementById("ipsValue");
+    if (!path || !readout) return;
+
+    const running = Number.isFinite(value) && value > 0;
+    ipsSamples.push(running ? value : 0);
+    while (ipsSamples.length > IPS_HISTORY) ipsSamples.shift();
+
+    // Scaled against the highest reading in the window rather than a fixed
+    // ceiling, so the shape stays readable whatever the machine manages.
+    const peak = Math.max(20, ...ipsSamples);
+    const step = 600 / Math.max(1, IPS_HISTORY - 1);
+    path.setAttribute("points", ipsSamples
+        .map((v, i) => `${(i * step).toFixed(1)},${(24 - (v / peak) * 22).toFixed(1)}`)
+        .join(" "));
+    path.classList.toggle("is-live", running);
+
+    readout.textContent = running ? value.toFixed(1) : "——";
+    readout.classList.toggle("is-live", running);
 }
 
 function showToast(message, variant = "success") {

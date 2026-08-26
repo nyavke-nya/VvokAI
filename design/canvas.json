@@ -1,0 +1,12 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1280, "h": 820, "title": "Runtime" },
+    { "file": "Brawlers.dc.html", "x": 1400, "y": 0, "w": 1280, "h": 820, "title": "Queue" },
+    { "file": "Settings.dc.html", "x": 2800, "y": 0, "w": 1280, "h": 820, "title": "Settings" }
+  ],
+  "annotations": [
+    { "id": "concept", "x": 0, "y": -190, "w": 620, "text": "Instrument panel, not dashboard.\n\nNo cards anywhere - sections are separated by hairline rules and air, like a spec sheet. All measurements set in tabular monospace so columns do not shift as values update. One accent, amber, used ONLY on things changing right now: the live IPS trace, the brawler being pushed, a running tracker. Everything static is greyscale." },
+    { "id": "trace", "x": 660, "y": -190, "w": 620, "text": "The hairline across the header is the loop's real frame rate, one pixel tall. It is data, not ornament - flat means idle. It is also the only thing on the page that moves." }
+  ],
+  "launch": { "view": "canvas" }
+}

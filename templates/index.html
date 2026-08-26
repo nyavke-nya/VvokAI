@@ -9,7 +9,7 @@
     <!-- Space Grotesk carries the display type; if the machine is offline it
          falls back to Bahnschrift, which ships with Windows, so the interface
          keeps its shape either way. The mono stack is entirely local. -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="icon" type="image/png" href="/api/assets/support/logo.png">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/vvok.css') }}">
@@ -49,6 +49,20 @@
             <header class="topbar">
                 <div>
                     <h2 id="pageTitle" class="page-title">Dashboard</h2>
+                </div>
+
+                <!-- The loop's real frame rate, one pixel tall, across the
+                     header. Data rather than ornament: flat means idle, and it
+                     is the only thing in the interface that moves. -->
+                <div class="trace">
+                    <svg id="ipsTrace" class="trace-line" viewBox="0 0 600 26" preserveAspectRatio="none" aria-hidden="true">
+                        <line x1="0" y1="13" x2="600" y2="13" class="trace-base"></line>
+                        <polyline id="ipsTracePath" class="trace-path" points=""></polyline>
+                    </svg>
+                    <div class="trace-readout">
+                        <strong id="ipsValue">&mdash;&mdash;</strong>
+                        <span>IPS</span>
+                    </div>
                 </div>
 
                 <div class="header-actions">

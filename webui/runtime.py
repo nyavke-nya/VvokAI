@@ -18,6 +18,10 @@ class RuntimeControl:
         # loop and every interruptible sleep all funnel through it.
         self._schedule = schedule
         self._schedule_reason = ""
+        # The loop's most recent frame rate. Written by the play loop, read
+        # by the panel for the header trace - it is the one number that says
+        # the machine is alive, and it was only ever printed to a console.
+        self._ips = 0.0
         # A lone stop time means "the next one", so it needs to know when the
         # run began. Without this the same time reads as "any moment past it",
         # which fires instantly whenever the run starts later in the day.
@@ -89,6 +93,15 @@ class RuntimeManager:
         self.queue_provider = queue_provider
         self._auth_provider = auth_provider
 
+    def note_ips(self, value) -> None:
+        try:
+            self._ips = max(0.0, float(value))
+        except (TypeError, ValueError):
+            self._ips = 0.0
+
+    def current_ips(self) -> float:
+        return self._ips
+
     def get_status(self) -> dict[str, Any]:
         with self._lock:
             thread_alive = self._thread.is_alive() if self._thread else False
@@ -96,9 +109,11 @@ class RuntimeManager:
                 self._state = "idle"
                 self._thread = None
                 self.rt_control = None
+            control = self.rt_control
             return {
                 "state": self._state,
                 "is_running": thread_alive,
+                "ips": control.current_ips() if (thread_alive and control) else 0.0,
                 "last_error": self._last_error,
             }
 

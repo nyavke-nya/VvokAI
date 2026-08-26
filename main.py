@@ -439,7 +439,12 @@ def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
                 if abs(s_time - t_now) > 1:
                     elapsed = t_now - s_time
                     if elapsed > 0:
-                        print(f"{c / elapsed:.2f} IPS")
+                        rate = c / elapsed
+                        print(f"{rate:.2f} IPS")
+                        # Same number the console has always shown, now also
+                        # reaching the header trace.
+                        if runtime_control:
+                            runtime_control.note_ips(rate)
                     s_time = t_now
                     c = 0
                 self.start_crash_watchdog()
