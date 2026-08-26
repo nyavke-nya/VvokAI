@@ -41,34 +41,35 @@
        surfaces that are only just distinguishable from one another - the
        spacing between these values IS the design. */
     --bg-void: #000000;
-    --bg-base: #050506;
-    --bg-surface: #0a0a0c;
-    --bg-raised: #101013;
-    --bg-card: rgba(22, 22, 26, 0.55);
-    --bg-card-hover: rgba(30, 30, 35, 0.68);
-    --bg-solid: #131316;
+    --bg-base: #000000;
+    --bg-surface: #000000;
+    --bg-raised: #2a2a2c;
+    --bg-card: #1d1d1f;
+    --bg-card-hover: #242426;
+    --bg-solid: #1d1d1f;
 
     /* White is the accent. Not a colour - an intensity. */
     --brand-main: #ffffff;
-    --brand-dim: rgba(255, 255, 255, 0.10);
-    --brand-glow: rgba(255, 255, 255, 0.30);
+    --brand-ink: #000000;
+    --brand-dim: rgba(255, 255, 255, 0.14);
+    --brand-glow: rgba(255, 255, 255, 0.24);
 
     --text-primary: #f5f5f7;
-    --text-secondary: #9a9aa2;
-    --text-muted: #62626b;
+    --text-secondary: #86868b;
+    --text-muted: #6e6e73;
 
-    --border-light: rgba(255, 255, 255, 0.09);
-    --border-strong: rgba(255, 255, 255, 0.18);
+    --border-light: rgba(255, 255, 255, 0.05);
+    --border-strong: rgba(255, 255, 255, 0.12);
     --border-brand: rgba(255, 255, 255, 0.40);
 
     --success: #4ade80;
     --success-dim: rgba(74, 222, 128, 0.13);
     --error: #f87171;
 
-    --radius-sm: 8px;
-    --radius-md: 12px;
-    --radius-lg: 18px;
-    --radius-pill: 9999px;
+    --radius-sm: 10px;
+    --radius-md: 14px;
+    --radius-lg: 20px;
+    --radius-pill: 980px;
 
     /* ---- LIGHT MODEL -----------------------------------------------------
        One light, above and slightly left. Every surface below uses these, so
@@ -79,27 +80,16 @@
 
     /* Stacked shadows. Tight contact shadow first (grounds the object), then
        progressively wider ambient ones (separates it from the page). */
-    --lift-1:
-        0 1px 1px rgba(0, 0, 0, 0.55),
-        0 2px 6px rgba(0, 0, 0, 0.40),
-        0 8px 20px rgba(0, 0, 0, 0.28);
-    --lift-2:
-        0 1px 2px rgba(0, 0, 0, 0.60),
-        0 4px 10px rgba(0, 0, 0, 0.45),
-        0 14px 34px rgba(0, 0, 0, 0.38),
-        0 30px 70px rgba(0, 0, 0, 0.30);
-    --lift-3:
-        0 2px 4px rgba(0, 0, 0, 0.65),
-        0 8px 18px rgba(0, 0, 0, 0.50),
-        0 24px 56px rgba(0, 0, 0, 0.45),
-        0 48px 110px rgba(0, 0, 0, 0.40);
+    --lift-1: 0 1px 2px rgba(0, 0, 0, 0.30);
+    --lift-2: 0 2px 6px rgba(0, 0, 0, 0.35);
+    --lift-3: 0 12px 32px rgba(0, 0, 0, 0.45);
 
     --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
 
-    --font-display: 'Space Grotesk', 'Bahnschrift', 'Inter', system-ui, sans-serif;
+    --font-display: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
     --font-mono: 'Cascadia Mono', 'Consolas', ui-monospace, monospace;
-    --font: 'Inter', -apple-system, system-ui, sans-serif;
+    --font: -apple-system, 'SF Pro Text', 'Inter', system-ui, sans-serif;
 
     --sidebar-width: 232px;
 
@@ -123,47 +113,15 @@ body {
    depth rather than being a picture behind the content: a deep vignette, two
    pools of light, an engineering grid, and grain on top.
    -------------------------------------------------------------------------- */
+/* One flat ground. There were three stacked radial gradients, a grid, and a
+   parallax transform driven from JavaScript - motion behind everything you
+   are trying to read. */
 #vfx-bg {
     position: fixed;
-    inset: -6%;
+    inset: 0;
     pointer-events: none;
     z-index: -1;
-    background:
-        radial-gradient(120% 80% at 50% -20%, rgba(255, 255, 255, 0.055), transparent 60%),
-        radial-gradient(90% 70% at 100% 110%, rgba(255, 255, 255, 0.035), transparent 55%),
-        radial-gradient(140% 120% at 50% 50%, transparent 25%, rgba(0, 0, 0, 0.85) 100%),
-        var(--bg-base);
-    /* Furthest layer, so it moves least. */
-    transform: translate3d(calc(var(--px) * 0.4), calc(var(--py) * 0.4), 0);
-    transition: transform 0.6s var(--ease-out);
-}
-
-#vfx-bg::before {
-    /* The grid sits closer to the viewer than the light, so it parallaxes
-       harder. Masked to fade out at the edges - a grid that runs to the frame
-       looks like wallpaper; one that dissolves looks like space. */
-    content: "";
-    position: absolute;
-    inset: 0;
-    background:
-        linear-gradient(rgba(255, 255, 255, 0.030) 1px, transparent 1px) 0 0 / 100% 76px,
-        linear-gradient(90deg, rgba(255, 255, 255, 0.030) 1px, transparent 1px) 0 0 / 76px 100%;
-    -webkit-mask-image: radial-gradient(85% 75% at 50% 40%, #000 20%, transparent 100%);
-    mask-image: radial-gradient(85% 75% at 50% 40%, #000 20%, transparent 100%);
-    transform: translate3d(calc(var(--px) * 1.6), calc(var(--py) * 1.6), 0);
-    transition: transform 0.5s var(--ease-out);
-}
-
-#vfx-bg::after {
-    /* Grain. This is not decoration: without it the big radial gradients above
-       band into visible steps on an 8-bit panel, which is exactly what makes a
-       dark interface look cheap. */
-    content: "";
-    position: absolute;
-    inset: 0;
-    opacity: 0.30;
-    mix-blend-mode: overlay;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
+    background: var(--bg-base);
 }
 
 /* --------------------------------------------------------------------------
@@ -184,80 +142,21 @@ body {
 .history-recent-panel,
 .support-panel {
     position: relative;
-    isolation: isolate;
-    background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0.012) 42%, rgba(255, 255, 255, 0) 100%),
-        var(--bg-card);
+    background: var(--bg-card);
     border: 0;
     border-radius: var(--radius-lg);
-    backdrop-filter: blur(22px) saturate(0.75);
-    -webkit-backdrop-filter: blur(22px) saturate(0.75);
-    box-shadow:
-        inset 0 1px 0 var(--rim-top),
-        inset 0 -1px 0 var(--rim-bottom),
-        var(--lift-2);
-    transition:
-        transform 0.42s var(--ease-out),
-        box-shadow 0.42s var(--ease-out),
-        background 0.42s var(--ease-out);
+    box-shadow: none;
+    transition: background 0.2s var(--ease-soft);
 }
 
-/* The gradient hairline. A plain 1px border is the same brightness all the way
-   round, which cannot happen to a real edge under a real light; this one is
-   bright along the top-left and dies out toward the bottom-right. Drawn with a
-   masked pseudo-element so it stays exactly one pixel at any radius. */
-.panel::before,
-.hist-card::before,
-.modal::before,
-.ps-card::before,
-.support-panel::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(
-        150deg,
-        rgba(255, 255, 255, 0.34) 0%,
-        rgba(255, 255, 255, 0.10) 28%,
-        rgba(255, 255, 255, 0.04) 55%,
-        rgba(255, 255, 255, 0.12) 100%
-    );
-    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
-    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    mask-composite: exclude;
-    pointer-events: none;
-    z-index: 1;
-}
+/* The border is a border now. What was here drew a gradient hairline with a
+   masked pseudo-element, to fake an edge catching the light - which a flat
+   surface does not need and which cost a stacking context on every card. */
 
-/* Specular highlight. Tracks the cursor via --mx/--my, which vvok-fx.js writes
-   per-element. This is the effect that sells the material: glass responds to
-   where you are looking, painted cardboard does not. */
-.panel::after,
-.hist-card::after,
-.ps-card::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: radial-gradient(
-        420px circle at var(--mx) var(--my),
-        rgba(255, 255, 255, 0.09),
-        rgba(255, 255, 255, 0.03) 32%,
-        transparent 62%
-    );
-    opacity: 0;
-    transition: opacity 0.45s var(--ease-soft);
-    pointer-events: none;
-    z-index: 0;
-}
-
-.panel:hover::after,
-.hist-card:hover::after,
-.ps-card:hover::after {
-    opacity: 1;
-}
+/* The cursor-tracked highlight is gone too. It was the most expensive thing
+   on the page - a repaint of every visible card on every mouse move - and it
+   is exactly the sort of decoration that reads as busy rather than as polish.
+   vvok-fx.js still writes --mx/--my; nothing consumes them now. */
 
 .panel:hover,
 .hist-card:hover,
@@ -269,7 +168,6 @@ body {
         inset 0 1px 0 var(--rim-top-strong),
         inset 0 -1px 0 var(--rim-bottom),
         var(--lift-3);
-    transform: translateY(-3px);
 }
 
 /* Content has to sit above the specular layer. */
@@ -386,7 +284,6 @@ body {
     color: var(--text-muted);
     letter-spacing: 0.26em;
     font-size: 0.58rem;
-    text-transform: uppercase;
 }
 
 /* --------------------------------------------------------------------------
@@ -400,8 +297,6 @@ body {
         linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.008) 45%, rgba(255, 255, 255, 0)),
         rgba(10, 10, 12, 0.72);
     border-right: 0;
-    backdrop-filter: blur(26px) saturate(0.8);
-    -webkit-backdrop-filter: blur(26px) saturate(0.8);
     box-shadow:
         inset -1px 0 0 rgba(255, 255, 255, 0.07),
         6px 0 28px rgba(0, 0, 0, 0.55);
@@ -518,7 +413,6 @@ body {
 
 .btn:hover {
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.06));
-    transform: translateY(-2px);
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.26),
         inset 0 0 0 1px rgba(255, 255, 255, 0.14),
@@ -635,12 +529,11 @@ body {
 .ps-eyebrow,
 .queue-title,
 .eyebrow {
-    font-family: var(--font-mono);
+    font-family: var(--font);
     color: var(--text-muted);
-    letter-spacing: 0.24em;
-    text-transform: uppercase;
-    font-size: 0.61rem;
-    font-weight: 500;
+    letter-spacing: 0.08em;
+    font-size: 0.6rem;
+    font-weight: 600;
 }
 
 .act-ps h3 {
@@ -662,7 +555,6 @@ body {
 }
 
 .hero-link:hover {
-    transform: translateY(-3px);
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.02));
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.2),
@@ -774,7 +666,6 @@ body {
 .badge {
     font-family: var(--font-mono);
     letter-spacing: 0.1em;
-    text-transform: uppercase;
     font-size: 0.63rem;
     font-weight: 600;
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.015));
@@ -935,8 +826,6 @@ textarea:focus {
    -------------------------------------------------------------------------- */
 .queue-dock {
     background: rgba(8, 8, 10, 0.86);
-    backdrop-filter: blur(26px) saturate(0.8);
-    -webkit-backdrop-filter: blur(26px) saturate(0.8);
     border-top: 1px solid var(--border-light);
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.08),
@@ -955,7 +844,6 @@ textarea:focus {
 }
 
 .queue-item:hover {
-    transform: translateY(-3px);
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.025));
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.2),
@@ -1004,8 +892,6 @@ textarea:focus {
    -------------------------------------------------------------------------- */
 .modal-overlay {
     background: rgba(0, 0, 0, 0.72);
-    backdrop-filter: blur(8px) saturate(0.7);
-    -webkit-backdrop-filter: blur(8px) saturate(0.7);
     animation: vvok-fade 0.28s var(--ease-soft) both;
 }
 
@@ -1047,7 +933,6 @@ textarea:focus {
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.16),
         var(--lift-3);
-    backdrop-filter: blur(18px);
 }
 
 /* --------------------------------------------------------------------------
@@ -1157,7 +1042,6 @@ textarea:focus {
 .profile-label {
     font-size: 0.72rem;
     letter-spacing: 0.08em;
-    text-transform: uppercase;
     opacity: 0.65;
 }
 
@@ -1190,7 +1074,6 @@ textarea:focus {
     text-align: left;
     font-size: 0.7rem;
     letter-spacing: 0.08em;
-    text-transform: uppercase;
     opacity: 0.6;
     padding: 6px 10px;
     white-space: nowrap;
@@ -1321,7 +1204,6 @@ textarea:focus {
 .sched-title {
     font-size: 0.72rem;
     letter-spacing: 0.08em;
-    text-transform: uppercase;
     opacity: 0.7;
 }
 
@@ -1375,3 +1257,132 @@ textarea:focus {
 }
 
 .sched-toggle input { margin-top: 2px; }
+
+
+/* --------------------------------------------------------------------------
+   Apple-dark type. Large, tight, and only two weights - anything set at
+   several weights and several tracking values at once reads as busy however
+   flat the surfaces underneath it are.
+   -------------------------------------------------------------------------- */
+.page-title,
+.panel-title,
+h1, h2, h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.022em;
+    font-weight: 600;
+}
+
+.page-title { font-size: 2.6rem; letter-spacing: -0.03em; line-height: 1.06; }
+.panel-title { font-size: 1.35rem; }
+
+body {
+    background: var(--bg-base);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Sentence case, no tracking, no mono. The uppercase wide-tracked version was
+   shouting a label that only needs to be findable. */
+.eyebrow {
+    font-family: var(--font);
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: var(--text-secondary);
+}
+
+/* Pills, filled blue, no shadow and no border. */
+.btn,
+.btn-primary,
+.btn-reset-settings,
+.badge {
+    border-radius: var(--radius-pill);
+    box-shadow: none;
+}
+
+.btn-primary {
+    background: var(--brand-main);
+    color: var(--brand-ink);
+    border: 0;
+    font-weight: 500;
+}
+
+.btn-primary:hover { background: #d8d8dc; }
+
+/* Room to breathe. Apple's layouts are mostly space, and space is the one
+   thing this interface never had - every panel was pressed against the next. */
+.panel { padding: 28px 30px; }
+.set-grid { gap: 22px; }
+
+
+/* --------------------------------------------------------------------------
+   Monochrome. Black, white, and the greys between - no accent colour at all,
+   which is the version of this look that never dates and never fights the
+   content. Emphasis comes from weight and size.
+   -------------------------------------------------------------------------- */
+.sidebar {
+    background: var(--bg-void);
+    border-right: 0;
+}
+
+/* Nothing is uppercase any more. Wide-tracked capitals were doing the job of
+   a heading at the size of a caption, in eleven different places. */
+.brand-subtitle,
+.ps-eyebrow,
+.queue-title,
+.ps-univ,
+.ps-lib-title,
+.hist-stat label,
+.hist-more,
+.history-kpi label,
+.input-group span {
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+/* A white pill with black text, at a size that does not shout. It was a
+   2.45rem 900-weight capital in a 20px box. */
+.btn-start,
+.start-button,
+.btn-primary.btn-start {
+    font-size: 1.15rem;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    text-transform: none;
+    padding: 15px 44px;
+    border-radius: var(--radius-pill);
+}
+
+/* Destructive controls are grey until you are on them. A red dot on every row
+   of a list reads as twelve errors. */
+.queue-card .remove,
+.queue-remove,
+.q-remove,
+[class*="remove"] {
+    background: transparent;
+    color: var(--text-muted);
+    box-shadow: none;
+}
+
+[class*="remove"]:hover { color: var(--text-primary); }
+
+
+/* The delete control on a queue row. It was a filled red disc on every card,
+   so a list of sixty brawlers read as sixty errors. Grey until the pointer is
+   on it, which is when it matters. */
+.qi-del {
+    background: transparent;
+    border: 0;
+    color: var(--text-muted);
+    font-size: 1.05rem;
+    line-height: 1;
+    box-shadow: none;
+    opacity: 0;
+    transition: opacity 0.15s var(--ease-soft), color 0.15s var(--ease-soft);
+}
+
+.queue-item:hover .qi-del { opacity: 1; }
+.qi-del:hover { color: var(--text-primary); background: transparent; }
