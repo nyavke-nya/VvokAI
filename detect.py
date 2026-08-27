@@ -192,35 +192,68 @@ class Detect:
         except Exception as exc:
             print(f"Could not preload CUDA libraries ({exc}); GPU may be unavailable.")
 
+    def provider_order(self):
+        """Which execution providers to try, best first.
+
+        A list rather than a single choice, because whether a provider works
+        cannot be known until a session is actually built on it - see
+        load_model.
+        """
+        available = ort.get_available_providers()
+        if self.preferred_device not in ("gpu", "auto"):
+            return ["CPUExecutionProvider"]
+
+        order = [name for name in ("CUDAExecutionProvider", "DmlExecutionProvider",
+                                   "AzureExecutionProvider")
+                 if name in available]
+        order.append("CPUExecutionProvider")
+        return order
+
     def load_model(self):
         self.preload_cuda_libraries()
-        available_providers = ort.get_available_providers()
-        if self.preferred_device == "gpu" or self.preferred_device == "auto":
-            if "CUDAExecutionProvider" in available_providers:
-                onnx_provider = "CUDAExecutionProvider"
-                print("Using CUDA GPU")
-            elif "DmlExecutionProvider" in available_providers:
-                onnx_provider = "DmlExecutionProvider"
-                print("Using GPU")
-            elif "AzureExecutionProvider" in available_providers:
-                onnx_provider = "AzureExecutionProvider"
-            else:
-                print("Using CPU as no GPU provider found")
-                onnx_provider = "CPUExecutionProvider"
-
-        else:
-            onnx_provider = "CPUExecutionProvider"
 
         so = ort.SessionOptions()
         so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         so.intra_op_num_threads = self.optimal_threads_amount
         so.inter_op_num_threads = self.optimal_threads_amount
-        model = ort.InferenceSession(self.model_path, sess_options=so, providers=[onnx_provider])
 
-        # get_available_providers() only reports what onnxruntime was BUILT
-        # with, not what actually loaded. A provider whose DLLs are missing is
-        # dropped silently at session creation, so the requested provider and
-        # the running one can differ. Report the one that is really in use.
+        # Try each provider in turn instead of committing to one.
+        #
+        # get_available_providers() reports what onnxruntime was BUILT with,
+        # not what will run. There are two ways that bites. A provider whose
+        # DLLs are missing is dropped silently at session creation, so the
+        # requested provider and the running one differ - that is what the
+        # warning below is for. But a provider whose DLLs are all present and
+        # whose GPU is simply too old to have kernels in the build RAISES:
+        #
+        #   CUDA failure 8: the function requires an architectural feature
+        #   absent from the device; GPU=0 ... cublasCreate(&cublas_handle_)
+        #
+        # which used to take the whole bot down at startup with a wall of
+        # onnxruntime internals. A card too old for CUDA is a reason to use
+        # DirectML or the CPU, not a reason to refuse to run.
+        order = self.provider_order()
+        problems = []
+        model = None
+        for index, onnx_provider in enumerate(order):
+            try:
+                model = ort.InferenceSession(self.model_path, sess_options=so,
+                                             providers=[onnx_provider])
+                break
+            except Exception as exc:
+                problems.append((onnx_provider, exc))
+                remaining = order[index + 1:]
+                print(f"{self.provider_label(onnx_provider)} could not start "
+                      f"({self.short_reason(exc)})."
+                      + (f" Trying {self.provider_label(remaining[0])}."
+                         if remaining else ""))
+
+        if model is None:
+            reasons = "; ".join(f"{name}: {self.short_reason(exc)}"
+                                for name, exc in problems)
+            raise RuntimeError(f"No execution provider could load "
+                               f"{self.model_path} ({reasons})")
+
         active_provider = model.get_providers()[0] if model.get_providers() else onnx_provider
         if active_provider != onnx_provider:
             print(
@@ -229,7 +262,32 @@ class Detect:
             )
             onnx_provider = active_provider
 
+        print(f"Using {self.provider_label(onnx_provider)}")
         return model, onnx_provider
+
+    @staticmethod
+    def provider_label(provider):
+        return {
+            "CUDAExecutionProvider": "CUDA GPU",
+            "DmlExecutionProvider": "DirectML GPU",
+            "AzureExecutionProvider": "Azure",
+            "CPUExecutionProvider": "CPU",
+        }.get(provider, provider)
+
+    @staticmethod
+    def short_reason(exc):
+        """One readable line out of an onnxruntime exception.
+
+        Their messages are several lines of build paths and source locations
+        around one sentence that says what is wrong. Keep that sentence.
+        """
+        text = " ".join(str(exc).split())
+        for marker in ("CUDA failure", "Failed to load", "LoadLibrary failed",
+                       "requires", "is missing"):
+            position = text.find(marker)
+            if position >= 0:
+                return text[position:position + 160]
+        return text[:160]
 
     def preprocess_image(self, img):
         h, w = img.shape[:2]

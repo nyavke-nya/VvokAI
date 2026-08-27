@@ -96,6 +96,9 @@ const state = {
     historySearch: "",
     historySort: "matches",
     historyChartRange: "recent",
+    historySignature: "",
+    queueRenderDeferred: false,
+    lastHistoryPoll: 0,
     playstyleSearch: "",
     playstyleFilter: "all",
     pendingSaves: {},
@@ -244,6 +247,9 @@ function bindTooltipEvents() {
 async function bootstrap() {
     const payload = await fetchJSON("/api/bootstrap");
     state.bootstrap = payload;
+    // Seed the fingerprint from what just arrived, so the first poll does not
+    // rebuild a grid that is already on screen and identical.
+    state.historySignature = historySignature(payload.history);
     state.selectedBrawler = state.selectedBrawler || payload.queue[0]?.brawler || payload.brawlers[0]?.name || "";
     syncQueueFormState();
 
@@ -719,8 +725,26 @@ function getPlayerPillState() {
     };
 }
 
-function renderQueue() {
+function renderQueue(force = false) {
     const view = document.getElementById("view-queue");
+
+    // Never rebuild this while someone is filling it in.
+    //
+    // renderQueue replaces the whole view, editor included, and seventeen
+    // places call it - the running-queue poll every 1.2 s, the player-info
+    // fetch, the tag debounce. So a win streak typed into the box was thrown
+    // away before Save could be pressed, which reads exactly like "I add them
+    // and it removes them". Callers that must redraw - after a save, after
+    // picking a different brawler - pass force.
+    if (!force) {
+        const focused = document.activeElement;
+        if (focused && view.contains(focused)
+            && ["INPUT", "SELECT", "TEXTAREA"].includes(focused.tagName)) {
+            state.queueRenderDeferred = true;
+            return;
+        }
+    }
+    state.queueRenderDeferred = false;
     const selectedBrawler = state.selectedBrawler || state.bootstrap.brawlers[0]?.name || "";
     const selectedCard = state.bootstrap.brawlers.find((item) => item.name === selectedBrawler);
     const hasValidPlayerInfo = Boolean(state.playerInfo.player_tag && Object.keys(state.playerInfo.stats || {}).length);
@@ -1216,7 +1240,7 @@ function renderHistory() {
                     <div>
                         <p class="eyebrow">Match History</p>
                         <h3 class="panel-title history-total">${summary.total_matches} total matches</h3>
-                        <p class="meta-line history-summary-meta">${summary.wins} wins | ${summary.losses} losses | ${formatPercent(summary.win_rate)} win rate | ${formatPercent(summary.loss_rate)} loss rate</p>
+                        <p class="meta-line history-summary-meta">${summary.wins} wins | ${summary.losses} losses | ${summary.draws || 0} draws | ${formatPercent(summary.win_rate)} win rate</p>
                     </div>
                 <div class="toolbar-actions history-actions">
                     <div class="tb-search compact-search">
@@ -1473,9 +1497,20 @@ function renderHistoryChartPanel(item) {
     `;
 }
 
+// How many matches the scrollable "Recent" curve draws. The width is 64px per
+// match, so this is also a width cap: without one, a brawler with 269 tracked
+// matches produced a 17,152px SVG with a circle and a tooltip on every point,
+// and opening that card locked the tab up. "All" is unaffected - it squeezes
+// the whole history into a fixed 640px and only draws the end dots.
+const RECENT_CHART_POINTS = 60;
+
+// How often the history is refetched while the bot runs. The runtime status
+// is polled every 1.2 s because it changes that fast; a match result does not.
+const HISTORY_POLL_MS = 15000;
+
 function renderTrophyChart(points) {
     const showAll = state.historyChartRange === "all";
-    const chartPoints = points;
+    const chartPoints = showAll ? points : points.slice(-RECENT_CHART_POINTS);
     if (chartPoints.length < 2) {
         return `<div class="history-chart-empty">Not enough trophy data to draw a curve yet.</div>`;
     }
@@ -1525,7 +1560,10 @@ function renderTrophyChart(points) {
             </svg>
             </div>
             <div class="history-chart-meta">
-                <span>${escapeHtml(chartPoints[0].label || "First match")}</span>
+                <span>${escapeHtml(chartPoints[0].label || "First match")}${
+                    !showAll && points.length > chartPoints.length
+                        ? ` (last ${chartPoints.length} of ${points.length})`
+                        : ""}</span>
                 <strong>${last.value} trophies</strong>
                 <span>${escapeHtml(chartPoints[chartPoints.length - 1].label || "Latest match")}</span>
             </div>
@@ -1947,7 +1985,14 @@ async function refreshRuntimeState() {
 
         if (result.runtime.is_running) {
             await refreshRunningQueue();
-            await refreshMatchHistory();
+            // Not on every tick. A match takes minutes, the history payload is
+            // ~290 KB built by re-parsing the whole CSV, and asking for it
+            // every 1.2 s was the tab freezing rather than anything on screen.
+            const now = Date.now();
+            if (now - (state.lastHistoryPoll || 0) >= HISTORY_POLL_MS) {
+                state.lastHistoryPoll = now;
+                await refreshMatchHistory();
+            }
         }
 
         if (prevState !== result.runtime.state) {
@@ -1969,13 +2014,24 @@ async function refreshRuntimeState() {
     }
 }
 
+function historySignature(history) {
+    const summary = (history && history.summary) || {};
+    return [summary.total_matches, summary.wins, summary.losses, summary.draws,
+            (history && history.items || []).length].join("/");
+}
+
 async function refreshMatchHistory() {
     try {
         const result = await fetchJSON("/api/history", {}, true);
         if (!result || !result.items) return;
 
-        const prevItems = state.bootstrap.history?.items || [];
-        if (JSON.stringify(result.items) === JSON.stringify(prevItems)) return;
+        // A fingerprint, not a deep compare. JSON.stringify on both sides of
+        // this was ~580 KB of string building per poll, on the main thread,
+        // to answer a question the totals already answer: the history only
+        // ever grows, so a changed count is a new match and nothing else.
+        const signature = historySignature(result);
+        if (signature === state.historySignature) return;
+        state.historySignature = signature;
 
         state.bootstrap.history = result;
 
@@ -1984,7 +2040,7 @@ async function refreshMatchHistory() {
             const totalEl = document.querySelector("#view-history .history-total");
             const metaEl = document.querySelector("#view-history .history-summary-meta");
             if (totalEl) totalEl.textContent = `${summary.total_matches} total matches`;
-            if (metaEl) metaEl.textContent = `${summary.wins} wins | ${summary.losses} losses | ${formatPercent(summary.win_rate)} win rate | ${formatPercent(summary.loss_rate)} loss rate`;
+            if (metaEl) metaEl.textContent = `${summary.wins} wins | ${summary.losses} losses | ${summary.draws || 0} draws | ${formatPercent(summary.win_rate)} win rate`;
 
             const grid = document.querySelector("#view-history .hist-grid");
             if (grid) grid.innerHTML = renderHistoryGrid();
@@ -2052,7 +2108,7 @@ function bindQueueEvents() {
     document.querySelectorAll("[data-target-type]").forEach((button) => {
         button.addEventListener("click", () => {
             state.queueTargetType = button.dataset.targetType;
-            renderQueue();
+            renderQueue(true);
         });
     });
 
@@ -2064,7 +2120,7 @@ function bindBrawlerCardEvents() {
         button.addEventListener("click", () => {
             state.selectedBrawler = button.dataset.brawler;
             syncQueueFormState();
-            renderQueue();
+            renderQueue(true);
         });
     });
 }
@@ -2085,7 +2141,7 @@ function bindQueueStripEvents() {
                 }
 
                 renderDashboard();
-                renderQueue();
+                renderQueue(true);
                 renderQueueDock();
                 showToast(`${brawler} removed from queue.`, "success");
             } catch (error) {
@@ -2161,7 +2217,7 @@ async function clearQueue() {
         state.bootstrap.queue = result.items || [];
         syncQueueFormState();
         renderDashboard();
-        renderQueue();
+        renderQueue(true);
         renderQueueDock();
         showToast("Queue cleared.", "success");
     } catch (error) {
@@ -2179,13 +2235,13 @@ async function persistQueueOrder(order) {
 
         state.bootstrap.queue = result.items;
         renderDashboard();
-        renderQueue();
+        renderQueue(true);
         renderQueueDock();
         showToast("Queue reordered.", "success");
     } catch (error) {
         showToast(error.message || "Unable to reorder queue.", "error");
         renderDashboard();
-        renderQueue();
+        renderQueue(true);
         renderQueueDock();
     }
 }
@@ -2415,7 +2471,7 @@ async function saveQueueItem() {
         state.bootstrap.queue = result.items;
         syncQueueFormState();
         renderDashboard();
-        renderQueue();
+        renderQueue(true);
         renderQueueDock();
         showToast(`${payload.brawler} saved to queue.`, "success");
     } catch (error) {
@@ -2433,7 +2489,7 @@ async function pushAllToDefaultTarget() {
     state.bootstrap.queue = result.items || [];
     syncQueueFormState();
     renderDashboard();
-    renderQueue();
+    renderQueue(true);
     renderQueueDock();
     showToast(`${result.added_count || 0} brawler${result.added_count === 1 ? "" : "s"} below target queued.`, "success");
 }
@@ -2453,7 +2509,7 @@ async function savePlayOrder(playOrder) {
             syncQueueFormState();
             renderDashboard();
             if (state.currentView === "queue") {
-                renderQueue();
+                renderQueue(true);
             }
             renderQueueDock();
         }
@@ -2577,7 +2633,7 @@ async function handleQueueImport(event) {
 
     syncQueueFormState();
     renderDashboard();
-    renderQueue();
+    renderQueue(true);
     renderQueueDock();
     showToast(`${state.bootstrap.queue.length} queue item${state.bootstrap.queue.length === 1 ? "" : "s"} loaded.`, "success");
     event.target.value = "";
@@ -2597,7 +2653,7 @@ function selectBrawlerFromQueue(brawlerName) {
     state.selectedBrawler = catalogEntry?.name || brawlerName;
     syncQueueFormState();
     setView("queue");
-    renderQueue();
+    renderQueue(true);
     requestAnimationFrame(() => {
         document.querySelector(`[data-brawler="${cssEscape(state.selectedBrawler)}"]`)?.scrollIntoView({ block: "center", inline: "nearest" });
     });

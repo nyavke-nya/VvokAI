@@ -2139,3 +2139,107 @@ img.avatar { border-radius: 2px; }
 
 .app-layout ::-webkit-scrollbar-thumb,
 .app-layout ::-webkit-scrollbar-track { border-radius: 999px; }
+
+
+/* ==========================================================================
+   The rail
+   --------------------------------------------------------------------------
+   Six links were six near-identical greys. Measured against the page, the
+   inactive items sat at #9a9aa1 and the active one at #ffffff over a 2% wash
+   nobody can see - so the only thing saying which section you were in was a
+   two-pixel bar, and the index numbers, which are the one part of a rail that
+   could tell the items apart, were all the same dim grey.
+
+   Three things fix it without turning the panel into a paintbox.
+
+   First, real steps. Resting, hover and current have to be three distances
+   apart, not two shades of the same one. Resting drops to muted so hover has
+   somewhere to go.
+
+   Second, the accent does the pointing. Everywhere else in this design amber
+   means "happening right now", and the page you are looking at is exactly
+   that - so the marker and the current item's number are amber, and nothing
+   else in the rail is. One coloured thing on screen is findable from across
+   a desk; six shades of grey are not.
+
+   Third, the number carries weight when it is yours. Same figure, heavier and
+   lit, so the rail reads as an index with your place marked rather than a
+   list of labels.
+   ========================================================================== */
+
+.nav-item {
+    color: #7c7c84;
+    font-weight: 500;
+    transition:
+        color 0.18s var(--ease-soft),
+        background 0.18s var(--ease-soft),
+        border-color 0.18s var(--ease-soft);
+}
+
+.nav-item::before {
+    color: rgba(255, 255, 255, 0.38);
+    font-weight: 400;
+    transition: color 0.18s var(--ease-soft), font-weight 0.18s var(--ease-soft);
+}
+
+.nav-item:hover {
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.035);
+    transform: none;
+}
+
+.nav-item:hover::before { color: var(--text-secondary); }
+
+.nav-item.active,
+.nav-item[aria-current="page"] {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.055);
+    border-left-color: var(--live);
+    font-weight: 600;
+}
+
+.nav-item.active::before,
+.nav-item[aria-current="page"]::before {
+    color: var(--live);
+    font-weight: 700;
+}
+
+/* The sidebar needs to read as a column, not as the same field the content
+   sits on. A hair darker than the page, and the rule on its edge sharpened. */
+.sidebar {
+    background: #070708;
+    border-right: 1px solid var(--border-strong);
+    /* The old lit-edge treatment left an inset white line one pixel inside
+       this border - two edges where the design wants one. */
+    box-shadow: none;
+}
+
+.sidebar-footer { border-top: 1px solid var(--rule); }
+
+/* The settings sub-nav is the same component one level down, and had the same
+   problem: five items, one background wash between them. */
+.set-nav-item strong {
+    color: #7c7c84;
+    font-weight: 500;
+    transition: color 0.18s var(--ease-soft);
+}
+
+.set-nav-item span { color: rgba(255, 255, 255, 0.38); }
+
+.set-nav-item:hover {
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.set-nav-item:hover strong { color: var(--text-secondary); }
+
+.set-nav-item.is-active {
+    background: rgba(255, 255, 255, 0.055);
+    border-left-color: var(--live);
+}
+
+.set-nav-item.is-active strong {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.set-nav-item.is-active span { color: var(--text-muted); }

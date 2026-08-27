@@ -51,14 +51,25 @@ def _rate(part, whole):
 
 
 def _read(rows):
-    """Raw rows to a clean list of matches, dropping nothing."""
+    """Raw rows to a clean list of matches.
+
+    Only genuinely empty lines are dropped. The history file ends up with them
+    - a stray newline, an interrupted write - and one was being read as a
+    match with no brawler and no result, which landed in the draw column and
+    put the profile one match ahead of every other view of the same file.
+    """
     matches = []
     for row in rows or []:
+        brawler = str(row.get("brawler_name") or "").strip()
+        result = str(row.get("result") or "").strip().lower()
+        if not brawler and not result:
+            continue
+
         modes = str(row.get("playstyle_gamemodes") or "").strip()
         matches.append({
             "at": _parse_time(row.get("date_time")),
-            "brawler": (str(row.get("brawler_name") or "").strip() or "unknown"),
-            "result": str(row.get("result") or "").strip().lower(),
+            "brawler": brawler or "unknown",
+            "result": result,
             "delta": _number(row.get("trophy_delta")),
             "trophies": _number(row.get("current_trophies")),
             "playstyle": (str(row.get("playstyle_name") or "").strip() or "unknown"),

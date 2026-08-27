@@ -904,6 +904,7 @@ class WebDataService:
                     "brawler": brawler,
                     "wins": 0,
                     "losses": 0,
+                    "draws": 0,
                     "total_matches": 0,
                     "trophy_delta": 0,
                     "matches": [],
@@ -944,7 +945,10 @@ class WebDataService:
                     item["wins"] += 1
                 elif result == "defeat":
                     item["losses"] += 1
+                elif result:
+                    item["draws"] += 1
                 else:
+                    # No result at all is a blank line, not a match.
                     continue
 
                 item["total_matches"] += 1
@@ -957,6 +961,7 @@ class WebDataService:
 
             wins = int(stats["wins"])
             losses = int(stats["losses"])
+            draws = int(stats["draws"])
             matches = sorted(stats["matches"], key=lambda match: match["date_sort"] or match["date_time"])
             trophy_points = [
                 {
@@ -979,6 +984,7 @@ class WebDataService:
                 "icon_url": f"/api/assets/brawlers/{brawler}",
                 "wins": wins,
                 "losses": losses,
+                "draws": draws,
                 "total_matches": total_matches,
                 "win_rate": round((wins / total_matches) * 100, 1),
                 "loss_rate": round((losses / total_matches) * 100, 1),
@@ -1030,10 +1036,12 @@ class WebDataService:
         total_matches = sum(item["total_matches"] for item in items)
         wins = sum(item["wins"] for item in items)
         losses = sum(item["losses"] for item in items)
+        draws = sum(item.get("draws", 0) for item in items)
         summary = {
             "total_matches": total_matches,
             "wins": wins,
             "losses": losses,
+            "draws": draws,
             "tracked_brawlers": len(items),
         }
         if total_matches:

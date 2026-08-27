@@ -38,6 +38,11 @@ class _SuppressAssetsGetting(logging.Filter):
             and '304 -' in message
         )
 
+class _SuppressDevServerWarning(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "This is a development server" not in record.getMessage()
+
+
 class _SupressHistoryPolling(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         message = record.getMessage()
@@ -56,6 +61,28 @@ def _configure_request_logging():
         werkzeug_logger.addFilter(_SuppressAssetsGetting())
     if not any(isinstance(log_filter, _SupressHistoryPolling) for log_filter in werkzeug_logger.filters):
         werkzeug_logger.addFilter(_SupressHistoryPolling())
+
+    _silence_dev_server_banner()
+
+
+def _silence_dev_server_banner():
+    """Drop Flask's "this is a development server" wall of text.
+
+    It is written for someone deploying a website, and this is a panel for a
+    bot on the machine it runs on - there is no production deployment to move
+    to. People read it as something being wrong with the program and ask what
+    they did; that is the only effect it has ever had here.
+    """
+    try:
+        from flask import cli
+    except Exception:
+        pass
+    else:
+        cli.show_server_banner = lambda *args, **kwargs: None
+
+    # Werkzeug does not only print it - it also logs it, so silencing the
+    # Flask banner alone leaves the line in the log file and the console.
+    logging.getLogger("werkzeug").addFilter(_SuppressDevServerWarning())
 
 
 def _start_discord_bot_thread(app: Flask):

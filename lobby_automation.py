@@ -20,14 +20,31 @@ class LobbyAutomation:
         self.window_controller = window_controller
         self.verbose_debug = config_bool(load_toml_as_dict("cfg/debug_settings.toml").get('verbose_debug'), False)
 
+    # The idle box at the reference 1920x1080, in that resolution's pixels.
+    IDLE_REGION = (460, 400, 1460, 675)
+
     def check_for_idle(self, frame):
         wr = self.window_controller.width_ratio
         hr = self.window_controller.height_ratio
-        x_start, x_end = int(460 * wr), int(1460 * wr)
-        y_start, y_end = int(400 * hr), int(675 * hr)
+        left, top, right, bottom = self.IDLE_REGION
+        x_start, x_end = int(left * wr), int(right * wr)
+        y_start, y_end = int(top * hr), int(bottom * hr)
         gray_pixels = count_hsv_pixels(frame[y_start:y_end, x_start:x_end], (0, 0, 10), (30, 60, 67))
-        if self.verbose_debug: print(f"gray pixels (if > {self.gray_pixels_treshold} then bot will try to unidle) :", gray_pixels)
-        if gray_pixels > self.gray_pixels_treshold:
+
+        # The region scales with the window but the threshold was an absolute
+        # pixel count measured at 1920x1080, so on any smaller emulator it
+        # asked for more grey than the box could hold and the reconnect prompt
+        # was never clicked - the bot just sat there until somebody pressed it
+        # by hand. Scale the count by how much smaller the box got, so the
+        # configured number keeps meaning what it meant when it was measured.
+        reference_area = (right - left) * (bottom - top)
+        actual_area = max((x_end - x_start) * (y_end - y_start), 1)
+        threshold = self.gray_pixels_treshold * (actual_area / reference_area)
+
+        if self.verbose_debug:
+            print(f"gray pixels (if > {threshold:.0f} then bot will try to unidle) :",
+                  gray_pixels)
+        if gray_pixels > threshold:
             self.window_controller.click(self.idle_reconnect_coords[0], self.idle_reconnect_coords[1], already_include_ratio=False)
             print("Idle detected, clicking to unidle")
 

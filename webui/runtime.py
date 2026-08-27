@@ -62,13 +62,6 @@ class RuntimeControl:
         """Why the schedule is holding, or "" when it is not."""
         return self._schedule_reason
 
-    def mark_running(self):
-        self._schedule_reason = ""
-        self._state_callback("running")
-
-    def mark_paused(self):
-        self._state_callback("paused")
-
     def note_ips(self, value) -> None:
         try:
             self._ips = max(0.0, float(value))
@@ -77,6 +70,13 @@ class RuntimeControl:
 
     def current_ips(self) -> float:
         return self._ips
+
+    def mark_running(self):
+        self._schedule_reason = ""
+        self._state_callback("running")
+
+    def mark_paused(self):
+        self._state_callback("paused")
 
 
 class RuntimeManager:
