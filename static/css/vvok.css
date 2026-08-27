@@ -1506,16 +1506,33 @@ body {
 
 /* A settings row is a line of a spec sheet: what it is, what it does, and
    its value in a column that lines up all the way down the page. */
+/* A settings row is inset from its own hover fill, not flush with it.
+   Zero side padding here read fine while the row was transparent, but the
+   whole row is a <label> - clicking anywhere toggles it - so it lights up
+   under the pointer, and the fill then ran edge to edge with the label
+   jammed against one side and the checkbox against the other. The 14px comes
+   back out of the list's padding, so the text stays on the same line it was
+   on; only the fill is wider. */
 .setting-row,
 .check-card {
     border-radius: 0;
     border: 0;
     border-bottom: 1px solid var(--border-light);
-    padding: 17px 0;
+    padding: 17px 14px;
     background: transparent;
 }
 
-.settings-list { padding: 0 36px; }
+/* The section already pads 36px; the list padding on top of that was pushing
+   every row 36px right of the heading it belongs to. Nothing, and a negative
+   margin instead, so the hover fill reaches past the text on both sides while
+   the text itself lands on the heading's line. */
+.settings-list {
+    padding: 0;
+    margin: 0 -14px;
+}
+
+.check-card:hover,
+.setting-row:hover { background: rgba(255, 255, 255, 0.035); }
 
 .setting-row input,
 .timer-header input,
