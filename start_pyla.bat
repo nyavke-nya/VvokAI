@@ -148,8 +148,21 @@ if not "%SETUP_CODE%"=="0" (
 echo.
 echo [INFO] Launching VvokAI...
 echo.
+:: Exit code 10 means "an update was installed, start me again". The bot picks
+:: updates up while it runs now, and a running Python process cannot reload the
+:: modules it is already executing - so it asks to be relaunched instead. Only
+:: ever after an update that actually installed; a check that finds nothing
+:: leaves the bot alone entirely.
+:RUN_VVOK
 venv\Scripts\python.exe main.py
 set "RUN_CODE=%errorlevel%"
+
+if "%RUN_CODE%"=="10" (
+    echo.
+    echo [INFO] Update installed. Restarting VvokAI...
+    echo.
+    goto :RUN_VVOK
+)
 
 if not "%RUN_CODE%"=="0" (
     echo.

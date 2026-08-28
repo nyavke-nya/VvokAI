@@ -558,6 +558,41 @@ def find_open_port(start_port=5185, host="127.0.0.1"):
     raise RuntimeError("Could not find an open localhost port for the Flask UI.")
 
 
+def start_auto_update(app):
+    """Poll for updates while the bot runs, and resume farming after one.
+
+    Nothing happens on a poll that finds no update - the point of an hourly
+    check is that it stays invisible until there is a reason not to be. The
+    bot is only stopped, and the process only restarted, once one has actually
+    installed.
+    """
+    from auto_update import AutoUpdater, take_resume_marker
+
+    manager = app.config.get("runtime_manager")
+    discord_bot = app.config.get("discord_bot")
+    if manager is None:
+        return None
+
+    if take_resume_marker():
+        # The last shutdown was ours and the bot was working when it happened,
+        # so put it back to work. There is no auto-start otherwise, and a
+        # machine left farming overnight would come back up idle.
+        def resume():
+            time.sleep(5)  # let the panel and the queue finish loading
+            try:
+                result = manager.start_current_queue(discord_bot)
+                print(f"Auto-update: resumed after the update "
+                      f"({result.get('message', 'started')}).")
+            except Exception as exc:
+                print(f"Auto-update: could not resume after the update ({exc}).")
+
+        threading.Thread(target=resume, daemon=True, name="vvok-resume").start()
+
+    updater = AutoUpdater(manager, discord_bot)
+    updater.start()
+    return updater
+
+
 def open_browser_later(local_url):
     def _open():
         time.sleep(1.5)
@@ -575,4 +610,5 @@ if __name__ == "__main__":
     local_url = f"http://127.0.0.1:{port}"
     print(f"VvokAI web UI: {local_url}")
     open_browser_later(local_url)
+    start_auto_update(app)
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)

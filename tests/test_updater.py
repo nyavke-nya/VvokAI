@@ -5,6 +5,7 @@ The exception is calibration - how sure the wall model must be, how big a tile
 reads on screen - which is a measurement of the game rather than a preference,
 and should reach everyone. These check that the line between the two holds.
 """
+import os
 import sys
 
 from _harness import Failures, read_source
@@ -251,6 +252,107 @@ report.check("and it is the one with a console",
              "pythonw.exe" in _picks[0], False)
 report.check("so the output has somewhere to go",
              "python.exe" in _picks[0], True)
+
+
+report.section("updating while the bot is running")
+# The updater only ever ran at startup, which is no use to somebody pushing
+# trophies for two days. The rule that makes an hourly check safe is that a
+# check finding nothing must cost nothing: no stop, no restart, no file moved.
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(REPO, "src"))
+import auto_update as _au  # noqa: E402
+
+
+class _Manager:
+    def __init__(self, running):
+        self.running = running
+        self.calls = []
+
+    def get_status(self):
+        return {"is_running": self.running}
+
+    def stop(self):
+        self.calls.append("stop")
+        self.running = False
+        return {"ok": True}
+
+    def start_current_queue(self, bot):
+        self.calls.append("start")
+        self.running = True
+        return {"ok": True, "message": "Started."}
+
+
+def _tick(available, applied, running):
+    """One poll, with the network and the disk stubbed out."""
+    _au.update_available = lambda: available
+    _au.apply_update = lambda: applied
+    marks = []
+    _au.mark_resume = lambda: marks.append("mark")
+    manager = _Manager(running)
+    restarts = []
+    updater = _au.AutoUpdater(manager, restart=lambda: restarts.append("restart"))
+    return updater.tick(), manager.calls, marks, restarts
+
+
+_done, _calls, _marks, _restarts = _tick(False, False, True)
+report.check("no update: the bot is not stopped", _calls, [])
+report.check("no update: nothing is restarted", _restarts, [])
+report.check("no update: the poll reports nothing happened", _done, False)
+
+_done, _calls, _marks, _restarts = _tick(True, True, True)
+report.check("an update stops the bot first", _calls, ["stop"])
+report.check("and asks for a restart", _restarts, ["restart"])
+report.check("and remembers it was working, so it comes back working", _marks, ["mark"])
+
+_done, _calls, _marks, _restarts = _tick(True, True, False)
+report.check("a bot that was idle is not started by an update", _calls, [])
+report.check("and is not marked to resume", _marks, [])
+report.check("but the process still restarts to pick the update up",
+             _restarts, ["restart"])
+
+# The dangerous case: stopped to make room for an update that then failed.
+_done, _calls, _marks, _restarts = _tick(True, False, True)
+report.check("a failed write puts the bot back to work",
+             _calls, ["stop", "start"])
+report.check("and does not restart into an update that is not there",
+             _restarts, [])
+report.check("nor mark a resume that will never be read", _marks, [])
+
+report.section("the pieces that make it restart at all")
+_updater_src = read_source("tools/updater.py")
+report.check("the updater can be asked without being allowed to write",
+             "check_only" in _updater_src, True)
+report.check("and says so with the same code the launchers watch for",
+             _au.RESTART_CODE, 10)
+
+_bat = read_source("start_pyla.bat")
+report.check("start_pyla.bat comes back after an update", ":RUN_VVOK" in _bat, True)
+report.check("on that code and no other", '"%RUN_CODE%"=="10"' in _bat, True)
+
+_launcher = read_source("launcher.py")
+report.check("so does the exe", "RESTART_CODE" in _launcher, True)
+
+# Two pollers means two hourly checks and two updates racing each other. This
+# happened during development and the only symptom was a duplicated log line.
+_main_src = read_source("main.py")
+report.check("exactly one poller is started",
+             len([line for line in _main_src.splitlines()
+                  if line.strip() == "start_auto_update(app)"]), 1)
+
+# The marker is the only thing that survives the restart, so it has to be
+# consumed - otherwise a deliberate Stop would be undone on the next launch.
+_marker = _au.resolve_project_path(_au.RESUME_MARKER)
+try:
+    _au.mark_resume = _au.__dict__["mark_resume"]
+    _marker.write_text("1", encoding="utf-8")
+    report.check("a resume marker is read once", _au.take_resume_marker(), True)
+    report.check("and not a second time", _au.take_resume_marker(), False)
+finally:
+    if _marker.exists():
+        _marker.unlink()
+
+report.check("with no marker there is nothing to resume",
+             _au.take_resume_marker(), False)
 
 
 sys.exit(report.finish())

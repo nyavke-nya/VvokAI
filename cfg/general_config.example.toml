@@ -14,6 +14,10 @@ ocr_scale_down_factor = 0.8
 used_threads = "auto"
 default_trophy_target = 1200
 auto_load_queue_on_startup = true
+# How often to look for an update while the bot is running, in minutes.
+# 0 turns it off. Nothing happens on a check that finds nothing: the bot
+# is only stopped, and only restarted, once an update has installed.
+auto_update_every_minutes = 60
 play_order = "in_order"
 
 # Screen capture. The device encodes H.264 itself and an emulator usually has

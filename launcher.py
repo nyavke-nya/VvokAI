@@ -196,6 +196,10 @@ def update_self(root):
 # C:/Users/Somebody/OneDrive/Documents/Downloads/VvokAI-main.
 INSTALL_DIR = "C:/VvokAI"
 
+# What the app exits with to ask for a relaunch, matching tools/updater.py and
+# src/auto_update.py. One number, one meaning.
+RESTART_CODE = 10
+
 
 def project_present(root):
     return (root / "main.py").exists() and (root / "tools" / "installer.py").exists()
@@ -421,7 +425,18 @@ def main():
     say()
     # Waited on rather than launched and forgotten, so the console stays with
     # the program it belongs to and closing it closes the bot.
-    code = subprocess.call([str(window), str(script)], cwd=str(root))
+    while True:
+        code = subprocess.call([str(window), str(script)], cwd=str(root))
+        if code != RESTART_CODE:
+            break
+        # An update installed itself while the bot was running. A Python
+        # process cannot reload the modules it is already executing, so it
+        # asks to be started again instead. Only ever after an update that
+        # actually installed - a check that finds nothing never gets here.
+        say()
+        say("Update installed. Restarting VvokAI...")
+        say()
+
     if code != 0:
         # The window died rather than being closed. Without this the console
         # goes with it and takes the reason along - which from the outside is

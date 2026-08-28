@@ -506,24 +506,40 @@ def apply(source):
     return changed
 
 
-def main():
+def main(check_only=False):
+    """Update, or with check_only just report whether there is one.
+
+    The check exists so the running bot can ask hourly without rewriting a
+    single file. Applying an update under a bot that is mid-match would swap
+    the code out from under a game in progress; asking first means the files
+    only move once it has finished and stopped.
+    """
     if (ROOT / ".git").exists():
         return 0  # Development copy; its working tree IS the published version.
     if not auto_update_wanted():
-        say("skipped (auto_update is off in cfg/general_config.toml)")
+        if not check_only:
+            say("skipped (auto_update is off in cfg/general_config.toml)")
         return 0
     if os.environ.get("VVOK_NO_UPDATE"):
-        say("skipped (VVOK_NO_UPDATE is set)")
+        if not check_only:
+            say("skipped (VVOK_NO_UPDATE is set)")
         return 0
 
     try:
         sha, subject = latest_commit()
     except (urllib.error.URLError, OSError, ValueError, KeyError) as exc:
-        say(f"could not check for updates ({exc}); starting with what is here")
+        if not check_only:
+            say(f"could not check for updates ({exc}); starting with what is here")
         return 0
 
     if sha == installed():
         return 0
+
+    if check_only:
+        # Same 10 the applying path uses, and for the same reason: the caller
+        # has something to do about it.
+        say(f"an update is available: {subject}")
+        return 10
 
     if not installed():
         # First run after unzipping by hand. There is no way to tell how old
@@ -560,4 +576,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(check_only="--check" in sys.argv[1:]))
