@@ -26,3 +26,6 @@ class TimeManagement:
 
     def idle_check(self):
         return self.check_time("idle")
+
+    def team_invite_check(self):
+        return self.check_time("team_invite")

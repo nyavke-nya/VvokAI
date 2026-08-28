@@ -14,6 +14,12 @@ class LobbyAutomation:
     def __init__(self, window_controller):
         self.gray_pixels_treshold = load_toml_as_dict("./cfg/bot_config.toml").get('idle_pixels_minimum', 500)
         self.idle_reconnect_coords = load_toml_as_dict("cfg/buttons_config.toml")["idle_reconnect"]
+        bot_config = load_toml_as_dict("./cfg/bot_config.toml")
+        self.decline_team_invites = config_bool(bot_config.get("decline_team_invites"), True)
+        self.team_invite_green_minimum = float(bot_config.get("team_invite_green_minimum", 3500))
+        self.mute_x_factor = float(bot_config.get("team_invite_mute_x", self.MUTE_X_FACTOR))
+        self.mute_y_factor = float(bot_config.get("team_invite_mute_y", self.MUTE_Y_FACTOR))
+        self.last_team_invite_handled = 0.0
         self.ocr_scale_down_factor = max(0.5, min(1, load_toml_as_dict("./cfg/general_config.toml").get('ocr_scale_down_factor', 1)))
         self.ocr_scale_up_factor = 1 / self.ocr_scale_down_factor
         self.all_brawlers_names = load_all_brawlers_names()
@@ -22,6 +28,138 @@ class LobbyAutomation:
 
     # The idle box at the reference 1920x1080, in that resolution's pixels.
     IDLE_REGION = (460, 400, 1460, 675)
+
+    # Where the team-invite modal lands. It is centred, so this is a generous
+    # box around it rather than its exact bounds - it only has to contain the
+    # two buttons and the mute line, and being generous costs nothing because
+    # OCR only ever runs on it after the green check below has already passed.
+    TEAM_INVITE_REGION = (470, 170, 1460, 910)
+
+    # The ACCEPT button's green. Converted from the button's own RGB rather
+    # than picked by eye: (76, 209, 55) is H 56, S 188, V 209 in the ranges
+    # OpenCV uses, so this is that hue with room either side.
+    ACCEPT_GREEN = ((40, 110, 110), (75, 255, 255))
+
+    # Where the mute checkbox sits, as multiples of the distance between the
+    # two button labels. Both buttons are found by OCR, so this rides along
+    # with whatever size the window is instead of being pixels that only work
+    # at one resolution: the box is just inside the modal's right edge, a bit
+    # under a third of a button-span below the buttons.
+    #
+    # These two came off a screenshot rather than a live frame, so they are in
+    # bot_config where they can be nudged without editing code. Turn on
+    # verbose_debug and the bot prints where it decided to click.
+    MUTE_X_FACTOR = 0.89
+    MUTE_Y_FACTOR = 0.29
+
+    # Long enough that one dialog cannot be clicked twice while the game plays
+    # its dismiss animation.
+    TEAM_INVITE_COOLDOWN = 4.0
+
+    def check_for_team_invite(self, frame):
+        """Turn down a team invite, and mute whoever sent it on the way out.
+
+        Two stages, because the second one is expensive. First a count of the
+        ACCEPT button's green inside the box the modal lands in - that is an
+        inRange over a crop, and it is what runs almost every time. Only when
+        that finds a button-sized patch of it does OCR run, and OCR is what
+        actually decides: the words REJECT and ACCEPT together in the middle of
+        the screen are this dialog and nothing else.
+
+        Reading the buttons rather than storing their coordinates is the point.
+        The modal is centred and scales with the window, so a pixel pair
+        measured on one machine is wrong on the next one; two words that OCR
+        can find are right everywhere.
+
+        Returns True when an invite was dealt with.
+        """
+        if not self.decline_team_invites:
+            return False
+        now = time.time()
+        if now - self.last_team_invite_handled < self.TEAM_INVITE_COOLDOWN:
+            return False
+
+        wr = self.window_controller.width_ratio
+        hr = self.window_controller.height_ratio
+        left, top, right, bottom = self.TEAM_INVITE_REGION
+        x1, y1 = int(left * wr), int(top * hr)
+        x2, y2 = int(right * wr), int(bottom * hr)
+        crop = frame[y1:y2, x1:x2]
+        if crop.size == 0:
+            return False
+
+        green = count_hsv_pixels(crop, *self.ACCEPT_GREEN)
+        if self.verbose_debug:
+            print(f"team invite: {green} green pixels "
+                  f"(need {self.team_invite_green_minimum:.0f})")
+        if green < self.team_invite_green_minimum:
+            return False
+
+        found = self._read_invite_buttons(crop)
+        if not found:
+            return False
+        reject, accept, mute_y = found
+
+        span = accept[0] - reject[0]
+        if span <= 0:
+            return False
+
+        centre_x = (reject[0] + accept[0]) / 2.0
+        mute_x = centre_x + self.mute_x_factor * span
+        if mute_y is None:
+            mute_y = accept[1] + self.mute_y_factor * span
+
+        # Mute first. The dialog closes on REJECT, and a checkbox on a closed
+        # dialog is just a click on whatever was behind it.
+        if self.verbose_debug:
+            print(f"team invite: mute at ({x1 + mute_x:.0f}, {y1 + mute_y:.0f}), "
+                  f"reject at ({x1 + reject[0]:.0f}, {y1 + reject[1]:.0f})")
+        self.window_controller.click(x1 + mute_x, y1 + mute_y)
+        time.sleep(0.15)
+        self.window_controller.click(x1 + reject[0], y1 + reject[1])
+        self.last_team_invite_handled = time.time()
+        print("Team invite declined, and the sender muted.")
+        return True
+
+    def _read_invite_buttons(self, crop):
+        """(reject, accept, mute_y) in crop pixels, or None if this is not it.
+
+        The mute line is optional: the sender's name is part of it, so it is
+        the least reliable thing on the dialog to read. Without it the checkbox
+        is placed from the buttons instead, which is where it is anyway.
+        """
+        scale = self.ocr_scale_down_factor
+        small = cv2.resize(crop, (int(crop.shape[1] * scale), int(crop.shape[0] * scale)),
+                           interpolation=cv2.INTER_AREA) if scale != 1 else crop
+        try:
+            results = extract_text_and_positions(small)
+        except EasyOCRInitializationError:
+            return None
+        except Exception as exc:
+            if self.verbose_debug:
+                print(f"team invite: OCR failed ({exc})")
+            return None
+
+        words = {key.replace(" ", ""): value for key, value in results.items()}
+        reject = words.get("reject")
+        accept = words.get("accept")
+        if not reject or not accept:
+            if self.verbose_debug and words:
+                print(f"team invite: green matched but the buttons did not "
+                      f"({', '.join(sorted(words))[:120]})")
+            return None
+
+        up = 1.0 / scale
+        reject_c = (reject["center"][0] * up, reject["center"][1] * up)
+        accept_c = (accept["center"][0] * up, accept["center"][1] * up)
+
+        mute_y = None
+        mute_lines = [value["center"][1] * up for key, value in words.items()
+                      if "mute" in key or "forthenext" in key]
+        if mute_lines:
+            mute_y = sum(mute_lines) / len(mute_lines)
+
+        return reject_c, accept_c, mute_y
 
     def check_for_idle(self, frame):
         wr = self.window_controller.width_ratio

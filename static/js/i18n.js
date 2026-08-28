@@ -197,6 +197,12 @@
         "Entity Confidence": "Порог бойцов",
         "Confidence threshold for player and enemy detections.":
             "Порог уверенности для распознавания игрока и врагов.",
+        "Decline Team Invites": "Отклонять приглашения в команду",
+        "Turn down team invites and mute the sender for ten minutes, so a stream of invitations cannot interrupt the farm. Checked every couple of seconds while out of a match.":
+            "Отклонять приглашения в команду и мутить отправителя на десять минут, чтобы поток приглашений не мешал фарму. Проверяется раз в пару секунд вне матча.",
+        "Invite Green Pixels": "Пиксели приглашения",
+        "How much of the ACCEPT button's green has to be on screen before the bot reads the dialog. Raise it if invites are detected where there are none, lower it if real ones are missed.":
+            "Сколько зелёного с кнопки ACCEPT должно быть на экране, чтобы бот стал читать диалог. Повысить, если приглашения находятся там, где их нет; понизить, если настоящие пропускаются.",
         "Centered Wall Detection": "Стены только вокруг игрока",
         "Use the close wall model on a 640x640 crop centered near the player.":
             "Искать стены в квадрате 640×640 вокруг игрока вместо всего экрана.",

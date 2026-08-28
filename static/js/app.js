@@ -145,6 +145,8 @@ const SETTINGS_META = {
         { key: "wall_detection_confidence", label: "Wall Confidence", type: "number", step: "0.05", help: "Confidence threshold for wall detection." },
         { key: "entity_detection_confidence", label: "Entity Confidence", type: "number", step: "0.05", help: "Confidence threshold for player and enemy detections." },
         { key: "seconds_to_hold_attack_after_reaching_max", label: "Post-Max Hold Attack", type: "number", step: "0.1", help: "Extra hold time after maxing hold-attack brawlers." },
+        { key: "decline_team_invites", label: "Decline Team Invites", type: "checkbox", help: "Turn down team invites and mute the sender for ten minutes, so a stream of invitations cannot interrupt the farm. Checked every couple of seconds while out of a match." },
+        { key: "team_invite_green_minimum", label: "Invite Green Pixels", type: "number", help: "How much of the ACCEPT button's green has to be on screen before the bot reads the dialog. Raise it if invites are detected where there are none, lower it if real ones are missed." },
         { key: "idle_pixels_minimum", label: "Idle Pixel Threshold", type: "number", help: "Amount of gray needed to consider the game idle." },
         { key: "super_pixels_minimum", label: "Super Pixels", type: "number", help: "Yellow pixel threshold for super readiness." },
         { key: "gadget_pixels_minimum", label: "Gadget Pixels", type: "number", help: "Green pixel threshold for gadget readiness." },

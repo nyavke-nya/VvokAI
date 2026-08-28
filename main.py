@@ -306,6 +306,12 @@ def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
                         self.restart_brawl_stars()
             if self.Time_management.idle_check():
                 self.lobby_automator.check_for_idle(frame)
+            # Only outside a match. Invites do arrive mid-match, but the dialog
+            # sits over the lobby, and OCR in the play loop would cost frames
+            # for something that can wait until the match ends.
+            if (self.get_latest_state() != "match"
+                    and self.Time_management.team_invite_check()):
+                self.lobby_automator.check_for_team_invite(frame)
 
             current_time = time.time()
             if self.webhook_ping_every_minutes and current_time - self.time_since_last_webhook_ping >= self.webhook_ping_every_minutes * 60:

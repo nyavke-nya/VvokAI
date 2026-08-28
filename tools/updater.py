@@ -98,6 +98,14 @@ TUNING = {
         "hypercharge_pixels_minimum",
         "super_pixels_minimum",
         "idle_pixels_minimum",
+        # How the invite dialog is found and where its checkbox is are
+        # measurements of the game, so a corrected one should reach everyone.
+        # Whether invites are declined at all is not - some people want them -
+        # so decline_team_invites is absent, and arrives once as the shipped
+        # default like any other new key.
+        "team_invite_green_minimum",
+        "team_invite_mute_x",
+        "team_invite_mute_y",
         # stop_at and resume_at are deliberately absent.
         # When somebody may run their bot is their decision, not calibration,
         # and pushing this machine's hours onto theirs would be rude. They
@@ -115,6 +123,7 @@ TUNING = {
         "hypercharge",
         "super",
         "idle",
+        "team_invite",
     ),
     "cfg/lobby_config.toml": (),
     # Every value in the dodge config is calibration; there is nothing personal
