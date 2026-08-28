@@ -223,12 +223,13 @@ def _title_in_region(image, template, region, title):
     description of one. It also keeps the OCR cheap - the crop is a twentieth
     of the area the old one worked on.
     """
-    if is_template_in_region(image, states_path + template, region):
-        return True
-
-    if not os.path.exists(states_path + template):
-        return _read_title(image, region, title)
-    return False
+    # Existence first, so a missing template does not print "that check is
+    # skipped" every time. It is not skipped - it falls through to the title,
+    # and a log line saying otherwise sends people looking for a file that
+    # nothing needs.
+    if os.path.exists(states_path + template):
+        return is_template_in_region(image, states_path + template, region)
+    return _read_title(image, region, title)
 
 
 def _read_title(image, region, title):
