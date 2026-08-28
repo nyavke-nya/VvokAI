@@ -514,13 +514,6 @@ body {
     50%      { opacity: 1; }
 }
 
-.runtime-live-title {
-    font-family: var(--font-display);
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    text-shadow: 0 2px 30px rgba(255, 255, 255, 0.22);
-}
-
 .runtime-note {
     color: var(--text-secondary);
 }
@@ -1831,6 +1824,9 @@ input:focus { border-color: var(--live); outline: none; }
 .command-actions .runtime-note,
 .command-actions p { display: none; }
 
+/* Stop was a plain .btn and missed this, so it came out 64px beside a 46px
+   Pause. Whatever is in the band is a control of the band's height. */
+.command-actions .btn,
 .command-actions .btn-huge,
 .command-actions .btn-primary {
     display: inline-flex;
@@ -1860,6 +1856,7 @@ input:focus { border-color: var(--live); outline: none; }
    the same height. Two lines with a hierarchy instead of two words in a row. */
 .command-actions .runtime-schedule {
     display: flex;
+    justify-content: flex-end;
     border: 0;
     background: transparent;
     padding: 0;

@@ -514,27 +514,17 @@ function renderDashboard() {
 
     if (["running", "pausing"].includes(runtime.state)) {
         runtimePanel = `
-            <div class="runtime-live-shell">
-                <h3 class="runtime-live-title">${runtime.state === "pausing" ? "VvokAI is pausing" : "VvokAI is currently running"}</h3>
-                <p class="runtime-note">${escapeHtml(statusCopy)}</p>
-                <div class="runtime-action-grid">
-                    <button id="pauseRuntimeBtn" class="btn btn-primary btn-runtime-action ${runtime.state === "pausing" ? "is-disabled" : ""}">${iconMarkup("pause")} Pause</button>
-                    <button id="stopRuntimeBtn" class="btn btn-runtime-action">${iconMarkup("stop")} Stop</button>
-                </div>
-                ${renderRuntimeSchedule()}
-            </div>
+            <button id="pauseRuntimeBtn" class="btn btn-primary ${runtime.state === "pausing" ? "is-disabled" : ""}">${iconMarkup("pause")} Pause</button>
+            <button id="stopRuntimeBtn" class="btn">${iconMarkup("stop")} Stop</button>
+            <p class="runtime-note">${escapeHtml(statusCopy)}</p>
+            ${renderRuntimeSchedule()}
         `;
     } else if (isPaused) {
         runtimePanel = `
-            <div class="runtime-live-shell">
-                <h3 class="runtime-live-title">VvokAI is paused</h3>
-                <p class="runtime-note">${escapeHtml(statusCopy)}</p>
-                <div class="runtime-action-grid">
-                    <button id="resumeRuntimeBtn" class="btn btn-primary btn-runtime-action">${iconMarkup("play")} Start</button>
-                    <button id="stopRuntimeBtn" class="btn btn-runtime-action">${iconMarkup("stop")} Stop</button>
-                </div>
-                ${renderRuntimeSchedule()}
-            </div>
+            <button id="resumeRuntimeBtn" class="btn btn-primary">${iconMarkup("play")} Start</button>
+            <button id="stopRuntimeBtn" class="btn">${iconMarkup("stop")} Stop</button>
+            <p class="runtime-note">${escapeHtml(statusCopy)}</p>
+            ${renderRuntimeSchedule()}
         `;
     }
 
