@@ -206,11 +206,11 @@ function bindShellEvents() {
             setView(navButton.dataset.view);
         }
 
-        const lockedAction = event.target.closest(".ea-locked-action");
-        if (lockedAction) {
+        const needsToken = event.target.closest(".needs-api-token");
+        if (needsToken) {
             event.preventDefault();
             event.stopPropagation();
-            showEarlyAccessModal();
+            goToApiTokenSetting();
         }
     });
 
@@ -754,7 +754,7 @@ function renderQueue(force = false) {
     const defaultTarget = Number(state.bootstrap.settings.general.default_trophy_target || 1000);
     const playOrder = state.bootstrap.settings.general.play_order || "in_order";
     const pushAllButton = !state.bootstrap?.auth?.player_api
-        ? `<button id="pushAllQueueLockedBtn" class="btn btn-locked ea-locked-action" type="button">${iconMarkup("queue")} Push All to ${defaultTarget} <span class="ea-lock-icon">🔒</span></button>`
+        ? `<button id="pushAllQueueLockedBtn" class="btn btn-locked needs-api-token" type="button" title="Needs a free Brawl Stars API token">${iconMarkup("queue")} Push All to ${defaultTarget}</button>`
         : hasValidPlayerInfo
             ? `<button id="pushAllQueueBtn" class="btn" type="button">${iconMarkup("queue")} Push All to ${defaultTarget}</button>`
             : "";
@@ -1713,17 +1713,18 @@ function renderSettingField(section, field, value) {
     if (field.type === "checkbox") {
         // Advanced Debug Visuals used to be gated here because the drawing
         // data came from the early_access module. This fork computes it in
-        // Play.build_advanced_visuals instead, so there is nothing to gate.
-        const isEarlyAccessLocked = false;
+        // Play.build_advanced_visuals instead, so there is nothing to gate -
+        // the lock markup that used to sit behind a constant false is gone
+        // with the rest of it.
         return `
-            <label class="setting-row check-card check-card-right ${isEarlyAccessLocked ? "setting-locked ea-locked-action" : ""}">
+            <label class="setting-row check-card check-card-right">
                 <span class="check-info">
-                    <strong>${escapeHtml(field.label)} ${isEarlyAccessLocked ? `<span class="ea-badge-inline">Early Access</span>` : ""}</strong>
+                    <strong>${escapeHtml(field.label)}</strong>
                     <span>${escapeHtml(field.help)}</span>
                 </span>
                 <span class="check-control">
-                    <input type="checkbox" data-setting-section="${section}" data-setting-key="${field.key}" ${value && !isEarlyAccessLocked ? "checked" : ""} ${isEarlyAccessLocked ? "disabled" : ""}>
-                    <span class="check-box ${isEarlyAccessLocked ? "check-box-locked" : ""}"></span>
+                    <input type="checkbox" data-setting-section="${section}" data-setting-key="${field.key}" ${value ? "checked" : ""}>
+                    <span class="check-box"></span>
                 </span>
             </label>
         `;
@@ -1754,7 +1755,7 @@ function renderSettingField(section, field, value) {
     // Brawl Stars API rather than the early_access module.
     const isEarlyAccessLocked = !state.bootstrap?.auth?.player_api && field.key === "player_tag";
     return `
-        <div class="setting-row ${isEarlyAccessLocked ? "setting-locked ea-locked-action" : ""}">
+        <div class="setting-row ${isEarlyAccessLocked ? "setting-locked needs-api-token" : ""}">
             <div class="setting-copy">
                 <div class="setting-label">
                     <strong>${escapeHtml(field.label)} ${isEarlyAccessLocked ? `<span class="ea-badge-inline">Needs API token</span>` : ""}</strong>
@@ -2839,30 +2840,23 @@ function cssEscape(value) {
     return String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 }
 
-function showEarlyAccessModal() {
-    let eaModal = document.getElementById("earlyAccessModal");
-    if (!eaModal) {
-        eaModal = document.createElement("div");
-        eaModal.id = "earlyAccessModal";
-        eaModal.className = "modal-overlay";
-        eaModal.innerHTML = `
-            <div class="modal">
-                <div class="modal-header">
-                    <p class="eyebrow" style="color: #ff9f1a; font-size: 0.75rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;">Early Access Feature</p>
-                    <h3 style="font-size: 1.35rem; font-weight: 900; margin-bottom: 6px; color: white;">Unlock Premium Features</h3>
-                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 10px; line-height: 1.55;">This feature (such as Player Tag API integration, Push All, and Advanced Debug Visuals) requires the <strong>Pyla Early Access</strong> module.</p>
-                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 12px; line-height: 1.55;">Early access is obtainable on our Discord server in #how-to-get-early-access.</p>
-                </div>
-                <div style="margin-top: 24px; display: flex; flex-direction: column; gap: 10px;">
-                    <a class="btn btn-primary w-full" href="https://discord.com/channels/1205263029269438574/1233146889843769417" target="_blank" rel="noreferrer" style="background: #ff9f1a; border-color: transparent; color: black; font-weight: 800; box-shadow: 0 8px 20px rgba(255, 159, 26, 0.25);">Get Early Access</a>
-                    <button id="closeEAModalBtn" class="btn w-full" style="font-weight: 700;">Maybe Later</button>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(eaModal);
-        document.getElementById("closeEAModalBtn").addEventListener("click", () => {
-            eaModal.classList.add("hidden");
-        });
-    }
-    eaModal.classList.remove("hidden");
+// Nothing in this fork is paid, so nothing sells anything.
+//
+// What used to live here was a modal selling a paid tier, with a link to a
+// Discord channel to buy it in. It was wrong twice over: this fork has no paid
+// tier, and the thing it appeared for was not a paid feature anyway. The
+// two places that raised it are gated on whether a *free* Brawl Stars API
+// token has been entered, which is a five-minute job in Settings, so that is
+// what they say now and where they take you.
+function goToApiTokenSetting() {
+    setView("settings");
+    state.settingsTab = "general";
+    renderSettings();
+    showToast("Add a free Brawl Stars API token here to sync live player stats.", "info");
+    // Land on the field rather than at the top of a long page.
+    requestAnimationFrame(() => {
+        const field = document.querySelector('[data-setting-key="brawl_api_token"]');
+        field?.closest(".setting-row")?.scrollIntoView({behavior: "smooth", block: "center"});
+        field?.focus({preventScroll: true});
+    });
 }

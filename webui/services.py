@@ -462,15 +462,30 @@ class WebDataService:
         self._queue_items = normalized_items
         try:
             save_brawler_data(normalized_items)
+            # Remember this write, so the sync above does not treat the file
+            # the panel just saved as news from the bot and reload it.
+            queue_path = resolve_project_path("latest_brawler_data.json")
+            if queue_path.exists():
+                self._runtime_queue_mtime = queue_path.stat().st_mtime
         except Exception as e:
             logger.error(f"Failed to save queue data to file: {e}")
         return normalized_items
 
     def _sync_running_queue_from_saved_file(self):
-        runtime_status = self.runtime_manager.get_status()
-        if not runtime_status.get("is_running"):
-            return
+        """Pick up what the bot wrote, whether or not it is still running.
 
+        This used to return immediately unless the bot was running, which meant
+        that the moment it stopped the panel went back to serving the queue it
+        had in memory from before the run. Someone who pushed a brawler from
+        262 to 871 saw 262 for the rest of the session - and worse, an edit to
+        any other row then wrote that 262 back over the file, throwing the run
+        away.
+
+        The modification time is the whole guard that is needed. The bot writes
+        after every match; the panel writes when somebody saves. Whoever wrote
+        last is who this reads, and save_queue_data records its own write so
+        that saving does not immediately re-read what it just put there.
+        """
         queue_path = resolve_project_path("latest_brawler_data.json")
         if not queue_path.exists():
             return

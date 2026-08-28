@@ -162,6 +162,17 @@ class TrophyObserver:
             )
 
     def add_trophies(self, parsed_result: ParsedGameResult, current_brawler, playstyle_info, power_level=None):
+        # A count that was never seeded used to raise here - None and "" both
+        # blow up on the comparisons below - and nothing catches it, so one bad
+        # queue entry silently took the whole end of the match with it: no
+        # history row written, no queue value advanced, no error on screen.
+        # Whatever else is wrong, a match that was played gets recorded.
+        if not isinstance(self.current_trophies, (int, float)):
+            print(f"Trophy count was {self.current_trophies!r} rather than a "
+                  f"number; counting this match from 0. Set the brawler's "
+                  f"current trophies in the queue to fix the total.")
+            self.current_trophies = 0
+
         old_trophies = self.current_trophies
         old_win_streak = self.win_streak
 

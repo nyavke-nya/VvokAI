@@ -332,9 +332,9 @@
             "Обнови ключ API в Discord, чтобы он привязался к текущему адресу.",
         "Refresh your API key in Discord or use a version allowed by this key.":
             "Обнови ключ API в Discord или возьми версию, разрешённую этим ключом.",
-        "Early Access": "Ранний доступ", "Early Access Feature": "Функция раннего доступа",
-        "Get Early Access": "Получить ранний доступ", "Maybe Later": "Позже",
-        "Unlock Premium Features": "Открыть платные функции",
+        "Add a free Brawl Stars API token here to sync live player stats.":
+            "Добавь сюда бесплатный API-токен Brawl Stars, чтобы подтягивать статистику игрока.",
+        "Needs API token": "Нужен API-токен",
         "Community": "Сообщество",
 
         // ---- profile

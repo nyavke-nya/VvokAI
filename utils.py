@@ -211,8 +211,21 @@ def load_all_brawlers_names():
 
 
 def api_update_brawler_data(brawler_data):
+    """Refresh the queue's counts from whoever can answer.
+
+    The gate here used to be `early_access` - the paid module - even though
+    every other stats call in this file already falls back to Supercell's
+    public API when that module is absent. So an install with a perfectly good
+    free API token never had its queue refreshed, and the trophy count only
+    ever moved by the bot's own estimate.
+
+    What matters is whether anything can answer the question, which is the
+    paid module or a configured token, not which of the two.
+    """
     if not early_access:
-        return
+        from brawl_api import is_available
+        if not is_available():
+            return
     player_tag = load_toml_as_dict("cfg/general_config.toml")["player_tag"]
     if not player_tag:
         return

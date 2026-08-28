@@ -119,11 +119,28 @@ def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
             self.check_if_brawl_stars_crashed_timer = load_toml_as_dict("cfg/time_tresholds.toml")["check_if_brawl_stars_crashed"]
             self.ping_when_stuck = load_toml_as_dict("cfg/webhook_config.toml")["ping_when_stuck"]
 
+        @staticmethod
+        def _as_count(value):
+            """A queue field as a number. Anything unreadable counts as zero.
+
+            Only `wins` used to get this treatment, so a queue entry carrying
+            an empty string for its trophies - which happens for an entry
+            pushing wins rather than trophies - seeded the observer with "" and
+            broke the first end of match.
+            """
+            if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+                return 0
+            try:
+                return int(float(value))
+            except (TypeError, ValueError):
+                return 0
+
         def update_trophy_observer(self):
             current_brawler_data = self.Stage_manager.brawlers_pick_data[0]
-            self.Stage_manager.Trophy_observer.win_streak = current_brawler_data['win_streak']
-            self.Stage_manager.Trophy_observer.current_trophies = current_brawler_data['trophies']
-            self.Stage_manager.Trophy_observer.current_wins = current_brawler_data['wins'] if current_brawler_data['wins'] != "" else 0
+            observer = self.Stage_manager.Trophy_observer
+            observer.win_streak = self._as_count(current_brawler_data.get('win_streak'))
+            observer.current_trophies = self._as_count(current_brawler_data.get('trophies'))
+            observer.current_wins = self._as_count(current_brawler_data.get('wins'))
 
         @staticmethod
         def load_models():
