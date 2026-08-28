@@ -208,7 +208,59 @@ def is_in_daily_wins(image):
                                  region_data.get("daily_wins", [270, 310, 290, 120]))
 
 
-def _title_in_region(image, template, region, title):
+# Reading a title costs about a quarter of a second, and these checks run every
+# two or three seconds for as long as the bot is on. Without something cheap in
+# front of them that was three quarters of a second of OCR per three seconds -
+# on the bot's own loop, so it came out of the frame rate as well as the CPU.
+#
+# The gate is a colour test over the same crop: a few hundred microseconds, and
+# on almost every frame it is the only thing that runs.
+#
+# One gate per dialog, because they look nothing alike. The disconnect cards
+# are flat dark grey; the team invite is a bright blue modal, and the dark test
+# rejects it outright - measured at a dark fraction of 0.000, which would have
+# meant an invite decliner that never fired.
+#
+# Deliberately permissive on both. A gate that lets an ordinary frame through
+# costs one wasted read; a gate that turns a real dialog away costs a match,
+# and not losing matches is the entire point of these checks.
+DARK_CARD = {"max_saturation": 70, "max_brightness": 110, "min_fraction": 0.20}
+BLUE_MODAL = {"hue_range": (95, 135), "min_saturation": 90,
+              "min_brightness": 70, "min_fraction": 0.20}
+
+
+def _region_crop(image, region):
+    height, width = image.shape[:2]
+    x, y, w, h = region
+    wr, hr = width / orig_screen_width, height / orig_screen_height
+    return image[int(y * hr):int((y + h) * hr), int(x * wr):int((x + w) * wr)]
+
+
+def _looks_dark(image, region):
+    """A flat, colourless card - the disconnect dialogs."""
+    crop = _region_crop(image, region)
+    if crop.size == 0:
+        return False
+    hsv = cv2.cvtColor(crop, cv2.COLOR_RGB2HSV)
+    hit = ((hsv[:, :, 1] <= DARK_CARD["max_saturation"])
+           & (hsv[:, :, 2] <= DARK_CARD["max_brightness"]))
+    return hit.mean() >= DARK_CARD["min_fraction"]
+
+
+def _looks_blue(image, region):
+    """A saturated blue panel - the team invite modal."""
+    crop = _region_crop(image, region)
+    if crop.size == 0:
+        return False
+    hsv = cv2.cvtColor(crop, cv2.COLOR_RGB2HSV)
+    low, high = BLUE_MODAL["hue_range"]
+    hit = ((hsv[:, :, 0] >= low) & (hsv[:, :, 0] <= high)
+           & (hsv[:, :, 1] >= BLUE_MODAL["min_saturation"])
+           & (hsv[:, :, 2] >= BLUE_MODAL["min_brightness"]))
+    return hit.mean() >= BLUE_MODAL["min_fraction"]
+
+
+def _title_in_region(image, template, region, title, gate=None):
     """Is this dialog on screen, by its title.
 
     Two ways, and the cheap one first. If a template has been cut for this
@@ -229,6 +281,9 @@ def _title_in_region(image, template, region, title):
     # nothing needs.
     if os.path.exists(states_path + template):
         return is_template_in_region(image, states_path + template, region)
+
+    if gate is not None and not gate(image, region):
+        return False
     return _read_title(image, region, title)
 
 
@@ -263,8 +318,8 @@ def is_team_invite_on_screen(image):
     position.
     """
     return _title_in_region(image, "team_invite.png",
-                            region_data.get("team_invite", [800, 225, 320, 120]),
-                            "teaminvite")
+                            region_data.get("team_invite", [740, 200, 440, 170]),
+                            "teaminvite", gate=_looks_blue)
 
 
 def is_connection_lost_on_screen(image):
@@ -277,7 +332,7 @@ def is_connection_lost_on_screen(image):
     """
     return _title_in_region(image, "connection_lost.png",
                             region_data.get("connection_lost", [440, 400, 520, 130]),
-                            "connectionlost")
+                            "connectionlost", gate=_looks_dark)
 
 
 def is_idle_disconnect_on_screen(image):
@@ -288,8 +343,8 @@ def is_idle_disconnect_on_screen(image):
     a false positive costs a match rather than a stray click.
     """
     return _title_in_region(image, "idle_disconnect.png",
-                            region_data.get("idle_disconnect", [470, 405, 330, 120]),
-                            "idledisconnect")
+                            region_data.get("idle_disconnect", [430, 380, 500, 160]),
+                            "idledisconnect", gate=_looks_dark)
 
 
 def is_in_star_drop(image):

@@ -80,10 +80,6 @@ class LobbyAutomation:
         if now - self.last_team_invite_handled < self.TEAM_INVITE_COOLDOWN:
             return False
 
-        # Is this actually the dialog? Everything below assumes it is.
-        if not is_team_invite_on_screen(frame):
-            return False
-
         wr = self.window_controller.width_ratio
         hr = self.window_controller.height_ratio
         left, top, right, bottom = self.TEAM_INVITE_REGION
@@ -93,11 +89,20 @@ class LobbyAutomation:
         if crop.size == 0:
             return False
 
+        # The cheap stage first. An inRange over one crop against a quarter of
+        # a second of OCR is not a close call, and on almost every frame there
+        # is no green button to be found and nothing else has to run.
         green = count_hsv_pixels(crop, *self.ACCEPT_GREEN)
         if self.verbose_debug:
             print(f"team invite: {green} green pixels "
                   f"(need {self.team_invite_green_minimum:.0f})")
         if green < self.team_invite_green_minimum:
+            return False
+
+        # Then whether it is really this dialog rather than something else
+        # green. This is what stopped the bot declining things that were not
+        # invites; it is second because it is the expensive one.
+        if not is_team_invite_on_screen(frame):
             return False
 
         found = self._read_invite_buttons(crop)

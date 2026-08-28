@@ -101,11 +101,16 @@ import numpy as _np  # noqa: E402
 import state_finder as _sf  # noqa: E402
 
 
-def _dialog(title, region, left=False, scale=0.95, seed=5):
-    """A frame with one dialog's title where the real one sits."""
+def _dialog(title, region, left=False, scale=0.95, seed=5, panel=(35, 35, 45)):
+    """A frame with one dialog's title where the real one sits.
+
+    The panel colour matters. Each dialog is gated on how it looks before its
+    title is read, so a fixture painted the wrong colour tests nothing - the
+    invite is a saturated blue modal, not a dark card.
+    """
     frame = (_np.random.default_rng(seed).random((1080, 1920, 3)) * 255).astype("uint8")
     x, y, w, h = region
-    _cv2.rectangle(frame, (x - 60, y - 40), (x + w + 60, y + h + 80), (35, 35, 45), -1)
+    _cv2.rectangle(frame, (x - 60, y - 40), (x + w + 60, y + h + 80), panel, -1)
     size = _cv2.getTextSize(title, _cv2.FONT_HERSHEY_DUPLEX, scale, 2)[0]
     tx = x + 8 if left else x + (w - size[0]) // 2
     _cv2.putText(frame, title, (tx, y + h // 2),
@@ -115,7 +120,7 @@ def _dialog(title, region, left=False, scale=0.95, seed=5):
 
 _ti = _sf.region_data["team_invite"]
 _idl = _sf.region_data["idle_disconnect"]
-_invite = _dialog("TEAM INVITE", _ti)
+_invite = _dialog("TEAM INVITE", _ti, panel=(41, 128, 232))
 _idle = _dialog("Idle Disconnect", _idl, left=True)
 _blank = (_np.random.default_rng(7).random((1080, 1920, 3)) * 255).astype("uint8")
 
@@ -175,6 +180,74 @@ report.check("so is the connection card",
              _probe.check_for_idle(_conn), "connection lost")
 report.check("and nothing on screen is an empty answer",
              _probe.check_for_idle(_blank), "")
+
+
+report.section("the cheap gate in front of the OCR")
+# Reading a title costs a quarter of a second and these run every two or three
+# seconds forever. Ungated that was three quarters of a second of OCR per three
+# seconds, on the bot's own loop - it showed up as a sawtooth on the CPU graph
+# and came out of the frame rate too.
+import time as _time  # noqa: E402
+
+
+def _blue_modal():
+    """The invite as it really looks: a bright blue panel, not a dark card."""
+    frame = (_np.random.default_rng(5).random((1080, 1920, 3)) * 255).astype("uint8")
+    _cv2.rectangle(frame, (455, 190), (1465, 830), (41, 128, 232), -1)
+    _cv2.rectangle(frame, (470, 205), (1450, 265), (28, 100, 200), -1)
+    size = _cv2.getTextSize("TEAM INVITE", _cv2.FONT_HERSHEY_DUPLEX, 1.3, 3)[0]
+    _cv2.putText(frame, "TEAM INVITE", (960 - size[0] // 2, 250),
+                 _cv2.FONT_HERSHEY_DUPLEX, 1.3, (255, 255, 255), 3)
+    return frame
+
+
+# The bug this section exists for: one gate for all three dialogs looked
+# reasonable and rejected the invite outright, because it tested for a dark
+# colourless card and the invite is a saturated blue one. Measured dark
+# fraction in that region: 0.000. An invite decliner that never fires.
+report.check("the blue invite passes its own gate",
+             _sf._looks_blue(_blue_modal(), _sf.region_data["team_invite"]), True)
+report.check("and would have failed the dark-card gate",
+             _sf._looks_dark(_blue_modal(), _sf.region_data["team_invite"]), False)
+report.check("the dark card passes the dark gate",
+             _sf._looks_dark(_card("Idle Disconnect"),
+                             _sf.region_data["idle_disconnect"]), True)
+report.check("and is not mistaken for a blue modal",
+             _sf._looks_blue(_card("Idle Disconnect"),
+                             _sf.region_data["team_invite"]), False)
+
+# End to end, which is what actually matters.
+report.check("the invite is still recognised through its gate",
+             _sf.is_team_invite_on_screen(_blue_modal()), True)
+
+_gameplay = (_np.random.default_rng(11).random((1080, 1920, 3)) * 255).astype("uint8")
+_sf.is_team_invite_on_screen(_gameplay)          # warm the OCR engine
+
+
+def _median_ms(fn, frame, runs=9):
+    times = []
+    for _ in range(runs):
+        start = _time.perf_counter()
+        fn(frame)
+        times.append((_time.perf_counter() - start) * 1000)
+    times.sort()
+    return times[len(times) // 2]
+
+
+# Generous: the point is the difference between a fraction of a millisecond
+# and a quarter of a second, not any particular number on any particular
+# machine.
+for _name, _fn in (("team invite", _sf.is_team_invite_on_screen),
+                   ("idle disconnect", _sf.is_idle_disconnect_on_screen),
+                   ("connection lost", _sf.is_connection_lost_on_screen)):
+    report.check(f"{_name} costs almost nothing on ordinary gameplay",
+                 _median_ms(_fn, _gameplay) < 25, True)
+
+# And the invite's own caller keeps its cheap stage first, which is the same
+# lesson one level up.
+report.check("the green count runs before the dialog is identified",
+             _lobby.index("count_hsv_pixels(crop") < _lobby.index("is_team_invite_on_screen(frame)"),
+             True)
 
 # The region has to be wide enough for the title to fit. A box tight around
 # the measured width is a detector that stops working the first time the
