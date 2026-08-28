@@ -92,18 +92,62 @@ for _name in ("idle_disconnect", "team_invite"):
     report.check(f"{_name} reads its region from lobby_config",
                  f'region_data.get("{_name}"' in _states, True)
 
-# A template that has not been captured yet must mean "off", not a crash and
-# not a match against nothing.
+# Neither template ships, and neither has to: the title is read out of the
+# same tight region instead. A template, once cut, is only the faster path.
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "src"))
+import cv2 as _cv2  # noqa: E402
 import numpy as _np  # noqa: E402
 import state_finder as _sf  # noqa: E402
 
-_blank = (_np.random.rand(1080, 1920, 3) * 255).astype("uint8")
-report.check("an uncaptured idle template means the check is off",
-             _sf.is_idle_disconnect_on_screen(_blank), False)
-report.check("an uncaptured invite template means the check is off",
-             _sf.is_team_invite_on_screen(_blank), False)
+
+def _dialog(title, region, left=False, scale=0.95, seed=5):
+    """A frame with one dialog's title where the real one sits."""
+    frame = (_np.random.default_rng(seed).random((1080, 1920, 3)) * 255).astype("uint8")
+    x, y, w, h = region
+    _cv2.rectangle(frame, (x - 60, y - 40), (x + w + 60, y + h + 80), (35, 35, 45), -1)
+    size = _cv2.getTextSize(title, _cv2.FONT_HERSHEY_DUPLEX, scale, 2)[0]
+    tx = x + 8 if left else x + (w - size[0]) // 2
+    _cv2.putText(frame, title, (tx, y + h // 2),
+                 _cv2.FONT_HERSHEY_DUPLEX, scale, (255, 255, 255), 2)
+    return frame
+
+
+_ti = _sf.region_data["team_invite"]
+_idl = _sf.region_data["idle_disconnect"]
+_invite = _dialog("TEAM INVITE", _ti)
+_idle = _dialog("Idle Disconnect", _idl, left=True)
+_blank = (_np.random.default_rng(7).random((1080, 1920, 3)) * 255).astype("uint8")
+
+report.check("the invite is recognised with no template on disk",
+             _sf.is_team_invite_on_screen(_invite), True)
+report.check("the disconnect box is too",
+             _sf.is_idle_disconnect_on_screen(_idle), True)
+
+# The whole point. Each has to answer for its own dialog and nothing else.
+report.check("the invite detector ignores the other dialog",
+             _sf.is_team_invite_on_screen(_idle), False)
+report.check("and the disconnect detector ignores the invite",
+             _sf.is_idle_disconnect_on_screen(_invite), False)
+report.check("neither fires on an unrelated screen",
+             _sf.is_team_invite_on_screen(_blank)
+             or _sf.is_idle_disconnect_on_screen(_blank), False)
+
+# Scale is where counting grey pixels failed outright.
+_small = _cv2.resize(_idle, (1080, 608), interpolation=_cv2.INTER_AREA)
+report.check("the disconnect box is found on a 1080x608 emulator",
+             _sf.is_idle_disconnect_on_screen(_small), True)
+_small_invite = _cv2.resize(_invite, (1080, 608), interpolation=_cv2.INTER_AREA)
+report.check("so is the invite", _sf.is_team_invite_on_screen(_small_invite), True)
+
+# The region has to be wide enough for the title to fit. A box tight around
+# the measured width is a detector that stops working the first time the
+# reading is slightly off.
+for _name, _region, _title in (("team_invite", _ti, "TEAM INVITE"),
+                               ("idle_disconnect", _idl, "Idle Disconnect")):
+    _width = _cv2.getTextSize(_title, _cv2.FONT_HERSHEY_DUPLEX, 0.95, 2)[0][0]
+    report.check(f"{_name} has room for its title to grow",
+                 _region[2] > _width * 1.4, True)
 
 # And the restart it triggers cannot run away with itself.
 _main = read_source("main.py")

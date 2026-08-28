@@ -208,35 +208,74 @@ def is_in_daily_wins(image):
                                  region_data.get("daily_wins", [270, 310, 290, 120]))
 
 
-def is_team_invite_on_screen(image):
-    """The team-invite dialog, by its own artwork.
+def _title_in_region(image, template, region, title):
+    """Is this dialog on screen, by its title.
 
-    A pixel count and a pair of OCR'd words used to decide this, and it fired
-    on things that were not the dialog at all - the words REJECT and ACCEPT
-    are not rare, and a green button is not either. The banner across the top
-    of this modal is, so match that instead, the same way star drops are
-    matched.
+    Two ways, and the cheap one first. If a template has been cut for this
+    dialog it is used - matchTemplate on a small region costs almost nothing
+    and is exact. Without one the title is read instead, which needs no asset
+    and so works on a fresh install.
 
-    False when the template has not been captured yet: an install without it
-    simply does not act on invites, which is the safe direction. See
-    tools/make_state_template.py.
+    The region is deliberately tight around the title and nothing else. That
+    is what makes reading it safe where the old approach was not: "REJECT and
+    ACCEPT somewhere in the middle of the screen" is a description of many
+    screens, while "the words TEAM INVITE in this particular box" is a
+    description of one. It also keeps the OCR cheap - the crop is a twentieth
+    of the area the old one worked on.
     """
-    return is_template_in_region(
-        image, states_path + "team_invite.png",
-        region_data.get("team_invite", [470, 170, 990, 740]))
+    if is_template_in_region(image, states_path + template, region):
+        return True
+
+    if not os.path.exists(states_path + template):
+        return _read_title(image, region, title)
+    return False
+
+
+def _read_title(image, region, title):
+    """The title, read out of the region. False on anything going wrong."""
+    height, width = image.shape[:2]
+    x, y, w, h = region
+    wr, hr = width / orig_screen_width, height / orig_screen_height
+    crop = image[int(y * hr):int((y + h) * hr), int(x * wr):int((x + w) * wr)]
+    if crop.size == 0:
+        return False
+
+    try:
+        from utils import extract_text_and_positions
+        found = extract_text_and_positions(crop)
+    except Exception:
+        # No OCR engine, no models, no matter - this is one screen the bot
+        # cannot recognise, which is a missing feature rather than a fault.
+        return False
+
+    flat = "".join(str(key) for key in found).replace(" ", "").lower()
+    return title in flat
+
+
+def is_team_invite_on_screen(image):
+    """The team-invite dialog.
+
+    A count of the ACCEPT button's green and a pair of OCR'd words used to
+    decide this, over most of the screen, and it fired on things that were not
+    invites at all - REJECT and ACCEPT are ordinary words and a green button is
+    an ordinary button. The blue TEAM INVITE bar is not, and neither is its
+    position.
+    """
+    return _title_in_region(image, "team_invite.png",
+                            region_data.get("team_invite", [800, 225, 320, 120]),
+                            "teaminvite")
 
 
 def is_idle_disconnect_on_screen(image):
     """The "you were disconnected for idling" box.
 
-    Same reasoning: this used to be a count of grey pixels in the middle of the
-    screen, and a great many screens are grey in the middle. Acting on it now
-    restarts the game, so a false positive costs a match rather than a stray
-    click, and the test has to be worth that.
+    This used to be a count of grey pixels in the middle of the screen, which
+    a great many screens are. What it triggers now is a restart of the game, so
+    a false positive costs a match rather than a stray click.
     """
-    return is_template_in_region(
-        image, states_path + "idle_disconnect.png",
-        region_data.get("idle_disconnect", [460, 400, 1000, 275]))
+    return _title_in_region(image, "idle_disconnect.png",
+                            region_data.get("idle_disconnect", [470, 405, 330, 120]),
+                            "idledisconnect")
 
 
 def is_in_star_drop(image):

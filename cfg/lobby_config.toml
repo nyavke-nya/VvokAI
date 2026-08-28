@@ -12,8 +12,13 @@ exit_match_making = [1600, 925, 295, 135]
 prestige_continue = [535, 950, 345, 95]
 nano_noodles = [360, 880, 215, 150]
 match_result = [20, 10, 650, 200]
-team_invite = [470, 170, 990, 740]
-idle_disconnect = [460, 400, 1000, 275]
+# The blue TEAM INVITE bar. The modal is centred, so the title centres on
+# x=960; the bar holds that phrase and nothing else, so the box is generous.
+team_invite = [740, 200, 440, 170]
+# The "Idle Disconnect" heading, left-aligned inside its card. Measured at
+# about 240px wide, and the box is nearly twice that on purpose: it is read as
+# text, and a title clipped by a tight box is a detector that never fires.
+idle_disconnect = [430, 380, 500, 160]
 [pixel_counter_crop_area]
 super=[1460, 830, 1560, 930]
 gadget=[1580, 930, 1700, 1050]
