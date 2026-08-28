@@ -496,7 +496,26 @@ max_missed = 3
 
 # How far the attack stick is dragged, in full-frame px. Brawl Stars registers
 # direction from the drag angle, so this only has to clear the dead zone.
+#
+# True for everyone who fires ALONG the angle. It is not true for throwers -
+# Barley, Dynamike, Tick, Sprout, Willow, Grom, Larry & Lawrie, Juju, Ziggy -
+# whose shot lands AT the point the stick picks, so the drag length is the
+# range. A fixed length therefore lobs at a fixed distance regardless of where
+# the enemy is, which is what "the throwers attack themselves" was.
 swipe_radius = 130.0
+
+# Those brawlers are tapped instead, which hands the shot to the game's own
+# auto-aim and puts it on the enemy. It costs the lead, which is worth most on
+# a slow arc - so the aimed version is here, off by default.
+#
+# Turning it on needs the two figures below to match the attack control on
+# YOUR screen: full_radius is the drag that means maximum range, min_radius is
+# the shortest drag the game still reads as a drag rather than a tap. They are
+# starting points, not measurements - get them wrong and every throw is short,
+# which is the bug this replaced.
+aim_placed_attacks = false
+swipe_full_radius = 200.0
+swipe_min_radius = 40.0
 swipe_hold = 0.02
 
 # Skip the aimed shot and just tap when the lead is smaller than this many

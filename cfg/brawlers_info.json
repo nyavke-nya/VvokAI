@@ -6,7 +6,8 @@
         "super_range": 490,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "colt": {
         "safe_range": 324.0,
@@ -15,7 +16,8 @@
         "super_range": 704,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "bull": {
         "safe_range": 210.0,
@@ -24,7 +26,8 @@
         "super_range": 704,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "brock": {
         "safe_range": 354.0,
@@ -33,7 +36,8 @@
         "super_range": 533,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "rico": {
         "safe_range": 380.0,
@@ -42,7 +46,8 @@
         "super_range": 853,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "spike": {
         "safe_range": 301.0,
@@ -51,7 +56,8 @@
         "super_range": 490,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "barley": {
         "safe_range": 288.0,
@@ -60,7 +66,8 @@
         "super_range": 597,
         "ignore_walls_for_attacks": true,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": true
     },
     "jessie": {
         "safe_range": 354.0,
@@ -69,7 +76,8 @@
         "super_range": 320,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "nita": {
         "safe_range": 236.0,
@@ -78,7 +86,8 @@
         "super_range": 320,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "dynamike": {
         "safe_range": 288.0,
@@ -87,7 +96,8 @@
         "super_range": 469,
         "ignore_walls_for_attacks": true,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": true
     },
     "elprimo": {
         "safe_range": 0.0,
@@ -96,7 +106,8 @@
         "super_range": 576,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "mortis": {
         "safe_range": 0.0,
@@ -105,7 +116,8 @@
         "super_range": 640,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "crow": {
         "safe_range": 341.0,
@@ -114,7 +126,8 @@
         "super_range": 554,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "poco": {
         "safe_range": 275.0,
@@ -123,7 +136,8 @@
         "super_range": 597,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "bo": {
         "safe_range": 341.0,
@@ -132,7 +146,8 @@
         "super_range": 554,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "piper": {
         "safe_range": 393.0,
@@ -141,7 +156,8 @@
         "super_range": 554,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "pam": {
         "safe_range": 354.0,
@@ -150,7 +166,8 @@
         "super_range": 320,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "tara": {
         "safe_range": 315.0,
@@ -159,7 +176,8 @@
         "super_range": 426,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "darryl": {
         "safe_range": 236.0,
@@ -168,7 +186,8 @@
         "super_range": 448,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "penny": {
         "safe_range": 315.0,
@@ -177,7 +196,8 @@
         "super_range": 320,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "frank": {
         "safe_range": 236.0,
@@ -186,7 +206,8 @@
         "super_range": 448,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "tick": {
         "safe_range": 341.0,
@@ -195,7 +216,8 @@
         "super_range": 213,
         "ignore_walls_for_attacks": true,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": true
     },
     "leon": {
         "safe_range": 380.0,
@@ -204,7 +226,8 @@
         "super_range": 0,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "rosa": {
         "safe_range": 0.0,
@@ -213,7 +236,8 @@
         "super_range": 0,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "carl": {
         "safe_range": 328.0,
@@ -222,7 +246,8 @@
         "super_range": 0,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "bibi": {
         "safe_range": 0.0,
@@ -231,7 +256,8 @@
         "super_range": 2560,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "8bit": {
         "safe_range": 393.0,
@@ -240,7 +266,8 @@
         "super_range": 320,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "sandy": {
         "safe_range": 236.0,
@@ -249,7 +276,8 @@
         "super_range": 469,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "bea": {
         "safe_range": 393.0,
@@ -258,7 +286,8 @@
         "super_range": 576,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "emz": {
         "safe_range": 262.0,
@@ -267,7 +296,8 @@
         "super_range": 363,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "mrp": {
         "safe_range": 275.0,
@@ -276,7 +306,8 @@
         "super_range": 320,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "max": {
         "safe_range": 328.0,
@@ -285,7 +316,8 @@
         "super_range": 0,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "jacky": {
         "safe_range": 0.0,
@@ -294,7 +326,8 @@
         "super_range": 0,
         "ignore_walls_for_attacks": true,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "gale": {
         "safe_range": 328.0,
@@ -303,7 +336,8 @@
         "super_range": 640,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "nani": {
         "safe_range": 341.0,
@@ -312,7 +346,8 @@
         "super_range": 0,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "sprout": {
         "safe_range": 196.0,
@@ -321,7 +356,8 @@
         "super_range": 490,
         "ignore_walls_for_attacks": true,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": true
     },
     "surge": {
         "safe_range": 200,
@@ -330,7 +366,8 @@
         "super_range": 213,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "colette": {
         "safe_range": 341.0,
@@ -339,7 +376,8 @@
         "super_range": 704,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "amber": {
         "safe_range": 328.0,
@@ -348,7 +386,8 @@
         "super_range": 469,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "lou": {
         "safe_range": 367.0,
@@ -357,7 +396,8 @@
         "super_range": 490,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "byron": {
         "safe_range": 393.0,
@@ -366,7 +406,8 @@
         "super_range": 469,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "edgar": {
         "safe_range": 0.0,
@@ -375,7 +416,8 @@
         "super_range": 426,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "stu": {
         "safe_range": 301.0,
@@ -384,7 +426,8 @@
         "super_range": 149,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "belle": {
         "safe_range": 393.0,
@@ -393,7 +436,8 @@
         "super_range": 682,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "squeak": {
         "safe_range": 301.0,
@@ -402,7 +446,8 @@
         "super_range": 533,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "grom": {
         "safe_range": 301.0,
@@ -411,7 +456,8 @@
         "super_range": 533,
         "ignore_walls_for_attacks": true,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": true
     },
     "buzz": {
         "safe_range": 0.0,
@@ -420,7 +466,8 @@
         "super_range": 640,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "griff": {
         "safe_range": 328.0,
@@ -429,7 +476,8 @@
         "super_range": 576,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "ash": {
         "safe_range": 0.0,
@@ -438,7 +486,8 @@
         "super_range": 320,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "meg": {
         "safe_range": 270.0,
@@ -447,7 +496,8 @@
         "super_range": 277,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "lola": {
         "safe_range": 354.0,
@@ -456,7 +506,8 @@
         "super_range": 320,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "fang": {
         "safe_range": 0.0,
@@ -465,7 +516,8 @@
         "super_range": 640,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "eve": {
         "safe_range": 367.0,
@@ -474,7 +526,8 @@
         "super_range": 320,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "janet": {
         "safe_range": 0.0,
@@ -483,7 +536,8 @@
         "super_range": 149,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "bonnie": {
         "safe_range": 354.0,
@@ -492,7 +546,8 @@
         "super_range": 469,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "otis": {
         "safe_range": 354.0,
@@ -501,7 +556,8 @@
         "super_range": 576,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "gus": {
         "safe_range": 367.0,
@@ -510,7 +566,8 @@
         "super_range": 597,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "buster": {
         "safe_range": 210.0,
@@ -519,7 +576,8 @@
         "super_range": 192,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "chester": {
         "safe_range": 328.0,
@@ -528,7 +586,8 @@
         "super_range": 405,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "gray": {
         "safe_range": 354.0,
@@ -537,7 +596,8 @@
         "super_range": 426,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "mandy": {
         "safe_range": 354.0,
@@ -546,7 +606,8 @@
         "super_range": 2560,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "rt": {
         "safe_range": 393.0,
@@ -555,7 +616,8 @@
         "super_range": 0,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "willow": {
         "safe_range": 288.0,
@@ -564,7 +626,8 @@
         "super_range": 533,
         "ignore_walls_for_attacks": true,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": true
     },
     "maisie": {
         "safe_range": 310.0,
@@ -573,7 +636,8 @@
         "super_range": 320,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "hank": {
         "safe_range": 0.0,
@@ -582,7 +646,8 @@
         "super_range": 0,
         "ignore_walls_for_attacks": true,
         "ignore_walls_for_supers": false,
-        "hold_attack": 3
+        "hold_attack": 3,
+        "placed_attack": false
     },
     "cordelius": {
         "safe_range": 210.0,
@@ -591,7 +656,8 @@
         "super_range": 576,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "doug": {
         "safe_range": 0.0,
@@ -600,7 +666,8 @@
         "super_range": 597,
         "ignore_walls_for_attacks": true,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "pearl": {
         "safe_range": 354.0,
@@ -609,7 +676,8 @@
         "super_range": 213,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "chuck": {
         "safe_range": 262.0,
@@ -618,7 +686,8 @@
         "super_range": 426,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "charlie": {
         "safe_range": 328.0,
@@ -627,7 +696,8 @@
         "super_range": 576,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "mico": {
         "safe_range": 0.0,
@@ -636,7 +706,8 @@
         "super_range": 0,
         "ignore_walls_for_attacks": true,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "kit": {
         "safe_range": 0.0,
@@ -645,7 +716,8 @@
         "super_range": 426,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "melodie": {
         "safe_range": 315.0,
@@ -654,7 +726,8 @@
         "super_range": 341,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "angelo": {
         "safe_range": 393.0,
@@ -663,7 +736,8 @@
         "super_range": 0,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 3
+        "hold_attack": 3,
+        "placed_attack": false
     },
     "draco": {
         "safe_range": 0.0,
@@ -672,7 +746,8 @@
         "super_range": 0,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "lily": {
         "safe_range": 0.0,
@@ -681,7 +756,8 @@
         "super_range": 576,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "berry": {
         "safe_range": 249.0,
@@ -690,7 +766,8 @@
         "super_range": 533,
         "ignore_walls_for_attacks": true,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "clancy": {
         "safe_range": 301.0,
@@ -699,7 +776,8 @@
         "super_range": 362,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "sam": {
         "safe_range": 0.0,
@@ -708,7 +786,8 @@
         "super_range": 554,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "moe": {
         "safe_range": 196.0,
@@ -717,7 +796,8 @@
         "super_range": 469,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "gene": {
         "safe_range": 223.0,
@@ -726,7 +806,8 @@
         "super_range": 490,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "ruffs": {
         "safe_range": 354.0,
@@ -735,7 +816,8 @@
         "super_range": 490,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "juju": {
         "safe_range": 249.0,
@@ -744,7 +826,8 @@
         "super_range": 320,
         "ignore_walls_for_attacks": true,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": true
     },
     "shade": {
         "safe_range": 0.0,
@@ -753,7 +836,8 @@
         "super_range": 213,
         "ignore_walls_for_attacks": true,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "larrylawrie": {
         "safe_range": 288.0,
@@ -762,7 +846,8 @@
         "super_range": 320,
         "ignore_walls_for_attacks": true,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": true
     },
     "kenji": {
         "safe_range": 0.0,
@@ -771,7 +856,8 @@
         "super_range": 469,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "ollie": {
         "safe_range": 249.0,
@@ -780,7 +866,8 @@
         "super_range": 362,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "meeple": {
         "safe_range": 301.0,
@@ -789,7 +876,8 @@
         "super_range": 320,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "finx": {
         "safe_range": 328.0,
@@ -798,7 +886,8 @@
         "super_range": 469,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "lumi": {
         "safe_range": 341,
@@ -807,7 +896,8 @@
         "super_range": 469,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "alli": {
         "safe_range": 0,
@@ -816,7 +906,8 @@
         "super_range": 0,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "kaze": {
         "safe_range": 0,
@@ -825,7 +916,8 @@
         "super_range": 469,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "jaeyong": {
         "safe_range": 328,
@@ -834,7 +926,8 @@
         "super_range": 0,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "trunk": {
         "safe_range": 0,
@@ -843,7 +936,8 @@
         "super_range": 448,
         "ignore_walls_for_attacks": true,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "ziggy": {
         "safe_range": 288.0,
@@ -852,7 +946,8 @@
         "super_range": 853,
         "ignore_walls_for_attacks": true,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": true
     },
     "mina": {
         "safe_range": 196,
@@ -861,7 +956,8 @@
         "super_range": 448,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "gigi": {
         "safe_range": 0,
@@ -870,7 +966,8 @@
         "super_range": 469,
         "ignore_walls_for_attacks": true,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "pierce": {
         "safe_range": 305,
@@ -879,7 +976,8 @@
         "super_range": 315,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "glowy": {
         "safe_range": 315,
@@ -888,7 +986,8 @@
         "super_range": 362,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": false,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "sirius": {
         "safe_range": 288.0,
@@ -897,7 +996,8 @@
         "super_range": 640,
         "ignore_walls_for_attacks": true,
         "ignore_walls_for_supers": true,
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "najia": {
         "attack_range": 810,
@@ -906,7 +1006,8 @@
         "safe_range": 236,
         "super_range": 341,
         "super_type": "damage",
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "damian": {
         "attack_range": 170,
@@ -915,7 +1016,8 @@
         "safe_range": 0,
         "super_range": 576,
         "super_type": "charge",
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "bolt": {
         "attack_range": 999,
@@ -924,7 +1026,8 @@
         "safe_range": 0,
         "super_range": 0,
         "super_type": "other",
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "starrnova": {
         "attack_range": 363,
@@ -933,7 +1036,8 @@
         "safe_range": 223,
         "super_range": 277,
         "super_type": "dash",
-        "hold_attack": 0
+        "hold_attack": 0,
+        "placed_attack": false
     },
     "nori": {
         "safe_range": 0.0,
@@ -943,6 +1047,7 @@
         "super_range": 576,
         "ignore_walls_for_attacks": false,
         "ignore_walls_for_supers": true,
-        "hold_attack": 2.5
+        "hold_attack": 2.5,
+        "placed_attack": false
     }
 }

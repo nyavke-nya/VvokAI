@@ -416,6 +416,20 @@ class Play:
         raise ValueError("skill_type must be either 'attack' or 'super'")
 
     @staticmethod
+    def has_placed_attack(brawler, brawlers_info=None):
+        """True when the attack lands where the stick points, not just along it.
+
+        Throwers - Barley, Dynamike, Tick and the rest - aim at a POINT: the
+        angle of the drag picks the direction and its length picks the range.
+        Everyone else fires along the angle and the length means nothing, which
+        is the assumption aimed_attack was written on.
+        """
+        if not brawlers_info:
+            brawlers_info = load_brawlers_info()
+        entry = brawlers_info.get(brawler) or {}
+        return bool(entry.get("placed_attack"))
+
+    @staticmethod
     def must_brawler_hold_attack(brawler, brawlers_info=None):
         if not brawlers_info: brawlers_info = load_brawlers_info()
         return brawlers_info[brawler]['hold_attack'] > 0
@@ -995,16 +1009,66 @@ class Play:
                 self.attack()
             return False
 
+        # A thrower's shot lands where the stick points, so a drag of a fixed
+        # length lands it at a fixed distance - wherever the enemy actually is.
+        # The swipe radius is documented as needing only to "clear the dead
+        # zone", which is true for every brawler except these, and is why they
+        # were lobbing at their own feet.
+        #
+        # Tapping instead hands the shot to the game's auto-aim, which does put
+        # it on the enemy. That loses the lead, which hurts most for exactly
+        # these slow arcs - so the aimed version is still available, but it
+        # needs a stick geometry this cannot measure from here, and a guessed
+        # constant that throws short is worse than no lead at all.
+        if self.has_placed_attack(self.current_brawler, self.brawlers_info):
+            radius = self.placed_attack_radius(target_pos, config)
+            if radius is None:
+                if fallback:
+                    self.attack()
+                return False
+        else:
+            radius = config.aim_swipe_radius
+
         aimed = self.window_controller.aimed_attack(
             solution.direction[0],
             solution.direction[1],
-            radius=config.aim_swipe_radius,
+            radius=radius,
             hold=config.aim_swipe_hold,
         )
         self.last_aim_solution = solution
         if not aimed and fallback:
             self.attack()
         return aimed
+
+    def placed_attack_radius(self, target_pos, config):
+        """How far to drag the stick so a thrown shot lands on the target.
+
+        None means "do not drag at all" - the caller taps instead and lets the
+        game aim. That is the default, because turning a distance into a stick
+        deflection needs the control's full throw in pixels, and a wrong figure
+        puts every shot short.
+        """
+        if not config.aim_placed_attacks:
+            return None
+        if not self.last_player_box or not self.current_brawler:
+            return None
+
+        center, _ = self.get_player_hit_circle(self.last_player_box)
+        if center is None:
+            return None
+
+        try:
+            _, attack_range, _ = self.get_brawler_range(self.current_brawler)
+        except Exception:
+            return None
+        if not attack_range:
+            return None
+
+        distance = self.get_distance(target_pos, center)
+        fraction = min(1.0, max(0.0, distance / float(attack_range)))
+        # Below the dead zone the game reads the drag as a tap, which would
+        # silently be auto-aim rather than the short throw that was asked for.
+        return max(config.aim_swipe_min_radius, config.aim_swipe_full_radius * fraction)
 
     def publish_dodge_context(self, data):
         service = self.dodge_service

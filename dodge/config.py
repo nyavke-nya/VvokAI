@@ -179,6 +179,10 @@ class DodgeConfig:
         self.aim_match_gate = _f(aim, "match_gate_tiles", 2.0) * self.tile
         self.aim_max_missed = max(1, _i(aim, "max_missed", 3))
         self.aim_swipe_radius = _f(aim, "swipe_radius", 130.0) * scale
+        # Throwers only; see Play.placed_attack_radius.
+        self.aim_placed_attacks = _b(aim, "aim_placed_attacks", False)
+        self.aim_swipe_full_radius = _f(aim, "swipe_full_radius", 200.0) * scale
+        self.aim_swipe_min_radius = _f(aim, "swipe_min_radius", 40.0) * scale
         self.aim_swipe_hold = max(0.0, _f(aim, "swipe_hold", 0.02))
         self.aim_min_lead_distance = _f(aim, "min_lead_distance", 18.0) * scale
         self.aim_measure_speed = _b(aim, "measure_projectile_speed", True)

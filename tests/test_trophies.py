@@ -212,4 +212,90 @@ report.check("and a missing player tag never reaches the network",
              "if not self.player_tag:" in _stage and "return None" in _stage, True)
 
 
+
+report.section("throwers aim at a point, so a fixed drag lands in a fixed place")
+# "метатели по себе атакают". The attack control is a stick: for most brawlers
+# the drag ANGLE picks the direction and its length means nothing, which is
+# what aimed_attack was written on and what dodge_config still documents. For
+# a thrower the length is the RANGE, so one constant drag lobbed the shot the
+# same distance no matter where the enemy stood.
+import json as _json  # noqa: E402
+
+from play import Play  # noqa: E402
+
+_INFO = _json.load(open("cfg/brawlers_info.json", encoding="utf-8"))
+
+report.check("barley is flagged as aiming at a point",
+             Play.has_placed_attack("barley", _INFO), True)
+report.check("so is tick", Play.has_placed_attack("tick", _INFO), True)
+report.check("shelly is not", Play.has_placed_attack("shelly", _INFO), False)
+report.check("nor is piper", Play.has_placed_attack("piper", _INFO), False)
+report.check("a brawler nobody has heard of is not, rather than a crash",
+             Play.has_placed_attack("nonesuch", _INFO), False)
+
+# Hank and Mico ignore walls too, but they do not place their shot - the flag
+# had to be its own thing rather than a reuse of ignore_walls_for_attacks.
+report.check("ignore_walls_for_attacks was not reused for this",
+             Play.has_placed_attack("mico", _INFO), False)
+report.check("every brawler carries the flag either way",
+             all("placed_attack" in entry for entry in _INFO.values()), True)
+report.check("and nothing else lost a field",
+             all({"attack_range", "safe_range", "hold_attack"} <= set(entry)
+                 for entry in _INFO.values()), True)
+
+
+class _Config:
+    aim_placed_attacks = False
+    aim_swipe_radius = 130.0
+    aim_swipe_full_radius = 200.0
+    aim_swipe_min_radius = 40.0
+    aim_swipe_hold = 0.02
+
+
+class _Window:
+    scale_factor = 1.0
+
+
+def _play(brawler="barley", attack_range=469):
+    play = object.__new__(Play)
+    play.brawlers_info = _INFO
+    play.current_brawler = brawler
+    play.window_controller = _Window()
+    play.last_player_box = [900, 900, 1000, 1000]
+    play.brawler_ranges = {brawler: [200, attack_range, 500]}
+    return play
+
+
+_cfg = _Config()
+_p = _play()
+_centre = _p.get_player_hit_circle(_p.last_player_box)[0]
+
+report.check("off by default, so the shot is tapped and the game aims it",
+             _p.placed_attack_radius((_centre[0] + 400, _centre[1]), _cfg), None)
+
+_cfg.aim_placed_attacks = True
+report.check("switched on, a target at full range asks for the full drag",
+             _p.placed_attack_radius((_centre[0] + 469, _centre[1]), _cfg), 200.0)
+report.check("half way out asks for half the drag",
+             round(_p.placed_attack_radius((_centre[0] + 234.5, _centre[1]), _cfg), 1), 100.0)
+report.check("beyond maximum range does not ask for more than the stick has",
+             _p.placed_attack_radius((_centre[0] + 5000, _centre[1]), _cfg), 200.0)
+report.check("an enemy stood on top of us still clears the dead zone",
+             _p.placed_attack_radius(_centre, _cfg), 40.0)
+
+_blind = _play()
+_blind.last_player_box = None
+report.check("with no player box there is nothing to measure from",
+             _blind.placed_attack_radius((100, 100), _cfg), None)
+
+_nameless = _play()
+_nameless.current_brawler = None
+report.check("nor with no brawler", _nameless.placed_attack_radius((100, 100), _cfg), None)
+
+_dodge_cfg = open("cfg/dodge_config.toml", encoding="utf-8").read()
+report.check("the config says the drag length is the range for throwers",
+             "the drag length is the" in _dodge_cfg or "range" in _dodge_cfg, True)
+report.check("and ships the aimed version off",
+             "aim_placed_attacks = false" in _dodge_cfg, True)
+
 sys.exit(report.finish())
