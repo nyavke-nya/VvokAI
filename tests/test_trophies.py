@@ -168,4 +168,48 @@ report.check("and says so in Russian too",
              "бесплатный API-токен" in _i18n, True)
 
 
+report.section("power level was the last thing still behind the paid module")
+# `power_level = None if not early_access else ...` - so the history column sat
+# empty for everyone on the free path, even though Supercell publishes `power`
+# in the same payload as the trophies. The names come back upper case and
+# spaced, so the lookup has to normalise both sides.
+from brawl_api import get_brawler_power, get_brawler_stats as _api_stats  # noqa: E402
+import stage_manager as _sm  # noqa: E402
+
+_INFO = {"brawlers": [
+    {"name": "EL PRIMO", "trophies": 871, "power": 11},
+    {"name": "MR. P", "trophies": 262, "power": 9},
+    {"name": "8-BIT", "trophies": 500},
+    {"name": "SHELLY", "trophies": 300, "power": "7"},
+]}
+
+report.check("a spaced upper-case name still finds its brawler",
+             get_brawler_power(_INFO, "elprimo"), 11)
+report.check("so does one with a full stop in it", get_brawler_power(_INFO, "mrp"), 9)
+report.check("a power level written as text is still a number",
+             get_brawler_power(_INFO, "shelly"), 7)
+report.check("a brawler with no power field reports nothing, not a guess",
+             get_brawler_power(_INFO, "8bit"), None)
+report.check("a brawler the account does not own reports nothing",
+             get_brawler_power(_INFO, "nori"), None)
+report.check("and no payload at all is not a crash",
+             get_brawler_power(None, "shelly"), None)
+
+report.check("reading the power level did not disturb the trophies",
+             _api_stats(_INFO, "elprimo"), (871, None))
+
+report.check("the caller's three-value form works on the free path",
+             _sm.get_brawler_stats(_INFO, "elprimo", power_level=True), (871, None, 11))
+report.check("and the two-value form is unchanged",
+             _sm.get_brawler_stats(_INFO, "elprimo"), (871, None))
+report.check("an unknown power still fills the third slot",
+             _sm.get_brawler_stats(_INFO, "8bit", power_level=True), (500, None, None))
+
+_stage = open("stage_manager.py", encoding="utf-8").read()
+report.check("the paid gate is gone from the call site",
+             "None if not early_access else get_brawler_stats" in _stage, False)
+report.check("and a missing player tag never reaches the network",
+             "if not self.player_tag:" in _stage and "return None" in _stage, True)
+
+
 sys.exit(report.finish())

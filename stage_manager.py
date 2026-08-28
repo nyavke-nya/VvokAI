@@ -15,9 +15,19 @@ except (ImportError, ModuleNotFoundError):
     early_access = False
 
 
-    def get_brawler_stats(player_info, brawler_name, _power_level=False):
-        from brawl_api import get_brawler_stats as _stats
-        return _stats(player_info, brawler_name)
+    def get_brawler_stats(player_info, brawler_name, power_level=False):
+        """Match the paid module's shape, including its three-value form.
+
+        The paid version returns (trophies, win_streak, power) when asked for
+        the power level, and the caller indexes [2] for it. The public API has
+        the same field, so the free path answers the same question rather than
+        declining it.
+        """
+        from brawl_api import get_brawler_power, get_brawler_stats as _stats
+        trophies, win_streak = _stats(player_info, brawler_name)
+        if power_level:
+            return trophies, win_streak, get_brawler_power(player_info, brawler_name)
+        return trophies, win_streak
 
 
     def get_player_info(tag):
@@ -412,6 +422,23 @@ class StageManager:
             already_include_ratio=False
         )
 
+    def read_power_level(self, brawler):
+        """The brawler's power level, or None when nothing can say.
+
+        None rather than a guess: add_trophies writes -1 for "not known", and
+        a made-up 11 in the history would be worse than an honest blank.
+        """
+        if not self.player_tag:
+            return None
+        try:
+            player_info = get_player_info(self.player_tag)
+            if not player_info:
+                return None
+            return get_brawler_stats(player_info, brawler, power_level=True)[2]
+        except Exception as exc:
+            print(f"Could not read the power level for {brawler} ({exc}).")
+            return None
+
     def end_game(self):
         screenshot = self.window_controller.screenshot()
 
@@ -425,7 +452,10 @@ class StageManager:
                 parsed_result = self.Trophy_observer.parse_game_result(raw_found_result)
 
                 current_brawler = self.brawlers_pick_data[0]['brawler']
-                power_level = None if not early_access else get_brawler_stats(get_player_info(self.player_tag), current_brawler, power_level=True)[2]
+                # Was gated on the paid module. The public API carries the same
+                # field, so the only thing the gate did was leave the column
+                # empty for everyone on the free path.
+                power_level = self.read_power_level(current_brawler)
                 # Kept so the resync below can tell "the API has the new total"
                 # from "the API has not caught up yet".
                 trophies_before_match = self.Trophy_observer.current_trophies

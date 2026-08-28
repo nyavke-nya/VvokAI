@@ -383,7 +383,6 @@
         "Times are 24 hour. The window may cross midnight, so 23:30 to 08:00 works. It finishes the current match and pauses - the queue is kept. Leave everything empty to run until stopped.":
             "Время в 24-часовом формате. Окно может переходить через полночь, поэтому 23:30 — 08:00 работает. Бот доигрывает текущий матч и встаёт на паузу, очередь сохраняется. Оставь всё пустым, чтобы работал до остановки.",
         "Enter your Pyla API key": "Введи ключ Pyla API",
-        "Pyla Early Access": "Ранний доступ Pyla",
         "Generate one in Discord with /generate_key using PylaBot.":
             "Сгенерируй его в Discord командой /generate_key у PylaBot.",
         "Generate a fresh key with /generate_key using PylaBot, then paste the full key here.":

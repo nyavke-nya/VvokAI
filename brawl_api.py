@@ -293,24 +293,48 @@ def _fetch(tag, token, allow_refresh):
     return None
 
 
+def _find_brawler(player_info, brawler_name):
+    """The API's entry for one brawler, or None.
+
+    API names are upper case and spaced ("EL PRIMO", "MR. P", "8-BIT"); the
+    same normaliser the icon loader uses maps both sides to the project's
+    flat keys.
+    """
+    if not player_info or not brawler_name:
+        return None
+
+    wanted = normalize_brawler_filename(brawler_name)
+    for brawler in player_info.get("brawlers", []) or []:
+        if normalize_brawler_filename(brawler.get("name", "")) == wanted:
+            return brawler
+    return None
+
+
 def get_brawler_stats(player_info, brawler_name):
     """Return (trophies, win_streak) for one brawler.
 
     win_streak is always None: the official API does not publish it. Callers
     treat None as "leave the existing value alone".
     """
-    if not player_info or not brawler_name:
+    brawler = _find_brawler(player_info, brawler_name)
+    if brawler is None:
         return None, None
+    return int(brawler.get("trophies", 0) or 0), None
 
-    wanted = normalize_brawler_filename(brawler_name)
-    for brawler in player_info.get("brawlers", []) or []:
-        # API names are upper case and spaced ("EL PRIMO", "MR. P", "8-BIT");
-        # the same normaliser the icon loader uses maps both sides to the
-        # project's flat keys.
-        if normalize_brawler_filename(brawler.get("name", "")) == wanted:
-            return int(brawler.get("trophies", 0) or 0), None
 
-    return None, None
+def get_brawler_power(player_info, brawler_name):
+    """The brawler's power level, or None when it cannot be read.
+
+    Supercell publishes this in the same payload as the trophies, so it never
+    needed the paid module - the code simply never asked for the field.
+    """
+    brawler = _find_brawler(player_info, brawler_name)
+    if brawler is None:
+        return None
+    try:
+        return int(brawler.get("power"))
+    except (TypeError, ValueError):
+        return None
 
 
 def get_player_summary(tag):
