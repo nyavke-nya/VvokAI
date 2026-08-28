@@ -208,6 +208,37 @@ def is_in_daily_wins(image):
                                  region_data.get("daily_wins", [270, 310, 290, 120]))
 
 
+def is_team_invite_on_screen(image):
+    """The team-invite dialog, by its own artwork.
+
+    A pixel count and a pair of OCR'd words used to decide this, and it fired
+    on things that were not the dialog at all - the words REJECT and ACCEPT
+    are not rare, and a green button is not either. The banner across the top
+    of this modal is, so match that instead, the same way star drops are
+    matched.
+
+    False when the template has not been captured yet: an install without it
+    simply does not act on invites, which is the safe direction. See
+    tools/make_state_template.py.
+    """
+    return is_template_in_region(
+        image, states_path + "team_invite.png",
+        region_data.get("team_invite", [470, 170, 990, 740]))
+
+
+def is_idle_disconnect_on_screen(image):
+    """The "you were disconnected for idling" box.
+
+    Same reasoning: this used to be a count of grey pixels in the middle of the
+    screen, and a great many screens are grey in the middle. Acting on it now
+    restarts the game, so a false positive costs a match rather than a stray
+    click, and the test has to be worth that.
+    """
+    return is_template_in_region(
+        image, states_path + "idle_disconnect.png",
+        region_data.get("idle_disconnect", [460, 400, 1000, 275]))
+
+
 def is_in_star_drop(image):
     for image_filename in images_with_star_drop:
         if is_template_in_region(image, star_drops_path + image_filename, region_data.get('star_drop', [790, 350, 350, 350])):

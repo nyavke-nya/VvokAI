@@ -122,18 +122,125 @@ class RemoteControl:
         return Reply(self._outcome(self.runtime_manager.pause()))
 
     def status(self):
+        """What the bot is doing, from somebody who cannot see the screen.
+
+        It used to answer "Running", the playstyle, and "ask for the queue" -
+        which is three questions deep for the one thing anybody asks from
+        their phone: is it working, and how far along is it. So: the brawler
+        it is on and how close that is to its target, whether frames are
+        actually being processed, what today has come to, and what is next.
+
+        Every part is optional and every lookup is guarded. This runs on a
+        remote thread against a bot that may be starting, stopping or broken,
+        and a status command that raises is worse than one that is short.
+        """
         status = self.runtime_manager.get_status()
+        lines = []
+
+        state = str(status.get("state", "unknown")).capitalize()
         if not status.get("is_running"):
-            return Reply("The bot is currently not running.")
+            lines.append(f"VvokAI is not running ({state}).")
+        else:
+            ips = status.get("ips") or 0.0
+            rate = f"  |  {ips:.0f} IPS" if ips else ""
+            lines.append(f"VvokAI is {state}.{rate}")
 
-        message = f"The bot is currently {status.get('state', 'unknown').capitalize()}."
         if status.get("last_error"):
-            message += f"\nLast error: {status['last_error']}"
+            lines.append(f"Last error: {status['last_error']}")
 
-        playstyle = (self.data_service.get_playstyles_payload() or {}).get("current")
-        message += f"\nPlaystyle: {(playstyle or {}).get('name') or 'None'}"
-        message += "\nQueue: ask for the queue to see what is left."
-        return Reply(message)
+        lines.extend(self._status_current())
+        lines.extend(self._status_today())
+        lines.extend(self._status_schedule())
+        return Reply("\n".join(lines))
+
+    def _status_current(self):
+        """The brawler being pushed, its progress, and what follows it."""
+        try:
+            queue = self.data_service.get_queue_data() or []
+        except Exception:
+            return []
+
+        out = []
+        try:
+            playstyle = (self.data_service.get_playstyles_payload() or {}).get("current")
+            name = (playstyle or {}).get("name")
+            if name:
+                out.append(f"Playstyle: {name}")
+        except Exception:
+            pass
+
+        if not queue:
+            out.append("Queue: empty.")
+            return out
+
+        head = queue[0]
+        push_type = head.get("type") or "trophies"
+        current = head.get(push_type)
+        target = head.get("push_until")
+        brawler = head.get("brawler") or "unknown"
+
+        line = f"Pushing: {brawler}"
+        if current is not None and target is not None:
+            try:
+                left = int(target) - int(current)
+                line += f" - {current}/{target} {push_type}"
+                line += f" ({left} to go)" if left > 0 else " (target reached)"
+            except (TypeError, ValueError):
+                line += f" - {current}/{target} {push_type}"
+        out.append(line)
+
+        streak = head.get("win_streak")
+        if streak:
+            out.append(f"Win streak: {streak}")
+
+        if len(queue) > 1:
+            following = ", ".join(str(item.get("brawler") or "?") for item in queue[1:4])
+            more = f" (+{len(queue) - 4} more)" if len(queue) > 4 else ""
+            out.append(f"Then: {following}{more}")
+        out.append(f"Queue: {len(queue)} brawler{'s' if len(queue) != 1 else ''} left.")
+        return out
+
+    def _status_today(self):
+        """Today's matches and trophies, and the all-time rate behind them."""
+        try:
+            history = self.data_service.get_match_history_payload() or {}
+        except Exception:
+            return []
+
+        out = []
+        profile = history.get("profile") or {}
+        today = profile.get("matches_today")
+        if today:
+            trophies = profile.get("trophies_today")
+            piece = f"Today: {today} match{'es' if today != 1 else ''}"
+            if trophies is not None:
+                piece += f", {trophies:+d} trophies"
+            out.append(piece)
+
+        summary = history.get("summary") or {}
+        total = summary.get("total_matches")
+        if total:
+            rate = summary.get("win_rate")
+            piece = f"All time: {total} matches"
+            if rate is not None:
+                piece += f", {rate}% wins"
+            out.append(piece)
+        return out
+
+    def _status_schedule(self):
+        """When it plans to stop, if it plans to stop."""
+        try:
+            bot = self.data_service.get_settings_payload("bot") or {}
+        except Exception:
+            return []
+
+        stop_at = str(bot.get("stop_at") or "").strip()
+        resume_at = str(bot.get("resume_at") or "").strip()
+        if not stop_at:
+            return []
+        if resume_at:
+            return [f"Schedule: stops at {stop_at}, starts again at {resume_at}"]
+        return [f"Schedule: stops at {stop_at}"]
 
     def restart_game(self):
         status = self.runtime_manager.get_status()

@@ -122,6 +122,11 @@ def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
             self.picked_first_brawler = False
             self.time_since_checked_if_brawl_stars_crashed = time.time()
             self.check_if_brawl_stars_crashed_timer = load_toml_as_dict("cfg/time_tresholds.toml")["check_if_brawl_stars_crashed"]
+            # Long enough that a restart has finished and the game is back
+            # before another one can be triggered by the same grey box.
+            self.idle_restart_cooldown = float(
+                load_toml_as_dict("cfg/time_tresholds.toml").get("idle_restart_cooldown", 90.0))
+            self.time_since_idle_restart = 0.0
             self.ping_when_stuck = load_toml_as_dict("cfg/webhook_config.toml")["ping_when_stuck"]
 
         @staticmethod
@@ -155,6 +160,26 @@ def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
                 folder_path + 'tileDetector.onnx',
                 folder_path + 'closeTileDetector.onnx',
             ]
+
+        def handle_idle_disconnect(self):
+            """The game says it dropped us for idling or a bad connection.
+
+            Restart it, at once. Pressing RELOAD returns to a battle that has
+            already ended, so the old behaviour left the bot staring at a
+            finished match; a restart puts it back in the lobby where the
+            normal flow can pick up.
+
+            The guard is not a delay before acting - the first sighting acts
+            immediately. It stops a repeat: this is a pixel count over a grey
+            box, and a false positive that restarted the game every three
+            seconds would be far worse than the thing it is fixing.
+            """
+            now = time.time()
+            if now - self.time_since_idle_restart < self.idle_restart_cooldown:
+                return
+            self.time_since_idle_restart = now
+            print("Idle disconnect on screen - restarting Brawl Stars.")
+            self.restart_brawl_stars()
 
         def restart_brawl_stars(self):
             self.window_controller.restart_brawl_stars()
@@ -326,8 +351,8 @@ def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
                 for key, value in frame_data.items():
                     if t_now - value > self.no_detections_action_threshold:
                         self.restart_brawl_stars()
-            if self.Time_management.idle_check():
-                self.lobby_automator.check_for_idle(frame)
+            if self.Time_management.idle_check() and self.lobby_automator.check_for_idle(frame):
+                self.handle_idle_disconnect()
             # Only outside a match. Invites do arrive mid-match, but the dialog
             # sits over the lobby, and OCR in the play loop would cost frames
             # for something that can wait until the match ends.

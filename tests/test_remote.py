@@ -40,15 +40,40 @@ class _Runtime:
 
 
 class _Data:
-    def __init__(self, queue=None, playstyle="unified_dodge.pyla"):
+    def __init__(self, queue=None, playstyle="unified_dodge.pyla",
+                 history=None, settings=None):
         self._queue = queue if queue is not None else []
         self._playstyle = playstyle
+        self._history = history if history is not None else {}
+        self._settings = settings if settings is not None else {}
 
     def get_queue_data(self):
         return self._queue
 
     def get_playstyles_payload(self):
         return {"current": {"name": self._playstyle}} if self._playstyle else {}
+
+    def get_match_history_payload(self):
+        return self._history
+
+    def get_settings_payload(self, section):
+        return self._settings
+
+
+class _AngryData(_Data):
+    """Every lookup raises. /status is asked from a phone, at the worst moment."""
+
+    def get_queue_data(self):
+        raise RuntimeError("queue unavailable")
+
+    def get_playstyles_payload(self):
+        raise RuntimeError("playstyles unavailable")
+
+    def get_match_history_payload(self):
+        raise RuntimeError("history unavailable")
+
+    def get_settings_payload(self, section):
+        raise RuntimeError("settings unavailable")
 
 
 class _Window:
@@ -147,13 +172,73 @@ report.check("running with a window restarts it",
 report.check("exactly once", window.restarted, 1)
 
 report.section("status")
-report.check("not running", control(_Runtime(is_running=False)).status().text,
-             "The bot is currently not running.")
+# It used to answer "Running", the playstyle, and "ask for the queue to see
+# what is left" - which is another round trip for the one thing anybody wants
+# from their phone: what is it on, and how far along is it.
+report.check("not running says so",
+             "not running" in control(_Runtime(is_running=False)).status().text, True)
 text = control(_Runtime(state="paused"), _Data(playstyle="unified_aggro.pyla")).status().text
 report.check("the state is named", "Paused" in text, True)
 report.check("so is the playstyle", "unified_aggro.pyla" in text, True)
 report.check("a playstyle payload with nothing in it does not crash",
-             "None" in control(data=_Data(playstyle=None)).status().text, True)
+             isinstance(control(data=_Data(playstyle=None)).status().text, str), True)
+
+_QUEUE = [
+    {"brawler": "shelly", "type": "trophies", "trophies": 871,
+     "push_until": 1000, "win_streak": 3},
+    {"brawler": "piper", "type": "trophies", "trophies": 640, "push_until": 1000},
+    {"brawler": "bea", "type": "trophies", "trophies": 512, "push_until": 1000},
+    {"brawler": "nori", "type": "wins", "wins": 12, "push_until": 300},
+    {"brawler": "lou", "type": "trophies", "trophies": 300, "push_until": 1000},
+]
+_HISTORY = {"summary": {"total_matches": 2280, "win_rate": 54.4},
+            "profile": {"matches_today": 128, "trophies_today": 342}}
+
+_full = control(_Runtime(state="running", ips=32.4),
+                _Data(_QUEUE, history=_HISTORY,
+                      settings={"stop_at": "23:30", "resume_at": "08:00"})).status().text
+
+report.check("the brawler being pushed is named", "shelly" in _full, True)
+report.check("with where it is and where it is going", "871/1000 trophies" in _full, True)
+report.check("and how much is left", "129 to go" in _full, True)
+report.check("the win streak on that brawler", "Win streak: 3" in _full, True)
+report.check("what comes next", "piper, bea, nori" in _full, True)
+report.check("without listing all of them", "(+1 more)" in _full, True)
+report.check("how many are left", "5 brawlers left" in _full, True)
+report.check("whether frames are being processed at all", "32 IPS" in _full, True)
+report.check("what today has come to", "128 matches, +342 trophies" in _full, True)
+report.check("and the rate behind it", "2280 matches, 54.4% wins" in _full, True)
+report.check("when it plans to stop",
+             "stops at 23:30, starts again at 08:00" in _full, True)
+
+_reached = control(_Runtime(state="running"),
+                   _Data([{"brawler": "tick", "type": "wins", "wins": 300,
+                           "push_until": 300}])).status().text
+report.check("a finished target says so rather than -0 to go",
+             "target reached" in _reached, True)
+report.check("one brawler is not plural", "1 brawler left" in _reached, True)
+
+_empty = control(_Runtime(state="running"), _Data([])).status().text
+report.check("an empty queue is stated, not left to a second command",
+             "Queue: empty." in _empty, True)
+report.check("and nothing pretends to be pushing", "Pushing:" in _empty, False)
+
+_broken = control(_Runtime(state="running", last_error="scrcpy died"),
+                  _Data(_QUEUE)).status().text
+report.check("an error is surfaced", "scrcpy died" in _broken, True)
+
+# The whole point of the guards: this is asked when things are going wrong.
+_angry = control(_Runtime(state="running"), _AngryData()).status().text
+report.check("every lookup failing still answers", "VvokAI is Running" in _angry, True)
+report.check("and does not raise", isinstance(_angry, str), True)
+
+_no_ips = control(_Runtime(state="running", ips=0), _Data(_QUEUE)).status().text
+report.check("no measured rate is left out rather than shown as zero",
+             "IPS" in _no_ips, False)
+
+_no_schedule = control(_Runtime(state="running"),
+                       _Data(_QUEUE, settings={"stop_at": "", "resume_at": ""})).status().text
+report.check("an unset schedule is not mentioned", "Schedule" in _no_schedule, False)
 
 report.section("queue")
 report.check("empty", control(data=_Data([])).queue().text, "The queue is currently empty.")

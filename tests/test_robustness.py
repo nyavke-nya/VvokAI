@@ -6,6 +6,7 @@ number typed into a form and thrown away, and a Flask warning that reads like
 something is wrong with the program.
 """
 import logging
+import os
 import sys
 
 from _harness import Failures, read_source
@@ -13,7 +14,6 @@ from _harness import Failures, read_source
 sys.path.insert(0, ".")
 import webui.app as webui_app  # noqa: E402
 from detect import Detect  # noqa: E402
-from lobby_automation import LobbyAutomation  # noqa: E402
 from webui.runtime import RuntimeControl, RuntimeManager  # noqa: E402
 
 report = Failures("robustness")
@@ -59,30 +59,59 @@ report.check("and every provider failing is still an error, not a silent no-op",
 
 
 # ── an emulator that is not 1920x1080 ───────────────────────────────────
-report.section("the reconnect prompt is clickable on a smaller emulator")
+report.section("the disconnect box is found on a smaller emulator too")
 
-left, top, right, bottom = LobbyAutomation.IDLE_REGION
-reference_area = (right - left) * (bottom - top)
-
-
-def idle_threshold(configured, ratio):
-    """What check_for_idle now compares against at a given window scale."""
-    actual = max(int((right - left) * ratio) * int((bottom - top) * ratio), 1)
-    return configured * (actual / reference_area)
-
-
-report.check("at the reference resolution the configured number is unchanged",
-             round(idle_threshold(75000, 1.0)), 75000)
-for ratio in (0.75, 0.5, 0.35):
-    area = int((right - left) * ratio) * int((bottom - top) * ratio)
-    report.check(f"at x{ratio} the threshold still fits inside the box",
-                 idle_threshold(75000, ratio) < area, True)
-report.check("which the old fixed 75000 did not at half size",
-             75000 < int((right - left) * 0.5) * int((bottom - top) * 0.5), False)
-
+# This used to be a count of grey pixels against a number measured at
+# 1920x1080, so on a smaller window it asked for more grey than the box could
+# hold and never fired. That whole approach is gone: it answered "is the middle
+# of the screen grey", which a great many screens are, and what it triggers now
+# is a restart of Brawl Stars - far too expensive to hang on a test that loose.
+#
+# Matching artwork scales by construction: is_template_in_region converts the
+# region by the frame's own ratio before cropping, and loads the template at
+# the same scale. So the check is that nothing is left doing it the old way,
+# and that the region travels with the others.
 _lobby = read_source("lobby_automation.py")
-report.check("the region is named once rather than written out twice",
-             _lobby.count("IDLE_REGION"), 2)
+_states = read_source("state_finder.py")
+
+report.check("the idle box is no longer found by counting grey",
+             "gray_pixels" in _lobby, False)
+report.check("nor by clicking a stored coordinate at it",
+             "idle_reconnect_coords" in _lobby, False)
+report.check("it is matched against a template",
+             "def is_idle_disconnect_on_screen" in _states, True)
+report.check("so is the team invite, which was declining things that were not",
+             "def is_team_invite_on_screen" in _states, True)
+report.check("both search regions sit with every other screen's",
+             all(key in read_source("cfg/lobby_config.toml")
+                 for key in ("idle_disconnect", "team_invite")), True)
+
+# The region is read from config rather than written into the code, so the
+# template cutter and the matcher cannot disagree about where to look.
+for _name in ("idle_disconnect", "team_invite"):
+    report.check(f"{_name} reads its region from lobby_config",
+                 f'region_data.get("{_name}"' in _states, True)
+
+# A template that has not been captured yet must mean "off", not a crash and
+# not a match against nothing.
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(REPO, "src"))
+import numpy as _np  # noqa: E402
+import state_finder as _sf  # noqa: E402
+
+_blank = (_np.random.rand(1080, 1920, 3) * 255).astype("uint8")
+report.check("an uncaptured idle template means the check is off",
+             _sf.is_idle_disconnect_on_screen(_blank), False)
+report.check("an uncaptured invite template means the check is off",
+             _sf.is_team_invite_on_screen(_blank), False)
+
+# And the restart it triggers cannot run away with itself.
+_main = read_source("main.py")
+report.check("a restart from the idle box is rate limited",
+             "idle_restart_cooldown" in _main, True)
+report.check("but the first sighting is not delayed",
+             "self.time_since_idle_restart = now" in _main, True)
+
 
 
 # ── the panel header's live rate ────────────────────────────────────────

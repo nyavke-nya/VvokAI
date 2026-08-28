@@ -186,6 +186,7 @@ TUNING = {
         "hypercharge",
         "super",
         "idle",
+        "idle_restart_cooldown",
         "team_invite",
     ),
     "cfg/lobby_config.toml": (),

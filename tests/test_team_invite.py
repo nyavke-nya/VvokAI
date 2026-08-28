@@ -21,6 +21,7 @@ import numpy as np
 from _harness import Failures
 
 sys.path.insert(0, ".")
+import lobby_automation  # noqa: E402
 from lobby_automation import LobbyAutomation  # noqa: E402
 
 report = Failures("team invite")
@@ -42,7 +43,8 @@ class FakeWindow:
         self.clicks.append((round(x), round(y)))
 
 
-def automator(green=99999, ocr=None, enabled=True, scale=1.0, verbose=False):
+def automator(green=99999, ocr=None, enabled=True, scale=1.0, verbose=False,
+              template=True):
     """A LobbyAutomation with no OCR engine and no emulator behind it.
 
     __init__ loads four config files and builds an OCR reader; everything under
@@ -59,9 +61,22 @@ def automator(green=99999, ocr=None, enabled=True, scale=1.0, verbose=False):
     a.last_team_invite_handled = 0.0
     a._green = green
     a._ocr = ocr if ocr is not None else {}
-    # Stand in for the two things that touch the outside world.
+    # Stand in for the three things that touch the outside world.
     a._read_invite_buttons = lambda crop: _stub_read(a, crop)
+    _templates.append(template)
     return a
+
+
+# What is_team_invite_on_screen answers, per automator built. The real one
+# reads a PNG off disk and runs matchTemplate; here it is just the next value.
+_templates = []
+
+
+def _stub_template(_frame):
+    return _templates[-1] if _templates else True
+
+
+lobby_automation.is_team_invite_on_screen = _stub_template
 
 
 def _stub_read(a, crop):
@@ -88,6 +103,18 @@ def run(a, frame=None):
 
 
 FULL = {"reject": REJECT_CENTRE, "accept": ACCEPT_CENTRE}
+
+
+report.section("the artwork decides whether this is the dialog at all")
+# The green count and the OCR used to be the whole test, and between them they
+# declined things that were never invites: REJECT and ACCEPT are ordinary words
+# and a green button is an ordinary button. The banner is not.
+a = automator(green=99999, ocr=FULL, template=False)
+report.check("everything else matching is not enough on its own", run(a), False)
+report.check("and nothing was clicked", a.window_controller.clicks, [])
+
+a = automator(green=99999, ocr=FULL, template=True)
+report.check("with the banner there, it goes ahead", run(a), True)
 
 
 report.section("the cheap check gates the expensive one")

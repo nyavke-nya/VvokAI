@@ -1,6 +1,7 @@
 import time
 
 import cv2
+from state_finder import is_idle_disconnect_on_screen, is_team_invite_on_screen
 from utils import (
     EasyOCRInitializationError,
     count_hsv_pixels,
@@ -12,8 +13,6 @@ from utils import (
 class LobbyAutomation:
 
     def __init__(self, window_controller):
-        self.gray_pixels_treshold = load_toml_as_dict("./cfg/bot_config.toml").get('idle_pixels_minimum', 500)
-        self.idle_reconnect_coords = load_toml_as_dict("cfg/buttons_config.toml")["idle_reconnect"]
         bot_config = load_toml_as_dict("./cfg/bot_config.toml")
         self.decline_team_invites = config_bool(bot_config.get("decline_team_invites"), True)
         self.team_invite_green_minimum = float(bot_config.get("team_invite_green_minimum", 3500))
@@ -26,8 +25,9 @@ class LobbyAutomation:
         self.window_controller = window_controller
         self.verbose_debug = config_bool(load_toml_as_dict("cfg/debug_settings.toml").get('verbose_debug'), False)
 
-    # The idle box at the reference 1920x1080, in that resolution's pixels.
-    IDLE_REGION = (460, 400, 1460, 675)
+    # The idle box's own region now lives in cfg/lobby_config.toml, with every
+    # other screen's, so the search area and the template that was cut from it
+    # cannot disagree. See tools/make_state_template.py.
 
     # Where the team-invite modal lands. It is centred, so this is a generous
     # box around it rather than its exact bounds - it only has to contain the
@@ -59,17 +59,17 @@ class LobbyAutomation:
     def check_for_team_invite(self, frame):
         """Turn down a team invite, and mute whoever sent it on the way out.
 
-        Two stages, because the second one is expensive. First a count of the
-        ACCEPT button's green inside the box the modal lands in - that is an
-        inRange over a crop, and it is what runs almost every time. Only when
-        that finds a button-sized patch of it does OCR run, and OCR is what
-        actually decides: the words REJECT and ACCEPT together in the middle of
-        the screen are this dialog and nothing else.
+        Three stages now, and the first one is new. The dialog is identified by
+        its own banner, the way star drops are - "the words REJECT and ACCEPT
+        together" turned out not to be this dialog and nothing else, and the
+        bot was declining things that were never invites.
 
-        Reading the buttons rather than storing their coordinates is the point.
-        The modal is centred and scales with the window, so a pixel pair
-        measured on one machine is wrong on the next one; two words that OCR
-        can find are right everywhere.
+        The green count and the OCR stay, but they no longer decide anything:
+        the count is a cheap way to skip the expensive step, and OCR is there
+        to LOCATE the buttons, not to recognise the screen. Reading them rather
+        than storing coordinates is still the point - the modal is centred and
+        scales with the window, so a pixel pair measured on one machine is
+        wrong on the next.
 
         Returns True when an invite was dealt with.
         """
@@ -77,6 +77,10 @@ class LobbyAutomation:
             return False
         now = time.time()
         if now - self.last_team_invite_handled < self.TEAM_INVITE_COOLDOWN:
+            return False
+
+        # Is this actually the dialog? Everything below assumes it is.
+        if not is_team_invite_on_screen(frame):
             return False
 
         wr = self.window_controller.width_ratio
@@ -162,29 +166,22 @@ class LobbyAutomation:
         return reject_c, accept_c, mute_y
 
     def check_for_idle(self, frame):
-        wr = self.window_controller.width_ratio
-        hr = self.window_controller.height_ratio
-        left, top, right, bottom = self.IDLE_REGION
-        x_start, x_end = int(left * wr), int(right * wr)
-        y_start, y_end = int(top * hr), int(bottom * hr)
-        gray_pixels = count_hsv_pixels(frame[y_start:y_end, x_start:x_end], (0, 0, 10), (30, 60, 67))
+        """Whether the idle-disconnect box is on screen.
 
-        # The region scales with the window but the threshold was an absolute
-        # pixel count measured at 1920x1080, so on any smaller emulator it
-        # asked for more grey than the box could hold and the reconnect prompt
-        # was never clicked - the bot just sat there until somebody pressed it
-        # by hand. Scale the count by how much smaller the box got, so the
-        # configured number keeps meaning what it meant when it was measured.
-        reference_area = (right - left) * (bottom - top)
-        actual_area = max((x_end - x_start) * (y_end - y_start), 1)
-        threshold = self.gray_pixels_treshold * (actual_area / reference_area)
+        Only reports it; what to do about it is the caller's business. Pressing
+        RELOAD used to be the answer here and it is not a reliable one - the
+        button returns to a battle that has already finished without us, so the
+        bot sat in a dead match until something else noticed.
 
-        if self.verbose_debug:
-            print(f"gray pixels (if > {threshold:.0f} then bot will try to unidle) :",
-                  gray_pixels)
-        if gray_pixels > threshold:
-            self.window_controller.click(self.idle_reconnect_coords[0], self.idle_reconnect_coords[1], already_include_ratio=False)
-            print("Idle detected, clicking to unidle")
+        Matched against its own artwork rather than counted in grey pixels. The
+        old test was "is the middle of the screen grey", which a great many
+        screens are, and the answer to this one is now a restart of the game -
+        far too expensive to hang on a heuristic that loose.
+        """
+        found = is_idle_disconnect_on_screen(frame)
+        if found and self.verbose_debug:
+            print("idle disconnect: template matched")
+        return found
 
     @staticmethod
     def _should_interrupt(runtime_control=None, stop_event=None):
