@@ -36,6 +36,13 @@ def main():
                         help="fraction of the region to keep, centred. Slightly "
                              "smaller than the search area so the match has room "
                              "to slide rather than needing pixel alignment.")
+    parser.add_argument("--crop", metavar="X,Y,W,H",
+                        help="cut exactly this box instead, in 1920x1080 pixels "
+                             "of the whole screen. Use it when only part of the "
+                             "dialog is constant - a title banner is the same "
+                             "every time, while the sender's name and avatar "
+                             "are not, and a template containing those matches "
+                             "only the one invite it was cut from.")
     args = parser.parse_args()
 
     image = cv2.imread(args.screenshot)
@@ -55,10 +62,23 @@ def main():
         print(f"screenshot is {width}x{height}, scaling to 1920x1080")
         image = cv2.resize(image, REFERENCE, interpolation=cv2.INTER_AREA)
 
-    keep = max(0.1, min(args.shrink, 1.0))
-    inset_x = int(w * (1 - keep) / 2)
-    inset_y = int(h * (1 - keep) / 2)
-    crop = image[y + inset_y:y + h - inset_y, x + inset_x:x + w - inset_x]
+    if args.crop:
+        try:
+            cx, cy, cw, ch = (int(part) for part in args.crop.split(","))
+        except ValueError:
+            raise SystemExit("--crop wants four numbers: X,Y,W,H")
+        # It has to sit inside the search region, or the matcher will never
+        # look where the template came from.
+        if not (x <= cx and y <= cy and cx + cw <= x + w and cy + ch <= y + h):
+            raise SystemExit(
+                f"--crop {[cx, cy, cw, ch]} is not inside {args.region} = {[x, y, w, h]}. "
+                f"Widen the region in cfg/lobby_config.toml, or move the crop.")
+        crop = image[cy:cy + ch, cx:cx + cw]
+    else:
+        keep = max(0.1, min(args.shrink, 1.0))
+        inset_x = int(w * (1 - keep) / 2)
+        inset_y = int(h * (1 - keep) / 2)
+        crop = image[y + inset_y:y + h - inset_y, x + inset_x:x + w - inset_x]
     if crop.size == 0:
         raise SystemExit(f"region {args.region} = {[x, y, w, h]} is outside the image")
 
@@ -67,6 +87,11 @@ def main():
     cv2.imwrite(str(out), crop)
     print(f"wrote {out}  ({crop.shape[1]}x{crop.shape[0]})")
     print("Check it looks like the thing you meant to match, then restart the bot.")
+    print()
+    print("It must be a part of the dialog that is the SAME every time. A title")
+    print("banner is; a player name, an avatar or a trophy count is not, and a")
+    print("template containing one of those matches only the screenshot it came")
+    print("from. Use --crop X,Y,W,H to take just the constant part.")
 
 
 if __name__ == "__main__":
