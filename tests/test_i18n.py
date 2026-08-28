@@ -15,12 +15,12 @@ import json
 import re
 import sys
 
-from _harness import Failures
+from _harness import Failures, read_source
 
 report = Failures("settings translations")
 
-app = open("static/js/app.js", encoding="utf-8").read()
-i18n = open("static/js/i18n.js", encoding="utf-8").read()
+app = read_source("static/js/app.js")
+i18n = read_source("static/js/i18n.js")
 
 # label: "..." with an optional help: "..." after it, inside one field entry.
 FIELD = re.compile(

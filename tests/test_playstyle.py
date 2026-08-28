@@ -734,7 +734,7 @@ def check_two_attacks(report):
     # blank tile rather than an error - so nothing notices until somebody sees
     # a hole in the UI.
     icons = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                         "api", "assets", "brawler_icons")
+                         "assets", "brawler_icons")
     report.check("nori has an icon", os.path.exists(os.path.join(icons, "nori.png")), True)
     report.check("and so does every other brawler in the table",
                  sorted(name for name in info

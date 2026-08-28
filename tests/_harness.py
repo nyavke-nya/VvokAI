@@ -35,7 +35,9 @@ def read_source(name):
     the prefix. Asking for "play.py" and letting this find it means the next
     move costs nothing.
     """
-    for base in (os.path.join(REPO, "src"), REPO):
+    for base in (os.path.join(REPO, "src"),
+                 os.path.join(REPO, "assets"),
+                 REPO):
         candidate = os.path.join(base, name)
         if os.path.exists(candidate):
             with open(candidate, encoding="utf-8") as handle:

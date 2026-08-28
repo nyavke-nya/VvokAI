@@ -111,7 +111,7 @@ def build(size=SIZE):
 
 def main():
     mark = build()
-    images = ROOT / "images"
+    images = ROOT / "assets" / "images"
     images.mkdir(parents=True, exist_ok=True)
 
     png = images / "vvokai.png"

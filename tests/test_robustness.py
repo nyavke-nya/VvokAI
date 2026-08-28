@@ -108,7 +108,7 @@ report.check("the play loop reports the rate to a control",
 # ── the panel, on a long history ────────────────────────────────────────
 report.section("a long history does not freeze the page")
 
-_app_js = open("static/js/app.js", encoding="utf-8").read()
+_app_js = read_source("static/js/app.js")
 report.check("the scrollable curve is capped",
              "const chartPoints = showAll ? points : points.slice(-RECENT_CHART_POINTS);"
              in _app_js, True)

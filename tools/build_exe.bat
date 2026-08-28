@@ -17,7 +17,7 @@ color 0B
 :: any promise, because an unsigned executable downloaded from a stranger is a
 :: thing to be suspicious of and building it yourself is the answer.
 
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 echo ============================================================
 echo   Building %~n0
@@ -85,17 +85,17 @@ mkdir "build\launcher" >nul 2>&1
 
 set "ICONARG="
 
-if not exist "images\vvokai.ico" %BUILD_PY% tools\make_icon.py >nul 2>&1
+if not exist "assets\images\vvokai.ico" %BUILD_PY% tools\make_icon.py >nul 2>&1
 
-if exist "%~dp0images\vvokai.ico" (
+if exist "%~dp0..\assets\images\vvokai.ico" (
 
-    set "ICONARG=--icon=%~dp0images\vvokai.ico"
+    set "ICONARG=--icon=%~dp0..\assets\images\vvokai.ico"
 
-    echo [INFO] Icon: images\vvokai.ico
+    echo [INFO] Icon: assets\images\vvokai.ico
 
 ) else (
 
-    echo [WARN] images\vvokai.ico is missing; building without an icon.
+    echo [WARN] assets\images\vvokai.ico is missing; building without an icon.
 
 )
 

@@ -62,7 +62,7 @@ def main():
     if crop.size == 0:
         raise SystemExit(f"region {args.region} = {[x, y, w, h]} is outside the image")
 
-    out = PROJECT / "images" / "states" / f"{args.name or args.region}.png"
+    out = PROJECT / "assets" / "images" / "states" / f"{args.name or args.region}.png"
     out.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(out), crop)
     print(f"wrote {out}  ({crop.shape[1]}x{crop.shape[0]})")

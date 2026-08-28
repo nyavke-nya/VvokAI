@@ -146,8 +146,8 @@ report.check("the public API is consulted instead", "is_available" in _refresh, 
 
 
 report.section("nothing in the panel sells anything")
-_app = open("static/js/app.js", encoding="utf-8").read()
-_i18n = open("static/js/i18n.js", encoding="utf-8").read()
+_app = read_source("static/js/app.js")
+_i18n = read_source("static/js/i18n.js")
 _discord = read_source("discord_bot.py")
 
 for phrase in ("Unlock Premium Features", "Get Early Access", "Early Access Feature",

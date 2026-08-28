@@ -118,8 +118,9 @@ def _start_telegram_bot_thread(app: Flask):
 def create_app(pyla_main, start_discord_bot=False):
     app = Flask(
         __name__,
-        template_folder=str(resolve_project_path("templates")),
-        static_folder=str(resolve_project_path("static")),
+        # The URL stays /static/... - only the folder behind it moved.
+        template_folder=str(resolve_project_path("assets", "templates")),
+        static_folder=str(resolve_project_path("assets", "static")),
     )
 
     runtime_manager = RuntimeManager(pyla_main)
@@ -293,7 +294,7 @@ def create_app(pyla_main, start_discord_bot=False):
 
     @app.get("/api/assets/support/<path:filename>")
     def support_asset(filename: str):
-        target = resolve_project_path("images", filename)
+        target = resolve_project_path("assets", "images", filename)
         if not target.exists():
             return ("", 404)
         return send_file(target)

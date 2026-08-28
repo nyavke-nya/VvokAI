@@ -111,6 +111,22 @@ RETIRED = (
     # Stale bytecode for all of the above. Harmless, but it is the same clutter
     # by another name, and leaving it behind makes the root look untouched.
     "__pycache__/",
+
+    # The assets moved under assets/. api/ went with them: it held the brawler
+    # icons and one module nothing imported, and the /api/... URLs the panel
+    # uses are Flask routes that never had anything to do with the folder.
+    "images/",
+    "static/",
+    "templates/",
+    "api/",
+
+    # Build scripts and the packaging stub belong with the other tooling, and
+    # the dodging write-up with the other documentation.
+    "build_exe.bat",
+    "build_nuitka.bat",
+    "setup.py",
+    "DODGE.md",
+
 )
 
 # Config files are protected as whole files, because they hold API tokens, the

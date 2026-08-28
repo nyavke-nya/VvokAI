@@ -90,14 +90,14 @@ report.section("the page reads the profile from where the app actually keeps it"
 # against 1224 of them. A string check, but it is the exact mistake that got
 # through a rendered-in-a-browser test, because the probe supplied a fixture
 # shaped the way the code expected rather than the way the app stores it.
-app_js = open("static/js/app.js", encoding="utf-8").read()
+app_js = read_source("static/js/app.js")
 report.check("it reads state.bootstrap.history.profile",
              "state.bootstrap.history.profile" in app_js, True)
 report.check("and never a state.history that does not exist",
              "state.history &&" in app_js, False)
 report.check("the tab is registered", 'profile: { label: "Profile"' in app_js, True)
 report.check("the view container exists",
-             'id="view-profile"' in open("templates/index.html", encoding="utf-8").read(),
+             'id="view-profile"' in read_source("templates/index.html"),
              True)
 report.check("and it is rendered with the rest", "    renderProfile();" in app_js, True)
 
@@ -179,7 +179,7 @@ report.check("and none in the shipped config",
              False)
 
 report.section("the schedule explains itself in words, not setting names")
-app_js = open("static/js/app.js", encoding="utf-8").read()
+app_js = read_source("static/js/app.js")
 # Looked for as markup, not as prose - the first version of this check matched
 # the comment that explains why the label was changed.
 report.check("no bare 'Session limit' label",
@@ -454,7 +454,7 @@ report.check("and it is editable from the web UI",
              '"attack_range_multiplier"' in read_source("webui/services.py"),
              True)
 report.check("with a Russian label, like every other setting",
-             "Множитель дальности атаки" in open("static/js/i18n.js", encoding="utf-8").read(),
+             "Множитель дальности атаки" in read_source("static/js/i18n.js"),
              True)
 
 # A zero or a negative here would leave every brawler unable to shoot at all.

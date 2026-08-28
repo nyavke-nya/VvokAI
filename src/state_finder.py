@@ -10,15 +10,15 @@ should_print_debug_info = False
 
 orig_screen_width, orig_screen_height = 1920, 1080
 
-states_path = r"./images/states/"
+states_path = r"./assets/images/states/"
 
-star_drops_path = r"./images/star_drop_types/"
+star_drops_path = r"./assets/images/star_drop_types/"
 images_with_star_drop = []
 for file in os.listdir(star_drops_path):
     if "star_drop" in file:
         images_with_star_drop.append(file)
 
-end_results_path = r"./images/end_results/"
+end_results_path = r"./assets/images/end_results/"
 
 region_data = load_toml_as_dict("./cfg/lobby_config.toml")['template_matching']
 match_result_crop_region = region_data.get('match_result', [20, 10, 650, 200])

@@ -46,8 +46,15 @@ def build_old_install(root):
         (root / name / "__init__.py").write_text("MARKER = 'old'\n", encoding="utf-8")
     (root / "api").mkdir()
     (root / "api" / "api.py").write_text("MARKER = 'old'\n", encoding="utf-8")
-    (root / "api" / "assets").mkdir()
-    (root / "api" / "assets" / "keep.png").write_bytes(b"icon")
+    (root / "api" / "assets" / "brawler_icons").mkdir(parents=True)
+    (root / "api" / "assets" / "brawler_icons" / "shelly.png").write_bytes(b"old icon")
+    for name in ("images", "static", "templates"):
+        (root / name).mkdir()
+        (root / name / "a_file").write_bytes(b"old asset")
+    (root / "DODGE.md").write_text("old writeup", encoding="utf-8")
+    (root / "build_exe.bat").write_text("old build script", encoding="utf-8")
+    (root / "build_nuitka.bat").write_text("old build script", encoding="utf-8")
+    (root / "setup.py").write_text("old packaging stub", encoding="utf-8")
     (root / "__pycache__").mkdir()
     (root / "__pycache__" / "utils.cpython-311.pyc").write_bytes(b"stale bytecode")
 
@@ -73,9 +80,17 @@ def build_incoming(source):
         (source / "src" / name).mkdir()
         (source / "src" / name / "__init__.py").write_text("MARKER = 'new'\n", encoding="utf-8")
     (source / "src" / "api.py").write_text("MARKER = 'new'\n", encoding="utf-8")
+    (source / "assets" / "brawler_icons").mkdir(parents=True)
+    (source / "assets" / "brawler_icons" / "shelly.png").write_bytes(b"new icon")
+    for name in ("images", "static", "templates"):
+        (source / "assets" / name).mkdir(parents=True)
+        (source / "assets" / name / "a_file").write_bytes(b"new asset")
+    (source / "docs").mkdir()
+    (source / "docs" / "DODGE.md").write_text("new writeup", encoding="utf-8")
     (source / "main.py").write_text("MARKER = 'new'\n", encoding="utf-8")
     (source / "tools").mkdir()
     (source / "tools" / "installer.py").write_text("MARKER = 'new'\n", encoding="utf-8")
+    (source / "tools" / "build_exe.bat").write_text("new build script", encoding="utf-8")
     # The archive carries a default config; the person's own must win.
     (source / "cfg").mkdir()
     (source / "cfg" / "general_config.toml").write_text(
@@ -134,8 +149,18 @@ report.check("the models were not re-downloaded",
              (_root / "models" / "mainInGameModel.onnx").read_bytes(), b"a 10 MB download")
 report.check("the virtual environment is where it was",
              (_root / "venv" / "pyvenv.cfg").exists(), True)
-report.check("assets that live under api/ were not swept up with api.py",
-             (_root / "api" / "assets" / "keep.png").exists(), True)
+report.check("the brawler icons are at their new address",
+             (_root / "assets" / "brawler_icons" / "shelly.png").read_bytes(), b"new icon")
+report.check("and the old api/ tree is gone entirely - both halves relocated",
+             (_root / "api").exists(), False)
+report.check("the other assets moved under assets/ too",
+             all((_root / "assets" / name / "a_file").exists()
+                 for name in ("images", "static", "templates")), True)
+report.check("and none of them was left in the root",
+             [n for n in ("images", "static", "templates") if (_root / n).exists()], [])
+report.check("the build scripts and the write-up went with their kind",
+             [n for n in ("build_exe.bat", "build_nuitka.bat", "setup.py", "DODGE.md")
+              if (_root / n).exists()], [])
 
 report.section("and everything removed is recoverable")
 _backup = _root / "backup_before_update"
@@ -187,18 +212,19 @@ report.check("and the launcher still recognises a project by them",
              (REPO / "main.py").exists() and (REPO / "tools" / "installer.py").exists(), True)
 
 report.section("every retired path is one we actually moved")
-_shipped = set()
-for _path in (REPO / "src").rglob("*"):
-    if _path.is_file():
-        _shipped.add(_path.relative_to(REPO / "src").as_posix())
-_unexplained = [
-    rule for rule in updater.RETIRED
-    if not rule.endswith("/")
-    and rule not in ("api/api.py",)
-    and rule not in _shipped
-]
-report.check("nothing is retired that did not reappear under src/",
+_shipped = {path.name for path in REPO.rglob("*")
+            if path.is_file() and ".git" not in path.parts and "venv" not in path.parts}
+_unexplained = [rule for rule in updater.RETIRED
+                if not rule.endswith("/")
+                and Path(rule).name not in _shipped]
+report.check("nothing is retired that did not turn up somewhere else",
              _unexplained, [])
+# __pycache__ is retired to clear bytecode compiled from the old root modules,
+# but Python writes it again the moment anything at the root is imported, so it
+# is the one entry that legitimately comes back.
+_gone = [rule for rule in updater.RETIRED
+         if rule != "__pycache__/" and (REPO / rule.rstrip("/")).exists()]
+report.check("and nothing retired is still sitting in this tree", _gone, [])
 report.check("and no retired path is also protected",
              [r for r in updater.RETIRED if updater.protected(Path(r.rstrip("/")))], [])
 
@@ -233,6 +259,46 @@ shutil.rmtree(_shadow, ignore_errors=True)
 report.check("which is why the entry points insert src at position 0",
              "sys.path.insert(0," in (REPO / "main.py").read_text(encoding="utf-8"),
              True)
+
+
+report.section("every asset the panel asks for is where it now lives")
+# The move broke /api/assets/support/... and nothing caught it: the suite
+# reads source files and checks their text, so a route still pointing at the
+# old folder reads perfectly well. Two hundred and fifty-five images on the
+# page came back 404 and only opening it showed that.
+#
+# So: resolve what the UI actually references, on disk.
+import re as _re
+
+_app_js = (REPO / "assets" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+_support = sorted(set(_re.findall(r"/api/assets/support/([A-Za-z0-9_.-]+)", _app_js)))
+report.check("the panel does reference support assets", len(_support) > 0, True)
+_missing_support = [name for name in _support
+                    if not (REPO / "assets" / "images" / name).exists()]
+report.check("and every one of them resolves", _missing_support, [])
+
+# The brawler icons, through the same helper the route uses.
+sys.path.insert(0, os.path.join(REPO, "src"))
+from utils import get_brawler_icon_path, load_brawlers_info  # noqa: E402
+
+_roster = sorted(load_brawlers_info())
+_no_icon = [name for name in _roster if get_brawler_icon_path(name) is None]
+report.check("every brawler in the roster has an icon", _no_icon, [])
+report.check("and there are as many as the game has", len(_roster) > 100, True)
+
+# The templates and static folder Flask is pointed at.
+for _name, _rel in (("the page template", "assets/templates/index.html"),
+                    ("the stylesheet", "assets/static/css/vvok.css"),
+                    ("the panel script", "assets/static/js/app.js"),
+                    ("the translations", "assets/static/js/i18n.js")):
+    report.check(_name + " is where Flask is told to look",
+                 (REPO / _rel).exists(), True)
+
+# The state templates the bot matches screens against.
+from state_finder import states_path  # noqa: E402
+_states = REPO / states_path.lstrip(chr(46) + chr(47))
+report.check("the state templates moved with the rest",
+             _states.is_dir() and any(_states.iterdir()), True)
 
 
 sys.exit(report.finish())

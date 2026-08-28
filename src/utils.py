@@ -363,7 +363,7 @@ def update_missing_brawlers_info(brawlers):
                 save_brawler_icon(brawler)
             else:
                 print(f"Could not find info for brawler '{brawler}'")
-        if not os.path.exists(PROJECT_ROOT / "api" / "assets" / "brawler_icons" / f"{brawler}.png"):
+        if not os.path.exists(PROJECT_ROOT / "assets" / "brawler_icons" / f"{brawler}.png"):
             save_brawler_icon(brawler)
 
 
@@ -391,7 +391,7 @@ BRAWLIFY_API = "https://api.brawlify.com/v1/brawlers"
 def _write_brawler_icon(payload, brawler_name_clean):
     image = Image.open(BytesIO(payload))
     safe_name = os.path.basename(brawler_name_clean).replace('/', '').replace(chr(92), '')
-    icon_path = PROJECT_ROOT / "api" / "assets" / "brawler_icons" / f"{safe_name}.png"
+    icon_path = PROJECT_ROOT / "assets" / "brawler_icons" / f"{safe_name}.png"
     icon_path.parent.mkdir(parents=True, exist_ok=True)
     image.save(str(icon_path))
     return icon_path
@@ -710,7 +710,7 @@ def get_brawler_icon_path(brawler_name: str) -> Path | None:
 
     normalized = normalize_brawler_filename(brawler_name)
     candidates = [
-        resolve_project_path("api", "assets", "brawler_icons", f"{normalized}.png"),
+        resolve_project_path("assets", "brawler_icons", f"{normalized}.png"),
     ]
 
     for candidate in candidates:
