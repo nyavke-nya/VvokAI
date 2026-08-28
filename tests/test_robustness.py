@@ -8,7 +8,7 @@ something is wrong with the program.
 import logging
 import sys
 
-from _harness import Failures
+from _harness import Failures, read_source
 
 sys.path.insert(0, ".")
 import webui.app as webui_app  # noqa: E402
@@ -50,7 +50,7 @@ report.check("and it is never the only thing tried on a GPU box",
 report.check("asking for CPU tries nothing else",
              _Order("cpu").provider_order(), ["CPUExecutionProvider"])
 
-_source = open("detect.py", encoding="utf-8").read()
+_source = read_source("detect.py")
 report.check("session creation is guarded rather than allowed to kill startup",
              "except Exception as exc:" in _source
              and "problems.append((onnx_provider, exc))" in _source, True)
@@ -80,7 +80,7 @@ for ratio in (0.75, 0.5, 0.35):
 report.check("which the old fixed 75000 did not at half size",
              75000 < int((right - left) * 0.5) * int((bottom - top) * 0.5), False)
 
-_lobby = open("lobby_automation.py", encoding="utf-8").read()
+_lobby = read_source("lobby_automation.py")
 report.check("the region is named once rather than written out twice",
              _lobby.count("IDLE_REGION"), 2)
 
@@ -101,7 +101,7 @@ report.check("the manager does not keep a second copy",
 report.check("status answers with no run in progress",
              RuntimeManager(None).get_status()["ips"], 0.0)
 report.check("the play loop reports the rate to a control",
-             "runtime_control.note_ips(" in open("main.py", encoding="utf-8").read(),
+             "runtime_control.note_ips(" in read_source("main.py"),
              True)
 
 

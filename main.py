@@ -2,6 +2,11 @@ import inspect
 import os
 import sys
 
+# The modules live in src/ rather than loose in the project root. Their names
+# are unchanged - this only tells Python where to find them, so every
+# `from utils import ...` in the codebase still reads the same.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
+
 # Monkey-patch inspect.getfile to prevent Nuitka + PyTorch crash
 _original_getfile = inspect.getfile
 def _patched_getfile(obj):

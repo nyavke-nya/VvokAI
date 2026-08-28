@@ -66,6 +66,53 @@ PROTECTED = (
 # Nothing in here is ours to overwrite even if the archive carries it.
 SKIP_NAMES = {".gitignore", ".gitattributes"}
 
+# Files that used to ship and no longer do.
+#
+# apply() walks the INCOMING tree, so it can add and overwrite but has no way
+# to notice something that simply stopped existing. Left alone, every install
+# that has ever updated accumulates the leftovers of every file that was ever
+# moved or renamed - which is exactly the clutter a reorganisation is meant to
+# remove, made permanent on everybody else's machine.
+#
+# Deliberately an explicit list rather than "delete anything not in the
+# archive". The archive is what GitHub gives us; a bad download, a partial
+# extract or a path the packer skipped would, under that rule, quietly delete
+# working files. Naming them means the worst a mistake here can do is remove
+# something we put there ourselves, and a copy of it goes to
+# backup_before_update first either way.
+#
+# A trailing slash retires a whole directory. PROTECTED still wins, so nothing
+# listed there can be removed by this.
+RETIRED = (
+    # The loose modules moved into src/ so the project root stops being a wall
+    # of forty files. Their names did not change and neither did any import;
+    # only where Python looks for them.
+    "brawl_api.py",
+    "brawl_token.py",
+    "debug_view.py",
+    "detect.py",
+    "discord_bot.py",
+    "lobby_automation.py",
+    "play.py",
+    "profile_stats.py",
+    "remote_control.py",
+    "schedule_control.py",
+    "stage_manager.py",
+    "state_finder.py",
+    "telegram_bot.py",
+    "time_management.py",
+    "trophy_observer.py",
+    "utils.py",
+    "window_controller.py",
+    "dodge/",
+    "scrcpy/",
+    "webui/",
+    "api/api.py",
+    # Stale bytecode for all of the above. Harmless, but it is the same clutter
+    # by another name, and leaving it behind makes the root look untouched.
+    "__pycache__/",
+)
+
 # Config files are protected as whole files, because they hold API tokens, the
 # brawler queue and everything else somebody set for themselves. But some of
 # what lives in them is not preference at all - it is calibration. How sure the
@@ -331,6 +378,44 @@ def merge_settings(shipped_text, current_text, tuning_keys):
     return "\n".join(lines) + "\n"
 
 
+def retire():
+    """Remove what used to ship and does not any more. Returns how many.
+
+    Each one is copied into backup_before_update before it goes, the same way
+    an overwritten file is, so an update never destroys the only copy of
+    anything.
+    """
+    removed = 0
+    for rule in RETIRED:
+        relative = Path(rule.rstrip("/"))
+        if protected(relative):
+            # Belt and braces: a path in both lists is a mistake, and the
+            # protective answer is the one to take.
+            say(f"  refusing to remove protected path {relative.as_posix()}")
+            continue
+
+        target = ROOT / relative
+        if not target.exists():
+            continue
+
+        try:
+            keep = BACKUP / relative
+            keep.parent.mkdir(parents=True, exist_ok=True)
+            if target.is_dir():
+                shutil.copytree(target, keep, dirs_exist_ok=True)
+                shutil.rmtree(target)
+            else:
+                shutil.copy2(target, keep)
+                target.unlink()
+        except OSError as exc:
+            say(f"  could not remove {relative.as_posix()}: {exc}")
+            continue
+
+        removed += 1
+        say(f"  removed {relative.as_posix()} (no longer part of VvokAI)")
+    return removed
+
+
 def apply(source):
     """Copy the new files in. Returns how many actually changed."""
     changed = 0
@@ -435,6 +520,7 @@ def main():
     try:
         holding, source = download(sha)
         changed = apply(source)
+        changed += retire()
     except (urllib.error.URLError, OSError, ValueError, RuntimeError,
             zipfile.BadZipFile) as exc:
         say(f"the update could not be applied ({exc}); starting with what is here")

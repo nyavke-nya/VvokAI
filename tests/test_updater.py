@@ -7,7 +7,7 @@ and should reach everyone. These check that the line between the two holds.
 """
 import sys
 
-from _harness import Failures
+from _harness import Failures, read_source
 
 sys.path.insert(0, "tools")
 from updater import JSON_ADDITIONS, merge_json, merge_settings  # noqa: E402
@@ -192,7 +192,7 @@ report.check("the threshold is the one CUDA 13 actually needs",
              _installer.MINIMUM_COMPUTE, (7, 5))
 report.check("the capability reaches the decision instead of being dropped",
              "def install_accelerator(vendor, cap" in
-             open("tools/installer.py", encoding="utf-8").read(), True)
+             read_source("tools/installer.py"), True)
 
 
 report.section("automatic updates can be turned off")
@@ -229,7 +229,7 @@ finally:
     _shutil.rmtree(sandbox, ignore_errors=True)
 
 report.check("the launcher honours the same setting",
-             "def auto_update_wanted(root)" in open("launcher.py", encoding="utf-8").read(),
+             "def auto_update_wanted(root)" in read_source("launcher.py"),
              True)
 report.check("and it ships switched on",
              'auto_update = true' in
@@ -237,13 +237,13 @@ report.check("and it ships switched on",
 
 
 report.section("the exe keeps a log, now that there is no console to watch")
-_desktop = open("desktop.py", encoding="utf-8").read()
+_desktop = read_source("desktop.py")
 report.check("output is written to a file", "vvokai_log.txt" in _desktop, True)
 report.check("and to the console as well, for anybody watching one",
              "class Tee:" in _desktop, True)
 report.check("flushed on every line, because the interesting case is a crash",
              "self.handle.flush()" in _desktop, True)
-_launcher = open("launcher.py", encoding="utf-8").read()
+_launcher = read_source("launcher.py")
 _picks = [line for line in _launcher.splitlines()
            if "window = root" in line and "Scripts" in line]
 report.check("the launcher picks an interpreter for the app", len(_picks), 1)

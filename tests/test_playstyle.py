@@ -15,7 +15,7 @@ import re
 import sys
 
 from _harness import (PLAYSTYLES, Failures, base_context, box, lift,
-                      playstyle_meta, playstyle_source)
+                      playstyle_meta, playstyle_source, read_source)
 
 from utils import SAFE_GLOBALS, is_safe_ast
 
@@ -33,7 +33,7 @@ def check_names(report, path=None):
 
     # Scrape the context keys straight out of play.py, so this notices when a
     # key is renamed there without the playstyle being updated.
-    play = open("play.py", encoding="utf-8").read()
+    play = read_source("play.py")
     start = play.index("self.context = {")
     end = play.index("\n        }", start)
     provided = set(re.findall(r"'([a-zA-Z_][a-zA-Z0-9_]*)'\s*:", play[start:end]))
@@ -744,13 +744,13 @@ def check_two_attacks(report):
     # Brawlify's API answers 403 with a Cloudflare page now, which is why new
     # brawlers stopped getting icons at all. The download goes to the CDN by
     # numeric id first, and only falls back to the old route.
-    utils_src = open("utils.py", encoding="utf-8").read()
+    utils_src = read_source("utils.py")
     report.check("icons are fetched from the CDN, not the blocked API",
                  "cdn.brawlify.com/brawlers/borderless" in utils_src, True)
     report.check("with the old route still there for anyone without a token",
                  "api.brawlify.com/v1/brawlers" in utils_src, True)
     report.check("and ids come from Supercell, who publish them",
-                 "def brawler_ids(" in open("brawl_api.py", encoding="utf-8").read(), True)
+                 "def brawler_ids(" in read_source("brawl_api.py"), True)
 
     def fire(distance, hold_range, charging=False, must_hold=True):
         """Run do_attack once and report which button press came out.

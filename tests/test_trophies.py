@@ -13,7 +13,7 @@ import os
 import sys
 import tempfile
 
-from _harness import Failures
+from _harness import Failures, read_source
 
 sys.path.insert(0, ".")
 from trophy_observer import TrophyObserver  # noqa: E402
@@ -135,7 +135,7 @@ finally:
 
 
 report.section("the API refresh asks whether anything can answer")
-_utils = open("utils.py", encoding="utf-8").read()
+_utils = read_source("utils.py")
 _refresh = _utils[_utils.index("def api_update_brawler_data"):]
 _refresh = _refresh[:_refresh.index("\ndef ", 1)]
 # It used to be `if not early_access: return` - the paid module - even though
@@ -148,7 +148,7 @@ report.check("the public API is consulted instead", "is_available" in _refresh, 
 report.section("nothing in the panel sells anything")
 _app = open("static/js/app.js", encoding="utf-8").read()
 _i18n = open("static/js/i18n.js", encoding="utf-8").read()
-_discord = open("discord_bot.py", encoding="utf-8").read()
+_discord = read_source("discord_bot.py")
 
 for phrase in ("Unlock Premium Features", "Get Early Access", "Early Access Feature",
                "requires the", "#how-to-get-early-access"):
@@ -205,7 +205,7 @@ report.check("and the two-value form is unchanged",
 report.check("an unknown power still fills the third slot",
              _sm.get_brawler_stats(_INFO, "8bit", power_level=True), (500, None, None))
 
-_stage = open("stage_manager.py", encoding="utf-8").read()
+_stage = read_source("stage_manager.py")
 report.check("the paid gate is gone from the call site",
              "None if not early_access else get_brawler_stats" in _stage, False)
 report.check("and a missing player tag never reaches the network",

@@ -9,7 +9,7 @@ transports inherit it.
 
 import sys
 
-from _harness import Failures
+from _harness import Failures, read_source
 
 from remote_control import DISCORD_LIMIT, HELP, RemoteControl, chunk
 from telegram_bot import ALIASES, TelegramBot
@@ -236,7 +236,7 @@ report.check("a rejected token points at the setting",
 report.check("anything else says it will retry",
              "Retrying" in explain(_requests.ConnectionError("no route")), True)
 
-source = open("telegram_bot.py", encoding="utf-8").read()
+source = read_source("telegram_bot.py")
 loop = source[source.index("def run_bot("):]
 # The old code returned from inside the try; the new one only ever waits and
 # loops. Anything after the try that returns would put the thread back in the

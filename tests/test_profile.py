@@ -2,7 +2,7 @@
 import sys
 from datetime import datetime, timedelta
 
-from _harness import Failures
+from _harness import Failures, read_source
 
 from utils import load_toml_as_dict
 
@@ -170,8 +170,8 @@ report.section("the session cap is gone, not merely hidden")
 # A duration and a clock time answered the same question in different units,
 # and nobody could say which won. Removed rather than left in the config for
 # somebody to find later and wonder about.
-runtime = open("webui/runtime.py", encoding="utf-8").read()
-schedule_src = open("schedule_control.py", encoding="utf-8").read()
+runtime = read_source("webui/runtime.py")
+schedule_src = read_source("schedule_control.py")
 report.check("no session clock in the runtime", "_session_started" in runtime, False)
 report.check("no cap in the schedule", "max_session_minutes" in schedule_src, False)
 report.check("and none in the shipped config",
@@ -193,7 +193,7 @@ report.section("the schedule stops the bot, it does not merely pause it")
 # Pausing was useless: a paused bot is still running, and a running bot treats
 # "Brawl Stars is not open" as a crash and reopens it within a couple of
 # seconds. Stopping is what makes closing the game stick.
-runtime = open("webui/runtime.py", encoding="utf-8").read()
+runtime = read_source("webui/runtime.py")
 stop_fn = runtime[runtime.index("def should_stop"):runtime.index("def mark_running")]
 pause_fn = runtime[runtime.index("def should_pause"):runtime.index("def should_stop")]
 report.check("the schedule is consulted when deciding to stop",
@@ -202,7 +202,7 @@ report.check("and no longer when deciding to pause",
              "self._schedule" in pause_fn, False)
 
 report.section("stopping closes the game, and in the right order")
-main_src = open("main.py", encoding="utf-8").read()
+main_src = read_source("main.py")
 stop = main_src[main_src.index("def stop_gracefully"):main_src.index("def close_game_on_stop")]
 report.check("the game is closed on the way down", "close_brawl_stars()" in stop, True)
 report.check("the crash watchdog is stopped first",
@@ -218,7 +218,7 @@ report.check("and does not fight a run that is already going",
              'self.get_status()["state"] in {"running", "pausing"}' in runtime, True)
 
 report.section("finishing the queue closes it too")
-stage = open("stage_manager.py", encoding="utf-8").read()
+stage = read_source("stage_manager.py")
 done = stage[stage.index("all targets completed"):stage.index("ping_when_target_is_reached")]
 report.check("closes the game when nothing is left to push",
              "close_brawl_stars()" in done, True)
@@ -228,7 +228,7 @@ report.check("without calling a name it does not import",
              "config_bool(" in done, False)
 
 report.section("the app control exists and is survivable")
-wc = open("window_controller.py", encoding="utf-8").read()
+wc = read_source("window_controller.py")
 for name in ("def close_brawl_stars", "def open_brawl_stars"):
     report.check(f"{name} exists", name in wc, True)
 close_fn = wc[wc.index("def close_brawl_stars"):wc.index("def open_brawl_stars")]
@@ -236,7 +236,7 @@ report.check("a failure to close is caught", "except Exception" in close_fn, Tru
 
 
 report.section("powering off is opt-in, and never on a manual stop")
-main_src = open("main.py", encoding="utf-8").read()
+main_src = read_source("main.py")
 stop = main_src[main_src.index("def stop_gracefully"):main_src.index("def close_game_on_stop")]
 report.check("it asks whether the clock caused this", "schedule_hold_reason" in stop, True)
 report.check("and only powers off when it did", "by_schedule and self.shutdown_when_done()" in stop, True)
@@ -244,7 +244,7 @@ report.check("and only powers off when it did", "by_schedule and self.shutdown_w
 helper = main_src[main_src.index("def shutdown_when_done"):main_src.index("def start_state_checker")]
 report.check("the default is off", 'get("shutdown_when_done", False)' in helper, True)
 
-utils_src = open("utils.py", encoding="utf-8").read()
+utils_src = read_source("utils.py")
 fn = utils_src[utils_src.index("def shutdown_computer"):]
 report.check("there is a grace period", "grace_seconds=60" in fn, True)
 report.check("and it says how to cancel", "shutdown /a" in fn, True)
@@ -253,13 +253,13 @@ report.check("a failure to power off is survivable", "except Exception" in fn, T
 # The DEFAULT, not the live config - somebody who has ticked the box on this
 # machine is not a test failure, and asserting against their settings file
 # makes the suite fail for the wrong reason.
-services = open("webui/services.py", encoding="utf-8").read()
+services = read_source("webui/services.py")
 report.check("the setting defaults to off",
              '"shutdown_when_done": ("bool", False)' in services, True)
 
 
 report.section("running out of brawlers does not power the machine off")
-stage_all = open("stage_manager.py", encoding="utf-8").read()
+stage_all = read_source("stage_manager.py")
 done_block = stage_all[stage_all.index("all targets completed"):stage_all.index("ping_when_target_is_reached")]
 report.check("no shutdown on the finish path", "shutdown_computer" in done_block, False)
 
@@ -268,7 +268,7 @@ report.section("the brawler list is wound all the way to the top")
 # Fourteen swipes left the view short when the selected brawler sat far down
 # the list, so the search began halfway and everything above was invisible to
 # it - indistinguishable from the brawler not existing.
-lobby = open("lobby_automation.py", encoding="utf-8").read()
+lobby = read_source("lobby_automation.py")
 import re as _re2
 swipes = int(_re2.search(r"SCROLL_TOP_SWIPES = (\d+)", lobby).group(1))
 report.at_least("enough swipes to reach the top from anywhere", swipes, 18)
@@ -295,7 +295,7 @@ report.check("extra fields on a box survive",
              _play.Play.shift_boxes([[0, 0, 10, 10, "wall", 0.9]], (5, 0))[0][4:],
              ["wall", 0.9])
 
-frame = open("play.py", encoding="utf-8").read()
+frame = read_source("play.py")
 reuse = frame[frame.index("if current_time - self.time_since_walls_checked"):
               frame.index("data = self.validate_game_data(data)")]
 report.check("the reuse path actually shifts them", "shift_boxes" in reuse, True)
@@ -304,7 +304,7 @@ report.check("and records where the camera was when they were found",
 
 
 report.section("emotes go out on a timer, and only during a match")
-play_src = open("play.py", encoding="utf-8").read()
+play_src = read_source("play.py")
 emote = play_src[play_src.index("def send_emote_if_due"):play_src.index("def camera_odometer")]
 report.check("it waits for the interval",
              "current_time - self.time_since_emote < self.emote_interval" in emote, True)
@@ -379,7 +379,7 @@ report.section("a brawler switch that fails is retried, not abandoned")
 # was then a brawler nobody was playing, its trophies never moved and its target
 # was never met, so the moment never came again. The bot pushed a completed
 # brawler for the rest of the session while the interface showed a different one.
-stage_src = open("stage_manager.py", encoding="utf-8").read()
+stage_src = read_source("stage_manager.py")
 report.check("a failed switch is remembered",
              "self.brawler_needs_selecting = True" in stage_src, True)
 report.check("and cleared once it takes",
@@ -396,7 +396,7 @@ report.section("the brawler list is dragged beside the cards, not across them")
 # started on a brawler, and a drag the game read as a tap opened whichever one
 # it landed on. Colour variation over the band the swipes travel: 85 at x=1700,
 # 3 from x=1760 outward. Cards, then plain background.
-lobby_src = open("lobby_automation.py", encoding="utf-8").read()
+lobby_src = read_source("lobby_automation.py")
 import re as _re3
 column = int(_re3.search(r"SCROLL_COLUMN = (\d+)", lobby_src).group(1))
 report.at_least("clear of the cards", column, 1760)
@@ -447,18 +447,18 @@ report.at_least("and ships pointing further out than the raw table",
 report.at_most("without pushing brawlers past their real reach",
                float(_cfg["attack_range_multiplier"]), 1.6)
 
-_updater = open("tools/updater.py", encoding="utf-8").read()
+_updater = read_source("tools/updater.py")
 report.check("existing installs get it on the next update",
              '"attack_range_multiplier",' in _updater, True)
 report.check("and it is editable from the web UI",
-             '"attack_range_multiplier"' in open("webui/services.py", encoding="utf-8").read(),
+             '"attack_range_multiplier"' in read_source("webui/services.py"),
              True)
 report.check("with a Russian label, like every other setting",
              "Множитель дальности атаки" in open("static/js/i18n.js", encoding="utf-8").read(),
              True)
 
 # A zero or a negative here would leave every brawler unable to shoot at all.
-_play_src = open("play.py", encoding="utf-8").read()
+_play_src = read_source("play.py")
 report.check("a nonsense value in the config cannot disarm the bot",
              "if not 0.25 <= self.attack_range_multiplier <= 4.0:" in _play_src, True)
 
@@ -564,7 +564,7 @@ report.check("a list that never opens is reported, not scrolled",
              _open(["lobby"]), "closed")
 report.check("after retrying the tap", len(_taps), 3)
 
-_src = open("lobby_automation.py", encoding="utf-8").read()
+_src = read_source("lobby_automation.py")
 _body = _src[_src.index("def select_brawler("):_src.index("MAX_SCANS)")]
 report.check("select_brawler no longer taps and hopes",
              "time.sleep(0.5)" in _body, False)

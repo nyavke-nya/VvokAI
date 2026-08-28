@@ -20,12 +20,18 @@ page talks to. It is just no longer something anybody has to look at.
 
 from __future__ import annotations
 
+import os
 import socket
 import sys
 import threading
 import time
 import urllib.error
 import urllib.request
+
+# The modules live in src/ rather than loose in the project root. Their names
+# are unchanged - this only tells Python where to find them, so every
+# `from utils import ...` in the codebase still reads the same.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 
 # The window title and what the taskbar calls it.
 APP_NAME = "VvokAI"

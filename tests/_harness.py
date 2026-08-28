@@ -13,9 +13,35 @@ import os
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if REPO not in sys.path:
-    sys.path.insert(0, REPO)
+# The modules live in src/ rather than loose in the project root. Their names
+# are unchanged - this only says where to find them, so every
+# `from utils import ...` in the codebase still reads exactly the same.
+#
+# Each entry is guarded on its own. Guarding both on REPO alone meant that a
+# runner which had already put REPO on the path - tests/run.py does - skipped
+# src entirely, and every test that imports a module of ours failed to find it.
+for _path in (REPO, os.path.join(REPO, "src")):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 os.chdir(REPO)
+
+def read_source(name):
+    """Read one of our own source files by name, wherever it lives.
+
+    A good third of the suite checks the text of the code rather than its
+    behaviour - that a guard is present, that a call site reads a certain way.
+    Those tests named files by their path from the project root, so moving the
+    modules into src/ broke thirty of them at once for no better reason than
+    the prefix. Asking for "play.py" and letting this find it means the next
+    move costs nothing.
+    """
+    for base in (os.path.join(REPO, "src"), REPO):
+        candidate = os.path.join(base, name)
+        if os.path.exists(candidate):
+            with open(candidate, encoding="utf-8") as handle:
+                return handle.read()
+    raise FileNotFoundError(f"no source file named {name} under {REPO}")
+
 
 PLAYSTYLE = os.path.join(REPO, "playstyles", "unified_dodge.pyla")
 

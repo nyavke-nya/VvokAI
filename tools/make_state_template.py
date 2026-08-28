@@ -20,6 +20,7 @@ import sys
 import cv2
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 from utils import load_toml_as_dict  # noqa: E402
 
 REFERENCE = (1920, 1080)

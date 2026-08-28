@@ -111,7 +111,10 @@ install_requires = [
 setup(
     name="PylaAI",
     version="1.0.0",
-    packages=find_packages(exclude=["api", "cfg", "images", "models"]),
+    # The importable code lives in src/ now; everything else in the tree
+    # is data, tooling or tests.
+    package_dir={"": "src"},
+    packages=find_packages(where="src"),
     install_requires=install_requires,
 )
 

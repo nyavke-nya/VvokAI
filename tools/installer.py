@@ -82,7 +82,8 @@ IMPORT_CHECKS = [
 ]
 
 REQUIRED_FILES = [
-    "main.py", "play.py",
+    # The entry point stayed in the root; the modules live in src/ now.
+    "main.py", "src/play.py", "src/utils.py",
     "models/mainInGameModel.onnx",
     "models/tileDetector.onnx",
     "models/closeTileDetector.onnx",
