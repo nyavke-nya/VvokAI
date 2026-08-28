@@ -140,6 +140,42 @@ report.check("the disconnect box is found on a 1080x608 emulator",
 _small_invite = _cv2.resize(_invite, (1080, 608), interpolation=_cv2.INTER_AREA)
 report.check("so is the invite", _sf.is_team_invite_on_screen(_small_invite), True)
 
+# "Connection lost" arrives on the same card as the idle box, in the same
+# place, and wants the same answer. Only the title separates them, so that is
+# the thing worth checking.
+def _card(title, seed=5):
+    frame = (_np.random.default_rng(seed).random((1080, 1920, 3)) * 255).astype("uint8")
+    _cv2.rectangle(frame, (458, 400), (1462, 663), (45, 45, 52), -1)
+    _cv2.putText(frame, title, (500, 472), _cv2.FONT_HERSHEY_DUPLEX, 1.05,
+                 (255, 255, 255), 2)
+    return frame
+
+
+_conn = _card("Connection lost")
+_idle_card = _card("Idle Disconnect")
+report.check("connection lost is recognised",
+             _sf.is_connection_lost_on_screen(_conn), True)
+report.check("and is not confused with the idle box on the same card",
+             _sf.is_connection_lost_on_screen(_idle_card), False)
+report.check("nor the idle box with it",
+             _sf.is_idle_disconnect_on_screen(_conn), False)
+report.check("it survives a smaller emulator",
+             _sf.is_connection_lost_on_screen(
+                 _cv2.resize(_conn, (1080, 608), interpolation=_cv2.INTER_AREA)), True)
+
+# The lobby check names what it saw, because two cards mean the same thing and
+# the log should say which one turned up.
+from lobby_automation import LobbyAutomation  # noqa: E402
+
+_probe = object.__new__(LobbyAutomation)
+_probe.verbose_debug = False
+report.check("the idle card is reported by name",
+             _probe.check_for_idle(_idle_card), "idle disconnect")
+report.check("so is the connection card",
+             _probe.check_for_idle(_conn), "connection lost")
+report.check("and nothing on screen is an empty answer",
+             _probe.check_for_idle(_blank), "")
+
 # The region has to be wide enough for the title to fit. A box tight around
 # the measured width is a detector that stops working the first time the
 # reading is slightly off.

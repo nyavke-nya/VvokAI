@@ -19,6 +19,9 @@ team_invite = [740, 200, 440, 170]
 # about 240px wide, and the box is nearly twice that on purpose: it is read as
 # text, and a title clipped by a tight box is a detector that never fires.
 idle_disconnect = [430, 380, 500, 160]
+# "Connection lost" arrives on the same card in the same place, so this is
+# almost the same box. Measured at about 245px wide.
+connection_lost = [440, 400, 520, 130]
 [pixel_counter_crop_area]
 super=[1460, 830, 1560, 930]
 gadget=[1580, 930, 1700, 1050]

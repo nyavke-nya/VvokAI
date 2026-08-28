@@ -267,6 +267,19 @@ def is_team_invite_on_screen(image):
                             "teaminvite")
 
 
+def is_connection_lost_on_screen(image):
+    """The "Connection lost - please try logging in again" card.
+
+    The same card as the idle box, in the same place, and it wants the same
+    answer: RETRY LOGIN reconnects into a battle that carried on without us.
+    Only the title tells them apart, which is why each has its own name here
+    rather than one check for "a dark card in the middle of the screen".
+    """
+    return _title_in_region(image, "connection_lost.png",
+                            region_data.get("connection_lost", [440, 400, 520, 130]),
+                            "connectionlost")
+
+
 def is_idle_disconnect_on_screen(image):
     """The "you were disconnected for idling" box.
 

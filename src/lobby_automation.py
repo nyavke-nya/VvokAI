@@ -1,7 +1,8 @@
 import time
 
 import cv2
-from state_finder import is_idle_disconnect_on_screen, is_team_invite_on_screen
+from state_finder import (is_connection_lost_on_screen,
+                          is_idle_disconnect_on_screen, is_team_invite_on_screen)
 from utils import (
     EasyOCRInitializationError,
     count_hsv_pixels,
@@ -166,22 +167,30 @@ class LobbyAutomation:
         return reject_c, accept_c, mute_y
 
     def check_for_idle(self, frame):
-        """Whether the idle-disconnect box is on screen.
+        """Which "you are no longer in this match" card is on screen, if any.
+
+        Returns its name, or an empty string. A name rather than True because
+        two different cards mean the same thing and the log should say which
+        one turned up.
 
         Only reports it; what to do about it is the caller's business. Pressing
-        RELOAD used to be the answer here and it is not a reliable one - the
-        button returns to a battle that has already finished without us, so the
-        bot sat in a dead match until something else noticed.
+        the button on either used to be the answer and it is not a reliable
+        one - RELOAD and RETRY LOGIN both return to a battle that has already
+        carried on without us, so the bot sat in a dead match until something
+        else noticed.
 
-        Matched against its own artwork rather than counted in grey pixels. The
-        old test was "is the middle of the screen grey", which a great many
-        screens are, and the answer to this one is now a restart of the game -
-        far too expensive to hang on a heuristic that loose.
+        Recognised by title rather than counted in grey pixels. The old test
+        was "is the middle of the screen grey", which a great many screens are,
+        and the answer to this one is now a restart of the game - far too
+        expensive to hang on a heuristic that loose.
         """
-        found = is_idle_disconnect_on_screen(frame)
-        if found and self.verbose_debug:
-            print("idle disconnect: template matched")
-        return found
+        for name, seen in (("idle disconnect", is_idle_disconnect_on_screen),
+                           ("connection lost", is_connection_lost_on_screen)):
+            if seen(frame):
+                if self.verbose_debug:
+                    print(f"{name}: recognised")
+                return name
+        return ""
 
     @staticmethod
     def _should_interrupt(runtime_control=None, stop_event=None):
