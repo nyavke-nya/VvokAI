@@ -382,4 +382,47 @@ report.check("an uncaptured template leaves the check off, like the others",
              _sf.is_at_buffie_machine(_blank), False)
 
 
+report.section("preprocessing writes straight into the input buffer")
+# It used to build a float copy of the resized frame, scale that, then copy
+# each channel into the padded buffer: three passes over 2.7 MB plus a 2.7 MB
+# allocation, every frame. One divide into the buffer does the same thing.
+from detect import Detect as _Detect  # noqa: E402
+
+_detect_src = read_source("detect.py")
+report.check("no per-frame float copy of the whole frame",
+             "resized_img.astype(np.float32, copy=True)" in _detect_src, False)
+report.check("the divide goes into the buffer",
+             "out=self._padded_img_buffer" in _detect_src, True)
+
+# The buffer is reused between calls, so anything outside the resized area has
+# to stay at the padding value - a frame of a different shape must not leave a
+# stripe of the previous one behind.
+_probe = object.__new__(_Detect)
+_probe.input_size = (640, 640)
+_probe._padded_img_buffer = _np.full((1, 3, 640, 640), 128.0 / 255.0, dtype=_np.float32)
+
+_tall = (_np.random.default_rng(1).random((1920, 1080, 3)) * 255).astype("uint8")
+_buf, _w, _h = _probe.preprocess_image(_tall)
+report.check("the resized frame lands in the corner", (_w, _h), (360, 640))
+# float32(128/255) is not float64(128/255); compare at the buffer's precision.
+report.check("and the rest of the buffer is still padding",
+             bool(_np.allclose(_buf[0, 0, :, _w:], _np.float32(128.0 / 255.0))), True)
+report.check("values are normalised to 0..1",
+             bool(_buf.min() >= 0.0 and _buf.max() <= 1.0), True)
+
+# What it must equal: the old three-step version, to within a float32 step.
+import cv2 as _cv2_pre  # noqa: E402
+
+_scale = min(640 / _tall.shape[0], 640 / _tall.shape[1])
+_r = _cv2_pre.resize(_tall, (int(_tall.shape[1] * _scale), int(_tall.shape[0] * _scale)),
+                     interpolation=_cv2_pre.INTER_LINEAR)
+_old = _np.full((1, 3, 640, 640), 128.0 / 255.0, dtype=_np.float32)
+_f = _r.astype(_np.float32)
+_np.multiply(_f, 1.0 / 255.0, out=_f)
+for _c in range(3):
+    _old[0, _c, :_h, :_w] = _f[:, :, _c]
+report.check("and it matches what the old three-step version produced",
+             bool(_np.allclose(_buf, _old, atol=1e-6)), True)
+
+
 sys.exit(report.finish())
