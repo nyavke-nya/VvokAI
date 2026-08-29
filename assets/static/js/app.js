@@ -4,6 +4,7 @@ const NAV_ITEMS = {
     playstyles: { label: "Playstyles", icon: "playstyles" },
     history: { label: "History", icon: "history" },
     profile: { label: "Profile", icon: "history" },
+    logs: { label: "Logs", icon: "settings" },
     settings: { label: "Settings", icon: "settings" },
 };
 
@@ -406,6 +407,7 @@ function renderAll() {
     renderPlaystyles();
     renderHistory();
     renderProfile();
+    renderLogs();
     renderSettings();
     setView(state.currentView);
 }
@@ -1139,6 +1141,56 @@ function profileForm(form) {
             </div>
             <div class="form-strip">${pips}</div>
         </section>`;
+}
+
+
+function renderLogs() {
+    // The exe opens a console and it is easy to lose behind the app window;
+    // people reported never having seen the log at all. Same text, somewhere
+    // it cannot hide.
+    const view = document.getElementById("view-logs");
+    if (!view) return;
+
+    view.innerHTML = `
+        <div class="sheet">
+            <div class="command-band">
+                <div class="command-state">
+                    <div class="command-title">Logs</div>
+                    <div class="command-sub">Everything the bot printed this run</div>
+                </div>
+                <div class="command-actions">
+                    <button id="refreshLogsBtn" class="btn">Refresh</button>
+                    <button id="copyLogsBtn" class="btn">Copy</button>
+                </div>
+            </div>
+            <pre id="logOutput" class="log-output">Loading...</pre>
+        </div>`;
+
+    document.getElementById("refreshLogsBtn")?.addEventListener("click", loadLogs);
+    document.getElementById("copyLogsBtn")?.addEventListener("click", () => {
+        const text = document.getElementById("logOutput")?.textContent || "";
+        navigator.clipboard?.writeText(text).then(
+            () => showToast("Log copied. Paste it wherever you are asking for help."),
+            () => showToast("Could not copy the log.", "error"));
+    });
+    loadLogs();
+}
+
+
+async function loadLogs() {
+    const box = document.getElementById("logOutput");
+    if (!box) return;
+    try {
+        const result = await fetchJSON("/api/logs?lines=600", {}, true);
+        const lines = (result && result.lines) || [];
+        box.textContent = lines.length
+            ? lines.join("\n")
+            : "Nothing logged yet. The file is written as the bot runs.";
+        // Newest at the bottom, which is where the interesting part is.
+        box.scrollTop = box.scrollHeight;
+    } catch {
+        box.textContent = "Could not read the log.";
+    }
 }
 
 
@@ -1975,6 +2027,10 @@ async function refreshRuntimeState() {
 
         const prevState = state.bootstrap.runtime?.state;
         state.bootstrap.runtime = result.runtime;
+
+        if (state.currentView === "logs") {
+            loadLogs();
+        }
 
         if (result.runtime.is_running) {
             await refreshRunningQueue();

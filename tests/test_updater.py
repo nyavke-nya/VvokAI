@@ -239,11 +239,19 @@ report.check("and it ships switched on",
 
 report.section("the exe keeps a log, now that there is no console to watch")
 _desktop = read_source("desktop.py")
-report.check("output is written to a file", "vvokai_log.txt" in _desktop, True)
+# The Tee moved into src/logging_tee.py so main.py gets the same log the
+# desktop app does - which entry point somebody used should not decide whether
+# there is anything to look at afterwards.
+_tee = read_source("logging_tee.py")
+report.check("output is written to a file", "vvokai_log.txt" in _tee, True)
 report.check("and to the console as well, for anybody watching one",
-             "class Tee:" in _desktop, True)
+             "class Tee:" in _tee, True)
 report.check("flushed on every line, because the interesting case is a crash",
-             "self.handle.flush()" in _desktop, True)
+             "self.handle.flush()" in _tee, True)
+report.check("the desktop app uses it", "start_logging" in _desktop, True)
+report.check("and so does main.py", "start_logging" in read_source("main.py"), True)
+report.check("calling it twice does not double every line",
+             "isinstance(sys.stdout, Tee)" in _tee, True)
 _launcher = read_source("launcher.py")
 _picks = [line for line in _launcher.splitlines()
            if "window = root" in line and "Scripts" in line]

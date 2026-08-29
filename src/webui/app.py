@@ -292,6 +292,22 @@ def create_app(pyla_main, start_discord_bot=False):
             return ("", 404)
         return send_file(icon_path)
 
+    @app.get("/api/logs")
+    def logs():
+        """The console output, for anybody who cannot see a console.
+
+        The exe opens one and it is easy to lose behind the app window; people
+        reported never having seen the log at all.
+        """
+        from logging_tee import read_log
+
+        try:
+            requested = int(request.args.get("lines", 400))
+        except (TypeError, ValueError):
+            requested = 400
+        lines = read_log(max(1, min(requested, 5000)))
+        return jsonify({"lines": lines, "count": len(lines)})
+
     @app.get("/api/assets/support/<path:filename>")
     def support_asset(filename: str):
         target = resolve_project_path("assets", "images", filename)

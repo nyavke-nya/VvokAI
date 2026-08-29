@@ -192,6 +192,16 @@
         "Delay before the unstuck routine fires.": "Через сколько включается выход из застревания.",
         "Unstuck Hold Time": "Удержание разблокировки",
         "How long the unstuck move is held.": "Сколько держится движение на выход.",
+        "Logs": "Логи",
+        "Everything the bot printed this run": "Всё, что бот напечатал за этот запуск",
+        "Refresh": "Обновить",
+        "Copy": "Копировать",
+        "Nothing logged yet. The file is written as the bot runs.":
+            "Пока пусто. Файл пишется по ходу работы бота.",
+        "Could not read the log.": "Не удалось прочитать лог.",
+        "Log copied. Paste it wherever you are asking for help.":
+            "Лог скопирован. Вставь его туда, где просишь помощи.",
+        "Could not copy the log.": "Не удалось скопировать лог.",
         "Wall Confidence": "Порог стен",
         "Confidence threshold for wall detection.": "Порог уверенности для распознавания стен.",
         "Entity Confidence": "Порог бойцов",

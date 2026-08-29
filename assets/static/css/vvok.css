@@ -2257,3 +2257,22 @@ img.avatar { border-radius: 2px; }
 }
 
 .set-nav-item.is-active span { color: var(--text-muted); }
+
+
+/* The log page. A terminal, because that is what it is: fixed pitch so
+   columns line up, scrolled to the bottom because the newest line is the one
+   being looked for, and wrapping off so a long path stays one line. */
+.log-output {
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    background: #070708;
+    border: 1px solid var(--rule);
+    padding: 16px 18px;
+    margin-top: 22px;
+    max-height: calc(100vh - 260px);
+    overflow: auto;
+    white-space: pre;
+    tab-size: 4;
+}

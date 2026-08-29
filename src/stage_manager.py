@@ -525,11 +525,20 @@ class StageManager:
             screenshot = self.window_controller.screenshot()
             current_state = get_state(screenshot)
 
-        if self.play_again_on_win and parsed_result and parsed_result.result == MatchResult.VICTORY and not self._should_pause():
+        # Stop was missing from this condition while pause was in it, so after
+        # Stop the bot still came in here to wait for a rematch it had already
+        # decided not to ask for. The wait then broke out on the stop, fell
+        # through to the line below, and RESTARTED Brawl Stars - which from the
+        # outside is a bot that carries on after you have told it to stop.
+        if (self.play_again_on_win and parsed_result
+                and parsed_result.result == MatchResult.VICTORY
+                and not self._should_pause() and not self._should_stop()):
             print("Waiting for match to start...")
             start_wait_time = time.time()
+            interrupted = False
             while time.time() - start_wait_time < 25:
                 if self._should_stop() or self._should_pause():
+                    interrupted = True
                     break
                 screenshot = self.window_controller.screenshot()
                 current_state = get_state(screenshot)
@@ -537,7 +546,15 @@ class StageManager:
                     print("Match started successfully!")
                     return
                 if self._sleep_interruptible(0.5):
+                    interrupted = True
                     break
+
+            # Told to stop, rather than nothing happening. Restarting the game
+            # is the answer to a rematch that never arrived, and the wrong
+            # answer to somebody pressing Stop while we waited for one.
+            if interrupted:
+                print("Stopped while waiting for the rematch.")
+                return
 
             print("Match did not start within 25s, restarting the game.")
             self.window_controller.restart_brawl_stars()

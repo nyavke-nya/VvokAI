@@ -604,6 +604,11 @@ def open_browser_later(local_url):
 
 
 if __name__ == "__main__":
+    # The same log the desktop application writes. Which entry point was
+    # used should not decide whether there is anything to look at afterwards.
+    from logging_tee import start_logging
+    start_logging()
+
     print("VvokAI - Brawl Stars bot with projectile dodging and aimed fire")
     print("Telegram: https://t.me/nyavke")
     print("Fork of PylaAI (ivanyordanovgt, AngelFireLA, awarzu), CC BY-NC 4.0")
