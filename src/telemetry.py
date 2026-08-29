@@ -42,11 +42,12 @@ from utils import config_bool, load_toml_as_dict, resolve_project_path
 # Where reports go. Empty means telemetry is off no matter what else is set -
 # which is how it ships, so a fork of this fork is not quietly reporting to
 # somebody else's spreadsheet.
-ENDPOINT = ""
+ENDPOINT = ("https://docs.google.com/forms/d/e/"
+            "1FAIpQLSc33ZzqM_Qqw0sY47-aPsBaCk_A7MRPqSazt6n6RqPV2XuorA/formResponse")
 
 # Google Forms wants entry.<id>=<value>; anything else takes JSON. Set this to
 # the field id when ENDPOINT is a form, leave it empty otherwise.
-FORM_FIELD = ""
+FORM_FIELD = "entry.1962452951"
 
 # The identity file. Deliberately not in cfg/, which people copy between
 # machines when they move an install - a copied id would merge two people into

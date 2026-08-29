@@ -69,11 +69,21 @@ report.check("the player tag is never read at all",
 
 
 report.section("the switch is a switch")
-report.check("it ships with nowhere to send to", telemetry.ENDPOINT, "")
-report.check("so it is off however the config reads", telemetry.enabled(), False)
+# The sink is a Google Form: submissions land in a sheet only its owner can
+# open, and the address grants no read of any kind. Which is the half that can
+# be protected - see the module docstring for the half that cannot.
+report.check("it posts to a write-only sink",
+             "docs.google.com/forms" in telemetry.ENDPOINT, True)
+report.check("as a form submission rather than JSON",
+             telemetry.FORM_FIELD.startswith("entry."), True)
+report.check("and to formResponse, which accepts, not viewform, which shows",
+             telemetry.ENDPOINT.endswith("/formResponse"), True)
 
 _saved = telemetry.ENDPOINT
 try:
+    telemetry.ENDPOINT = ""
+    report.check("no endpoint means off whatever the config says",
+                 telemetry.enabled(), False)
     telemetry.ENDPOINT = "https://example.invalid/collect"
     telemetry.load_toml_as_dict = lambda *a, **k: {"send_anonymous_stats": False}
     report.check("off in the config means off", telemetry.enabled(), False)
