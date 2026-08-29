@@ -127,6 +127,11 @@ class WindowController:
         self.are_we_moving = False
         self.PID_JOYSTICK = 1
         self.PID_ATTACK = 2
+        # A finger of its own. Holding a button for seconds on PID_ATTACK
+        # would mean the bot cannot shoot for as long as it is held, and on
+        # PID_JOYSTICK it could not move; a real hand would use a third.
+        self.PID_HOLD = 3
+        self._hold_thread = None
         # The dodge tracker runs on its own thread and can grab the joystick
         # mid-iteration, so every joystick touch is serialised and the bot loop
         # is locked out for a short window after an emergency dodge.
@@ -443,6 +448,42 @@ class WindowController:
         target_x = x * self.width_ratio
         target_y = y * self.height_ratio
         self.click(target_x, target_y, delay, touch_up=touch_up, touch_down=touch_down)
+
+    def hold(self, key, seconds, background=True):
+        """Press and keep pressing a named button.
+
+        On its own pointer, and on its own thread by default: five seconds is
+        an eternity to the bot loop, which in that time would not dodge, would
+        not move and would not fire. The game sees a finger held down while
+        everything else carries on.
+
+        Returns the thread, or None if there was nothing to press.
+        """
+        if key not in press_coords_dict:
+            return None
+        if self._hold_thread is not None and self._hold_thread.is_alive():
+            return None  # one hold at a time; a second finger on the same spot
+
+        x, y = press_coords_dict[key]
+        target_x, target_y = x * self.width_ratio, y * self.height_ratio
+
+        def press_and_wait():
+            try:
+                self.touch_down(target_x, target_y, pointer_id=self.PID_HOLD)
+                time.sleep(max(0.0, seconds))
+            finally:
+                # Always lifts. A finger left down would be read as a stuck
+                # touch and could block every later press on that pointer.
+                self.touch_up(target_x, target_y, pointer_id=self.PID_HOLD)
+
+        if not background:
+            press_and_wait()
+            return None
+
+        self._hold_thread = threading.Thread(
+            target=press_and_wait, daemon=True, name=f"vvok-hold-{key}")
+        self._hold_thread.start()
+        return self._hold_thread
 
     def aimed_attack(self, dx, dy, radius=130.0, hold=0.02, button="attack"):
         """Fire in a specific direction by dragging the attack stick.

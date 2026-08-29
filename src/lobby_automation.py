@@ -57,6 +57,7 @@ class LobbyAutomation:
     # its dismiss animation.
     TEAM_INVITE_COOLDOWN = 4.0
 
+
     def check_for_team_invite(self, frame):
         """Turn down a team invite, and mute whoever sent it on the way out.
 

@@ -77,6 +77,7 @@ class StageManager:
             'end_trio_showdown_2': self.end_game,
             'end_trio_showdown_3': self.end_game,
             'nano_noodles': self.click_nano_noodles,
+            'buffie_machine': self.open_buffie_machine,
             'daily_wins': self.pick_daily_wins,
         }
         self.matches_since_last_webhook_ping = 0
@@ -400,6 +401,20 @@ class StageManager:
                 return
             self.window_controller.click(x, y, already_include_ratio=False)
             time.sleep(0.6)
+
+    def open_buffie_machine(self):
+        """Hold the machine's button until it opens.
+
+        A press is not enough here - the machine wants the button held, so this
+        is the one reward that is not a click. Held on its own pointer and its
+        own thread, because five seconds of the bot loop is five seconds of not
+        dodging, not moving and not shooting.
+        """
+        seconds = float(load_toml_as_dict("cfg/bot_config.toml").get(
+            "buffie_hold_seconds", 5.0))
+        print(f"Buffie machine: holding the button for {seconds:g}s.")
+        self.window_controller.hold("buffie_machine", seconds)
+        time.sleep(seconds + 0.5)
 
     def click_nano_noodles(self):
         noodle_x, noodle_y = 960, 740

@@ -9,6 +9,7 @@ hypercharge_pixels_minimum = 1800.0
 super_pixels_minimum = 1800.0
 idle_pixels_minimum = 75000.0
 decline_team_invites = true
+buffie_hold_seconds = 5.0
 team_invite_green_minimum = 3500
 team_invite_mute_x = 0.89
 team_invite_mute_y = 0.29

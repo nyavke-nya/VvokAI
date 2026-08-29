@@ -351,6 +351,8 @@ def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
                 for key, value in frame_data.items():
                     if t_now - value > self.no_detections_action_threshold:
                         self.restart_brawl_stars()
+            # One read of the timer, not two: check_time resets on the way
+            # out, so asking twice means the second caller never fires.
             if self.Time_management.idle_check():
                 dropped = self.lobby_automator.check_for_idle(frame)
                 if dropped:

@@ -342,4 +342,44 @@ report.check("and errors are not swallowed with it",
              passes('127.0.0.1 - - [27/Aug/2026] "GET /nope HTTP/1.1" 500 -'), True)
 
 
+report.section("the buffie machine is a reward like any other")
+# Found the same way star drops and noodles are - a template in a region from
+# lobby_config - rather than by a colour count of its own. The one difference
+# is what happens next: the machine wants the button HELD, not tapped.
+import inspect as _inspect  # noqa: E402
+
+from stage_manager import StageManager  # noqa: E402
+from window_controller import WindowController  # noqa: E402
+
+report.check("it is a state the state finder can report",
+             "def is_at_buffie_machine" in _sf.__dict__ or
+             hasattr(_sf, "is_at_buffie_machine"), True)
+report.check("through the same template matcher as the other rewards",
+             "is_template_in_region" in _inspect.getsource(_sf.is_at_buffie_machine),
+             True)
+report.check("with its region beside theirs",
+             "buffie_machine" in read_source("cfg/lobby_config.toml"), True)
+report.check("and the stage manager knows what to do with it",
+             "'buffie_machine': self.open_buffie_machine"
+             in _inspect.getsource(StageManager.__init__), True)
+
+_handler = _inspect.getsource(StageManager.open_buffie_machine)
+report.check("which is to hold the button, not click it",
+             'hold("buffie_machine"' in _handler, True)
+report.check("for a length that is configurable",
+             "buffie_hold_seconds" in _handler, True)
+
+# Five seconds on the bot's own finger would be five seconds of not dodging,
+# not moving and not shooting.
+_hold = _inspect.getsource(WindowController.hold)
+report.check("the hold uses a pointer of its own", "PID_HOLD" in _hold, True)
+report.check("and always lifts it", "finally:" in _hold, True)
+report.check("that pointer is not the one attacks use",
+             WindowController.PID_ATTACK if hasattr(WindowController, "PID_ATTACK") else 2,
+             2)
+
+report.check("an uncaptured template leaves the check off, like the others",
+             _sf.is_at_buffie_machine(_blank), False)
+
+
 sys.exit(report.finish())

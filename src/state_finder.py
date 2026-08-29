@@ -138,6 +138,8 @@ def get_in_game_state(image):
         if is_in_prestige_milestone(image): return "prestige_milestone"
         if should_print_debug_info: print("Checking for nano noodles...")
         if is_in_nano_noodles(image): return "nano_noodles"
+        if should_print_debug_info: print("Checking for the buffie machine...")
+        if is_at_buffie_machine(image): return "buffie_machine"
         if should_print_debug_info: print("Checking for the daily wins choice...")
         if is_in_daily_wins(image): return "daily_wins"
         if should_print_debug_info: print("Checking for star drop...")
@@ -191,6 +193,10 @@ def is_in_match_making(image):
 
 def is_in_prestige_milestone(image):
     return is_template_in_region(image, states_path + "prestige_continue.png", region_data.get('prestige_continue', [535, 950, 345, 95]))
+
+def is_at_buffie_machine(image):
+    return is_template_in_region(image, states_path + "buffie_machine.png", region_data.get('buffie_machine', [1620, 780, 160, 160]))
+
 
 def is_in_nano_noodles(image):
     return is_template_in_region(image, states_path + "nano_noodles.png", region_data.get('nano_noodles', [360, 880, 215, 150]))
