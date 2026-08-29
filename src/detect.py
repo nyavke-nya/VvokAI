@@ -307,7 +307,28 @@ class Detect:
                   + (" The GPU is NOT being used." if worse else ""))
 
         print(f"Using {self.provider_label(onnx_provider)}")
+        self._mention_tensorrt(onnx_provider)
         return model, onnx_provider
+
+    _mentioned_tensorrt = False
+
+    @classmethod
+    def _mention_tensorrt(cls, provider):
+        """Say once that there may be something faster, for NVIDIA cards.
+
+        Somebody with a 4060 read "Using CUDA GPU" and asked why it was not
+        using TensorRT - reasonably, since nothing anywhere said that TensorRT
+        exists, is optional, or how to find out whether it helps on their card.
+        Printed once per run rather than once per model, because three
+        identical paragraphs is not advice, it is noise.
+        """
+        if cls._mentioned_tensorrt or provider != "CUDAExecutionProvider":
+            return
+        cls._mentioned_tensorrt = True
+        print("  TensorRT can be faster on some NVIDIA cards and slower on "
+              "others. To measure yours:")
+        print("    venv\Scripts\python.exe -m pip install tensorrt-cu13==10.16.1.11")
+        print("    venv\Scripts\python.exe tools\pick_provider.py")
 
     @staticmethod
     def provider_label(provider):

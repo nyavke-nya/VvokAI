@@ -2,10 +2,15 @@ state_check = 1.5
 no_detections = 30
 idle = 3.0
 idle_restart_cooldown = 90.0
+# Nothing on screen changing at all. The first restarts Brawl Stars, the second
+# restarts the emulator under it, because by then the cheap answer has been
+# tried and did not work. 0 turns either off.
+frozen_screen_restart_game = 180.0
+frozen_screen_restart_emulator = 600.0
 team_invite = 2.5
 gadget = 0.1
 hypercharge = 0.1
 super = 0.1
 wall_detection = 0.5
 no_detection_proceed = 8.0
-check_if_brawl_stars_crashed = 2.4
+check_if_brawl_stars_crashed = 1.6

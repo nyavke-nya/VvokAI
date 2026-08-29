@@ -1183,11 +1183,22 @@ async function loadLogs() {
     try {
         const result = await fetchJSON("/api/logs?lines=600", {}, true);
         const lines = (result && result.lines) || [];
+        // Whether to follow the tail is the reader's decision, not ours.
+        // Scrolling to the bottom on every refresh made the page unreadable:
+        // scroll up to look at something and the next poll, a second later,
+        // drags you back down.
+        //
+        // So stick to the bottom only while already there. Stepping away is
+        // how somebody says "leave it alone", and coming back is how they say
+        // "follow again". 24px of slack, because a half-scrolled last line
+        // still counts as being at the end.
+        const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
         box.textContent = lines.length
             ? lines.join("\n")
             : "Nothing logged yet. The file is written as the bot runs.";
-        // Newest at the bottom, which is where the interesting part is.
-        box.scrollTop = box.scrollHeight;
+        if (atBottom) {
+            box.scrollTop = box.scrollHeight;
+        }
     } catch {
         box.textContent = "Could not read the log.";
     }

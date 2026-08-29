@@ -122,6 +122,7 @@ def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
             self.picked_first_brawler = False
             self.time_since_checked_if_brawl_stars_crashed = time.time()
             self.check_if_brawl_stars_crashed_timer = load_toml_as_dict("cfg/time_tresholds.toml")["check_if_brawl_stars_crashed"]
+            self.activity_watchdog = self.build_activity_watchdog()
             # Long enough that a restart has finished and the game is back
             # before another one can be triggered by the same grey box.
             self.idle_restart_cooldown = float(
@@ -181,8 +182,34 @@ def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
             print(f"{reason.capitalize()} on screen - restarting Brawl Stars.")
             self.restart_brawl_stars()
 
+        def build_activity_watchdog(self):
+            """The thing that notices a screen which has stopped moving."""
+            from activity_watchdog import ActivityWatchdog
+
+            times = load_toml_as_dict("cfg/time_tresholds.toml")
+            return ActivityWatchdog(
+                restart_game=self.restart_brawl_stars,
+                game_after=float(times.get("frozen_screen_restart_game", 180)),
+                emulator_after=float(times.get("frozen_screen_restart_emulator", 600)),
+            )
+
+        def feed_resumed(self, wait=6.0):
+            """Whether frames started arriving again after a reconnect."""
+            deadline = time.time() + wait
+            _, before = self.window_controller.get_latest_frame()
+            while time.time() < deadline:
+                if self.sleep_interruptible(0.5) == "stop":
+                    return True  # stopping; not our problem to fix
+                _, now = self.window_controller.get_latest_frame()
+                if now > before:
+                    return True
+            return False
+
         def restart_brawl_stars(self):
             self.window_controller.restart_brawl_stars()
+            watchdog = getattr(self, "activity_watchdog", None)
+            if watchdog is not None:
+                watchdog.reset("Brawl Stars restarted")
             self.time_since_checked_if_brawl_stars_crashed = time.time()
             self.Play.time_since_detections["player"] = time.time()
             self.Play.time_since_detections["enemy"] = time.time()
@@ -506,6 +533,11 @@ def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
                     c = 0
                 self.start_crash_watchdog()
                 frame = self.window_controller.screenshot()
+                # Before anything reads the frame: has the picture moved at
+                # all? Deliberately not asked of the bot's own state, which
+                # can be sure a match is running while the screen has been
+                # frozen for ten minutes.
+                self.activity_watchdog.note(frame)
 
                 _, last_ft = self.window_controller.get_latest_frame()
                 if last_ft > 0 and (t_now - last_ft) > self.window_controller.FRAME_STALE_TIMEOUT:
@@ -513,9 +545,19 @@ def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
                     self.Play.window_controller.release_movement(priority=True)
                     if stale_age > 30:
                         print(f"Scrcpy feed stale for {stale_age:.0f}s -- attempting reconnect")
+                        # A reconnect can succeed against a game that is itself
+                        # wedged: a new connection to the same frozen picture.
+                        # So the frames have to actually start moving again -
+                        # reconnecting and carrying on regardless is how this
+                        # ended up printing the same warning for minutes.
                         if not self.window_controller.reconnect_scrcpy():
                             print("Reconnect failed -- restarting Brawl Stars")
                             self.restart_brawl_stars()
+                        elif not self.feed_resumed():
+                            print("Reconnected but the feed is still stuck -- "
+                                  "restarting Brawl Stars")
+                            self.restart_brawl_stars()
+                        self.activity_watchdog.reset("feed reconnected")
                     else:
                         print("Stale frame detected -- pausing actions until feed resumes")
                         if self.sleep_interruptible(1) == "stop":
