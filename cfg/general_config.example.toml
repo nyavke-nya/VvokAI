@@ -15,6 +15,15 @@ used_threads = "auto"
 default_trophy_target = 1200
 auto_load_queue_on_startup = true
 
+# Anonymous usage figures: how many people run the fork, which playstyles get
+# chosen, which brawlers actually win. No player tag, no account name, no API
+# token, no file paths - the only stable value is a random number made on first
+# run so one machine is not counted as two people. Sent at most once every six
+# hours, on a background thread, and a failure is ignored.
+#
+# false turns it off completely.
+send_anonymous_stats = true
+
 # Which execution provider the detection models run on.
 #
 # "auto" - whatever is fastest of what is installed, which is CUDA on an

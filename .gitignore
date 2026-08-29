@@ -64,3 +64,7 @@ build/launcher/
 # TensorRT engines: built for this GPU, driver and TensorRT version, and
 # rebuilt when any of those change. Nothing to keep in the repository.
 models/trt_cache/
+
+# Per-install, and not ours to publish.
+.vvok_install_id
+.vvok_stats_sent

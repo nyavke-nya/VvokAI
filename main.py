@@ -602,6 +602,32 @@ def find_open_port(start_port=5185, host="127.0.0.1"):
     raise RuntimeError("Could not find an open localhost port for the Flask UI.")
 
 
+def report_stats(app):
+    """Send the anonymous figures, if they are switched on.
+
+    At startup rather than at shutdown: the question this exists to answer is
+    how many people run the fork, and a bot that is killed with the window
+    close button never reaches a shutdown hook.
+    """
+    try:
+        from telemetry import send
+
+        service = app.config.get("data_service")
+        profile = {}
+        version = ""
+        if service is not None:
+            profile = (service.get_match_history_payload() or {}).get("profile") or {}
+            version = service.get_current_version()
+
+        general = load_toml_as_dict("cfg/general_config.toml")
+        send(profile=profile,
+             provider=str(general.get("execution_provider", "auto")),
+             version=version)
+    except Exception:
+        # Statistics are the least important thing here by a wide margin.
+        pass
+
+
 def start_auto_update(app):
     """Poll for updates while the bot runs, and resume farming after one.
 
@@ -660,4 +686,5 @@ if __name__ == "__main__":
     print(f"VvokAI web UI: {local_url}")
     open_browser_later(local_url)
     start_auto_update(app)
+    report_stats(app)
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
