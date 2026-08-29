@@ -14,6 +14,18 @@ ocr_scale_down_factor = 0.8
 used_threads = "auto"
 default_trophy_target = 1200
 auto_load_queue_on_startup = true
+
+# Which execution provider the detection models run on.
+#
+# "auto" - whatever is fastest of what is installed, which is CUDA on an
+#          NVIDIA card and DirectML otherwise. This is the right answer for
+#          almost everybody and the default.
+# "tensorrt" - compile the models for this specific GPU. Roughly twice as fast
+#          on some cards and slower than CUDA on others, so do not set it by
+#          hand: run tools/pick_provider.py, which measures both here and only
+#          writes this if TensorRT actually wins.
+execution_provider = "auto"
+tensorrt_fp16 = true
 # How often to look for an update while the bot is running, in minutes.
 # 0 turns it off. Nothing happens on a check that finds nothing: the bot
 # is only stopped, and only restarted, once an update has installed.

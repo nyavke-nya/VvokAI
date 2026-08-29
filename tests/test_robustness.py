@@ -39,21 +39,31 @@ report.check("and it is short enough to read",
 class _Order(Detect):
     """Just the provider choice - no model, no onnxruntime session."""
 
-    def __init__(self, preferred):
+    def __init__(self, preferred, tensorrt=False):
         self.preferred_device = preferred
+        self.use_tensorrt = tensorrt
+        self.trt_fp16 = True
 
 
-_gpu = _Order("auto").provider_order()
-report.check("CPU is always the last resort", _gpu[-1], "CPUExecutionProvider")
+def _names(attempts):
+    """Provider names out of the attempt lists, dropping their options."""
+    return [[p[0] if isinstance(p, tuple) else p for p in attempt]
+            for attempt in attempts]
+
+
+# provider_order returns a list of LISTS now: each one is handed to
+# onnxruntime whole, because TensorRT must never be requested on its own.
+_gpu = _names(_Order("auto").provider_order())
+report.check("CPU is always the last resort", _gpu[-1], ["CPUExecutionProvider"])
 report.check("and it is never the only thing tried on a GPU box",
              len(_gpu) >= 1, True)
 report.check("asking for CPU tries nothing else",
-             _Order("cpu").provider_order(), ["CPUExecutionProvider"])
+             _names(_Order("cpu").provider_order()), [["CPUExecutionProvider"]])
 
 _source = read_source("detect.py")
 report.check("session creation is guarded rather than allowed to kill startup",
              "except Exception as exc:" in _source
-             and "problems.append((onnx_provider, exc))" in _source, True)
+             and "problems.append((first, exc))" in _source, True)
 report.check("and every provider failing is still an error, not a silent no-op",
              "No execution provider could load" in _source, True)
 
@@ -423,6 +433,56 @@ for _c in range(3):
     _old[0, _c, :_h, :_w] = _f[:, :, _c]
 report.check("and it matches what the old three-step version produced",
              bool(_np.allclose(_buf, _old, atol=1e-6)), True)
+
+
+report.section("TensorRT is opt-in, and never asked for on its own")
+# Worth 2.5x on the card this was measured on and SLOWER than CUDA on others,
+# so it is switched on by a measurement rather than by belief. Everything here
+# guards the two ways that could go wrong for somebody else.
+_detect = read_source("detect.py")
+
+# The trap: onnxruntime does not raise when TensorRT's libraries are missing,
+# it falls back to whatever else is in the list. A list containing only
+# TensorRT therefore falls back to the CPU - measured, not guessed. Asked for
+# alongside CUDA it falls back to CUDA, which is what we want.
+report.check("TensorRT is requested together with CUDA and CPU",
+             all(name in _detect for name in ("TensorrtExecutionProvider",
+                                              "CUDAExecutionProvider",
+                                              "CPUExecutionProvider")), True)
+report.check("in one list, so a missing library falls back to CUDA not the CPU",
+             "attempts.append([(" in _detect, True)
+report.check("it is only offered when the config asks for it",
+             "self.use_tensorrt" in _detect, True)
+report.check("and the default is not tensorrt",
+             '"execution_provider", "auto"' in _detect, True)
+report.check("engines are cached, since a build takes minutes",
+             "trt_engine_cache_enable" in _detect, True)
+report.check("and the cache is not committed",
+             "models/trt_cache" in read_source(".gitignore"), True)
+
+# With the shipped config, nothing changes for anybody.
+sys.path.insert(0, os.path.join(REPO, "src"))
+from detect import Detect as _D  # noqa: E402
+
+_probe = object.__new__(_D)
+_probe.preferred_device = "auto"
+_probe.use_tensorrt = False
+_names = [[p[0] if isinstance(p, tuple) else p for p in attempt]
+          for attempt in _D.provider_order(_probe)]
+report.check("with the default config TensorRT is never requested",
+             any("TensorrtExecutionProvider" in a for a in _names), False)
+report.check("and CPU is still the last resort",
+             _names[-1], ["CPUExecutionProvider"])
+
+_probe.preferred_device = "cpu"
+report.check("asking for the CPU still gets only the CPU",
+             [[p for p in a] for a in _D.provider_order(_probe)], [["CPUExecutionProvider"]])
+
+_picker = read_source("tools/pick_provider.py")
+report.check("the picker refuses to enable a provider that did not win",
+             "WORTH_IT" in _picker, True)
+report.check("and notices a silent fallback rather than reporting a win",
+             'running != "TensorrtExecutionProvider"' in _picker, True)
 
 
 sys.exit(report.finish())

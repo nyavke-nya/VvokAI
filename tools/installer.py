@@ -402,6 +402,17 @@ def install_accelerator(vendor, cap=""):
             # build is both sufficient and the one that works.
             pip_install(["torch", "torchvision", "--index-url",
                          "https://download.pytorch.org/whl/cpu"], "PyTorch (CPU build)")
+            # Deliberately not installed here. TensorRT is about a gigabyte,
+            # it has to match onnxruntime's build exactly, and it is not a win
+            # on every card - measured 2.5x on one and slower than CUDA on
+            # another. So it is offered rather than imposed.
+            log("")
+            log("  Optional: TensorRT can roughly halve inference time on some")
+            log("  NVIDIA cards, and is slower than CUDA on others. To find out")
+            log("  which yours is:")
+            log("      venv\\Scripts\\python.exe -m pip install tensorrt-cu13==10.16.1.11")
+            log("      venv\\Scripts\\python.exe tools\\pick_provider.py")
+            log("  It measures both and only switches if TensorRT actually wins.")
             return "CUDA"
         log("  CUDA would not install. Falling back to DirectML, which always works.")
 

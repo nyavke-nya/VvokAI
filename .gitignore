@@ -60,3 +60,7 @@ docs/*.gif
 VvokAI.exe
 new-VvokAI.exe
 build/launcher/
+
+# TensorRT engines: built for this GPU, driver and TensorRT version, and
+# rebuilt when any of those change. Nothing to keep in the repository.
+models/trt_cache/

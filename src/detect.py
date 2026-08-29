@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import torch
 import onnxruntime as ort
-from utils import load_toml_as_dict
+from utils import config_bool, load_toml_as_dict, resolve_project_path
 import warnings
 
 warnings.filterwarnings(
@@ -159,7 +159,13 @@ class Detect:
         self.optimal_threads_amount = get_optimal_threads() if threads_to_use == "auto" else int(threads_to_use)
         cv2.setNumThreads(self.optimal_threads_amount)
         torch.set_num_threads(self.optimal_threads_amount)
-        self.preferred_device = load_toml_as_dict("cfg/general_config.toml")['cpu_or_gpu']
+        general = load_toml_as_dict("cfg/general_config.toml")
+        self.preferred_device = general['cpu_or_gpu']
+        # Off unless something measured it faster HERE. TensorRT is not a win
+        # on every card - on some it is slower than CUDA - so this is written
+        # by tools/pick_provider.py rather than assumed.
+        self.use_tensorrt = str(general.get("execution_provider", "auto")).strip().lower() == "tensorrt"
+        self.trt_fp16 = config_bool(general.get("tensorrt_fp16"), True)
         self.model_path = model_path
         self.classes = classes
         self.ignore_classes = set(ignore_classes) if ignore_classes else set()
@@ -185,29 +191,64 @@ class Detect:
         5.6 ms per inference on CUDA against 20.8 ms on CPU.
         """
         preload = getattr(ort, "preload_dlls", None)
-        if preload is None:
-            return  # onnxruntime < 1.21 resolves its own dependencies
+        if preload is not None:
+            try:
+                preload()
+            except Exception as exc:
+                print(f"Could not preload CUDA libraries ({exc}); GPU may be unavailable.")
+
+        # preload_dlls() knows about the nvidia-* wheels and not about
+        # tensorrt_libs, so the TensorRT provider cannot find nvinfer without
+        # this. Silent when TensorRT is not installed, which is most machines.
         try:
-            preload()
-        except Exception as exc:
-            print(f"Could not preload CUDA libraries ({exc}); GPU may be unavailable.")
+            import os
+
+            import tensorrt_libs
+            os.add_dll_directory(os.path.dirname(tensorrt_libs.__file__))
+        except Exception:
+            pass
+
+    def trt_options(self):
+        """Engine cache settings for TensorRT.
+
+        Building an engine took 75 seconds for this model and 181 with fp16 on
+        the machine it was measured on. That is once, and only if the cache is
+        kept - without it every start pays it again, which is why the path is
+        not optional.
+        """
+        cache = str(resolve_project_path("models", "trt_cache"))
+        os.makedirs(cache, exist_ok=True)
+        return {
+            "trt_engine_cache_enable": True,
+            "trt_engine_cache_path": cache,
+            "trt_timing_cache_enable": True,
+            "trt_fp16_enable": self.trt_fp16,
+        }
 
     def provider_order(self):
-        """Which execution providers to try, best first.
+        """The provider sets to try, best first.
 
-        A list rather than a single choice, because whether a provider works
-        cannot be known until a session is actually built on it - see
-        load_model.
+        A list of LISTS. Each entry is handed to onnxruntime whole, because
+        TensorRT cannot be asked for on its own: when its libraries are absent
+        onnxruntime does not raise, it falls back to whatever else is in the
+        list - and a list containing only TensorRT falls back to CPU. Asked for
+        alongside CUDA it falls back to CUDA, which is the behaviour wanted.
         """
         available = ort.get_available_providers()
         if self.preferred_device not in ("gpu", "auto"):
-            return ["CPUExecutionProvider"]
+            return [["CPUExecutionProvider"]]
 
-        order = [name for name in ("CUDAExecutionProvider", "DmlExecutionProvider",
-                                   "AzureExecutionProvider")
-                 if name in available]
-        order.append("CPUExecutionProvider")
-        return order
+        attempts = []
+        if self.use_tensorrt and "TensorrtExecutionProvider" in available:
+            attempts.append([("TensorrtExecutionProvider", self.trt_options()),
+                             "CUDAExecutionProvider", "CPUExecutionProvider"])
+
+        for name in ("CUDAExecutionProvider", "DmlExecutionProvider",
+                     "AzureExecutionProvider"):
+            if name in available:
+                attempts.append([name])
+        attempts.append(["CPUExecutionProvider"])
+        return attempts
 
     def load_model(self):
         self.preload_cuda_libraries()
@@ -232,21 +273,23 @@ class Detect:
         # which used to take the whole bot down at startup with a wall of
         # onnxruntime internals. A card too old for CUDA is a reason to use
         # DirectML or the CPU, not a reason to refuse to run.
-        order = self.provider_order()
+        attempts = self.provider_order()
         problems = []
         model = None
-        for index, onnx_provider in enumerate(order):
+        for index, wanted in enumerate(attempts):
+            first = wanted[0][0] if isinstance(wanted[0], tuple) else wanted[0]
             try:
                 model = ort.InferenceSession(self.model_path, sess_options=so,
-                                             providers=[onnx_provider])
+                                             providers=wanted)
                 break
             except Exception as exc:
-                problems.append((onnx_provider, exc))
-                remaining = order[index + 1:]
-                print(f"{self.provider_label(onnx_provider)} could not start "
+                problems.append((first, exc))
+                remaining = attempts[index + 1:]
+                nxt = remaining[0][0] if remaining else None
+                nxt = nxt[0] if isinstance(nxt, tuple) else nxt
+                print(f"{self.provider_label(first)} could not start "
                       f"({self.short_reason(exc)})."
-                      + (f" Trying {self.provider_label(remaining[0])}."
-                         if remaining else ""))
+                      + (f" Trying {self.provider_label(nxt)}." if nxt else ""))
 
         if model is None:
             reasons = "; ".join(f"{name}: {self.short_reason(exc)}"
@@ -254,13 +297,14 @@ class Detect:
             raise RuntimeError(f"No execution provider could load "
                                f"{self.model_path} ({reasons})")
 
-        active_provider = model.get_providers()[0] if model.get_providers() else onnx_provider
-        if active_provider != onnx_provider:
-            print(
-                f"WARNING: requested {onnx_provider} but onnxruntime fell back to "
-                f"{active_provider}. The GPU is NOT being used."
-            )
-            onnx_provider = active_provider
+        # What is really running, which is not always what was asked for: a
+        # provider whose libraries are missing is dropped without raising.
+        onnx_provider = model.get_providers()[0] if model.get_providers() else first
+        if onnx_provider != first:
+            worse = onnx_provider == "CPUExecutionProvider"
+            print(f"{self.provider_label(first)} was requested but onnxruntime "
+                  f"is running {self.provider_label(onnx_provider)}."
+                  + (" The GPU is NOT being used." if worse else ""))
 
         print(f"Using {self.provider_label(onnx_provider)}")
         return model, onnx_provider
@@ -268,6 +312,7 @@ class Detect:
     @staticmethod
     def provider_label(provider):
         return {
+            "TensorrtExecutionProvider": "TensorRT",
             "CUDAExecutionProvider": "CUDA GPU",
             "DmlExecutionProvider": "DirectML GPU",
             "AzureExecutionProvider": "Azure",
