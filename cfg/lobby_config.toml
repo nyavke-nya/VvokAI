@@ -24,7 +24,7 @@ idle_disconnect = [430, 380, 500, 160]
 connection_lost = [440, 400, 520, 130]
 # The buffie machine's button, which only appears while the player is stood
 # at the machine. Centred on the coordinate in buttons_config.
-buffie_machine = [1620, 780, 160, 160]
+buffie_machine = [1580, 700, 230, 230]
 [pixel_counter_crop_area]
 super=[1460, 830, 1560, 930]
 gadget=[1580, 930, 1700, 1050]
