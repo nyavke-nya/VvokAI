@@ -7,6 +7,10 @@ idle_restart_cooldown = 90.0
 # tried and did not work. 0 turns either off.
 frozen_screen_restart_game = 180.0
 frozen_screen_restart_emulator = 600.0
+# How many state checks in a row on one passing screen - matchmaking, a popup -
+# before the game is restarted. At state_check = 1.5s, 30 is about 45 seconds.
+# Matches and the lobby are never counted, however long they last.
+stuck_state_checks = 30
 team_invite = 2.5
 gadget = 0.1
 hypercharge = 0.1

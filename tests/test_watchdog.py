@@ -199,4 +199,66 @@ report.check("and keeps looping rather than returning",
              "Carrying on" in _loop, True)
 
 
+report.section("a passing screen that never passes")
+# From a real log: "State: match_making" a hundred times over, at a hundred
+# frames a second. Everything was healthy - the picture animating, the models
+# running - so neither the stale-feed check nor the frozen-screen watchdog had
+# anything to say. Matchmaking had simply wedged.
+import re as _re  # noqa: E402
+
+_main_src = open("main.py", encoding="utf-8").read()
+_start = _main_src.index("        def note_state_for_stuck_check")
+_end = _main_src.index("        def build_activity_watchdog")
+_method = chr(10).join(l[8:] if l.startswith(" " * 8) else l
+                       for l in _main_src[_start:_end].splitlines())
+_states = _re.search(r"TRANSIENT_STATES = \{[^}]*\}", _main_src).group(0)
+
+_ns = {}
+exec("class _Bot:" + chr(10) + "    " + _states + chr(10)
+     + chr(10).join("    " + l for l in _method.splitlines()), _ns)
+_Bot = _ns["_Bot"]
+
+
+def _bot(limit=30):
+    bot = _Bot()
+    bot._stuck_state = None
+    bot._stuck_count = 0
+    bot.stuck_state_limit = limit
+    bot.restarts = []
+    bot.restart_brawl_stars = lambda: bot.restarts.append(1)
+    return bot
+
+
+def _feed(state, times, limit=30):
+    bot = _bot(limit)
+    for _ in range(times):
+        bot.note_state_for_stuck_check(state)
+    return len(bot.restarts)
+
+
+report.check("thirty checks stuck in matchmaking restarts the game",
+             _feed("match_making", 40), 1)
+report.check("twenty-nine does not - the limit is the limit",
+             _feed("match_making", 29), 0)
+
+# The two that must never be counted, or the fix breaks what works.
+report.check("a long match is never interrupted", _feed("match", 200), 0)
+report.check("nor is sitting in the lobby, which is where a paused bot waits",
+             _feed("lobby", 200), 0)
+
+_bot_one = _bot()
+for _ in range(20):
+    _bot_one.note_state_for_stuck_check("match_making")
+for _ in range(50):
+    _bot_one.note_state_for_stuck_check("match")
+report.check("matchmaking that ends normally resets the count",
+             len(_bot_one.restarts), 0)
+
+report.check("the limit is configurable rather than baked in",
+             "stuck_state_checks" in open("cfg/time_tresholds.toml",
+                                          encoding="utf-8").read(), True)
+report.check("and a restart clears the count, so it does not fire again at once",
+             "self._stuck_count = 0" in _main_src, True)
+
+
 sys.exit(report.finish())

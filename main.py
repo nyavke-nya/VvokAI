@@ -123,6 +123,10 @@ def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
             self.time_since_checked_if_brawl_stars_crashed = time.time()
             self.check_if_brawl_stars_crashed_timer = load_toml_as_dict("cfg/time_tresholds.toml")["check_if_brawl_stars_crashed"]
             self.activity_watchdog = self.build_activity_watchdog()
+            self._stuck_state = None
+            self._stuck_count = 0
+            self.stuck_state_limit = int(load_toml_as_dict(
+                "cfg/time_tresholds.toml").get("stuck_state_checks", 30))
             # Long enough that a restart has finished and the game is back
             # before another one can be triggered by the same grey box.
             self.idle_restart_cooldown = float(
@@ -182,6 +186,33 @@ def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
             print(f"{reason.capitalize()} on screen - restarting Brawl Stars.")
             self.restart_brawl_stars()
 
+        def note_state_for_stuck_check(self, state):
+            """Restart the game if a passing screen refuses to pass.
+
+            Reported from a run that printed "State: match_making" a hundred
+            times over: matchmaking had wedged, and nothing noticed because
+            everything else was healthy - frames arriving at a hundred a
+            second, the picture animating, the models running. The frozen
+            screen watchdog cannot catch this one; the spinner is still turning.
+            """
+            if state != self._stuck_state:
+                self._stuck_state = state
+                self._stuck_count = 0
+                return
+
+            if state not in self.TRANSIENT_STATES:
+                return
+
+            self._stuck_count += 1
+            if self._stuck_count < self.stuck_state_limit:
+                return
+
+            print(f"Stuck on '{state}' for {self._stuck_count} checks in a row "
+                  f"- restarting Brawl Stars.")
+            self._stuck_count = 0
+            self._stuck_state = None
+            self.restart_brawl_stars()
+
         def build_activity_watchdog(self):
             """The thing that notices a screen which has stopped moving."""
             from activity_watchdog import ActivityWatchdog
@@ -210,6 +241,8 @@ def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
             watchdog = getattr(self, "activity_watchdog", None)
             if watchdog is not None:
                 watchdog.reset("Brawl Stars restarted")
+            self._stuck_state = None
+            self._stuck_count = 0
             self.time_since_checked_if_brawl_stars_crashed = time.time()
             self.Play.time_since_detections["player"] = time.time()
             self.Play.time_since_detections["enemy"] = time.time()
@@ -312,12 +345,22 @@ def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
             with self.state_lock:
                 return self.state
 
+        # Screens that are a step on the way somewhere. Sitting on one of
+        # these forever means the step never completed, which a restart fixes
+        # and waiting does not.
+        #
+        # "match" and "lobby" are deliberately absent: a long match is a long
+        # match, and the lobby is where a paused or finished bot is supposed to
+        # sit. Restarting either would break something that was working.
+        TRANSIENT_STATES = {"match_making", "popup", "shop", "brawler_selection"}
+
         def handle_detected_state(self, state):
             if state is None:
                 return
             self.set_latest_state(state)
 
             print(f"State: {state}")
+            self.note_state_for_stuck_check(state)
             frame_data = None
             self.Stage_manager.do_state(state, frame_data)
             if state != "match":
