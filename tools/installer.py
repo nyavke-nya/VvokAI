@@ -374,6 +374,48 @@ def ensure_venv(python_path):
     return True
 
 
+# The TensorRT build must match onnxruntime's exactly. ORT 1.28 loads
+# nvinfer_10, and pip's plain "tensorrt" is 11.x, which resolves to nothing at
+# all and falls back silently - so this is pinned rather than left to pip.
+TENSORRT_PIN = "tensorrt-cu13==10.16.1.11"
+
+
+def install_tensorrt():
+    """Install TensorRT, then let a measurement decide whether to use it.
+
+    Installed for every card that got the CUDA runtime, because on the ones it
+    suits it is worth about 2.4x - 5.1 ms an inference down to 2.1 - and asking
+    people to find that out for themselves means almost nobody does.
+
+    Using it is still decided by measurement, not by having installed it. It is
+    slower than CUDA on some cards, and turning it on everywhere would make
+    those slower for the sake of a number that looked good on one machine.
+    """
+    log("")
+    log("  Installing TensorRT. It is around a gigabyte, so this is the slow")
+    log("  part - it roughly halves inference time on the cards it suits.")
+    if not pip_install([TENSORRT_PIN], "TensorRT", attempts=2):
+        log("  TensorRT would not install. Carrying on with CUDA, which works")
+        log("  perfectly well - this was an optimisation, not a requirement.")
+        return False
+
+    log("")
+    log("  Measuring TensorRT against CUDA on this machine. Building the first")
+    log("  engine takes a few minutes; it is cached afterwards.")
+    picker = ROOT / "tools" / "pick_provider.py"
+    if not picker.exists():
+        return False
+    code, output = run([str(VENV_PYTHON), str(picker)])
+    log(output, also_print=False)
+    for line in output.splitlines():
+        # The picker says which one won and by how much; that is the part
+        # worth putting in front of somebody watching the install.
+        if any(word in line for word in ("wins here", "Keeping CUDA", "not worth",
+                                         "ms  (", "fastest thing")):
+            log(f"  {line.strip()}")
+    return code == 0
+
+
 def install_accelerator(vendor, cap=""):
     """One ONNX runtime, and a torch that does not fight it.
 
@@ -402,17 +444,7 @@ def install_accelerator(vendor, cap=""):
             # build is both sufficient and the one that works.
             pip_install(["torch", "torchvision", "--index-url",
                          "https://download.pytorch.org/whl/cpu"], "PyTorch (CPU build)")
-            # Deliberately not installed here. TensorRT is about a gigabyte,
-            # it has to match onnxruntime's build exactly, and it is not a win
-            # on every card - measured 2.5x on one and slower than CUDA on
-            # another. So it is offered rather than imposed.
-            log("")
-            log("  Optional: TensorRT can roughly halve inference time on some")
-            log("  NVIDIA cards, and is slower than CUDA on others. To find out")
-            log("  which yours is:")
-            log("      venv\\Scripts\\python.exe -m pip install tensorrt-cu13==10.16.1.11")
-            log("      venv\\Scripts\\python.exe tools\\pick_provider.py")
-            log("  It measures both and only switches if TensorRT actually wins.")
+            install_tensorrt()
             return "CUDA"
         log("  CUDA would not install. Falling back to DirectML, which always works.")
 

@@ -485,4 +485,52 @@ report.check("and notices a silent fallback rather than reporting a win",
              'running != "TensorrtExecutionProvider"' in _picker, True)
 
 
+report.section("cards that can use TensorRT get it installed")
+# It used to be printed as a suggestion, which meant almost nobody ran it. The
+# gain on the cards it suits is 2.4x, so it is installed for every card that
+# got the CUDA runtime - and then MEASURED, because installing it is not the
+# same as it being faster, and on some cards it is not.
+sys.path.insert(0, os.path.join(REPO, "tools"))
+import installer as _installer  # noqa: E402
+
+_saved = (_installer.log, _installer.run, _installer.pip_install,
+          _installer.install_tensorrt)
+try:
+    _steps = []
+    _installer.log = lambda *a, **k: None
+    _installer.run = lambda *a, **k: (0, "")
+    _installer.pip_install = lambda args, what, attempts=3: (_steps.append(what) or True)
+    _installer.install_tensorrt = lambda: _steps.append("tensorrt")
+
+    def _steps_for(vendor, cap=""):
+        _steps.clear()
+        _installer.install_accelerator(vendor, cap)
+        return list(_steps)
+
+    report.check("a modern NVIDIA card gets it", "tensorrt" in _steps_for("nvidia", "8.9"), True)
+    report.check("a card too old for CUDA does not",
+                 "tensorrt" in _steps_for("nvidia", "6.1"), False)
+    report.check("nor does one whose capability could not be read",
+                 "tensorrt" in _steps_for("nvidia", ""), False)
+    report.check("nor an AMD or Intel card", "tensorrt" in _steps_for("amd"), False)
+    report.check("and those still get DirectML",
+                 "DirectML runtime" in _steps_for("amd"), True)
+finally:
+    (_installer.log, _installer.run, _installer.pip_install,
+     _installer.install_tensorrt) = _saved
+
+_inst_src = read_source("tools/installer.py")
+report.check("the version is pinned to what onnxruntime loads",
+             "tensorrt-cu13==10.16.1.11" in _inst_src, True)
+report.check("a failed install is not a failed setup",
+             "was an optimisation, not a requirement" in _inst_src, True)
+report.check("installing it does not by itself switch it on",
+             "pick_provider" in _inst_src, True)
+
+# Existing installs re-run setup when the installer changes, so this reaches
+# people who set the bot up months ago rather than only new downloads.
+report.check("the setup fingerprint covers the installer itself",
+             "tools/installer.py" in _inst_src and "def fingerprint" in _inst_src, True)
+
+
 sys.exit(report.finish())
