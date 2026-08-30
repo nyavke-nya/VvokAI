@@ -45,6 +45,17 @@ class DodgeService:
         self.tracker = ProjectileTracker(self.config)
         self.solver = DodgeSolver(self.config)
         self.enemy_tracker = EnemyTracker(self.config)
+        # The same tracker, pointed at the other team.
+        #
+        # Enemies have had stable identities since aiming needed their
+        # velocity; teammates never did, so anything that wanted to follow ONE
+        # ally had to guess from coordinates - and guessing is what produced
+        # the bug where the bot would not leave an ally standing still, because
+        # a second ally walking past kept being mistaken for the first one.
+        #
+        # Nothing new is invented here. Association, the world frame and the
+        # velocity fit are the code that has been leading shots for months.
+        self.teammate_tracker = EnemyTracker(self.config)
         self.aim_solver = AimSolver(self.config)
         self.log = DodgeLog(
             self.config,
@@ -112,6 +123,7 @@ class DodgeService:
         self.tracker.reset()
         self.tracker.motion.reset()
         self.enemy_tracker.reset()
+        self.teammate_tracker.reset()
         with self._lock:
             self._projectiles = []
             self._decision = None
@@ -150,6 +162,10 @@ class DodgeService:
 
         if self.config.aim_enabled:
             self.enemy_tracker.update(context.enemies, pan, now)
+        # Not behind aim_enabled: following an ally is a movement decision and
+        # has nothing to do with leading shots. A light playstyle with aiming
+        # off still needs to know which ally is which.
+        self.teammate_tracker.update(context.teammates, pan, now)
 
     # ------------------------------------------------------------------
     # aiming
@@ -159,6 +175,16 @@ class DodgeService:
         if not self.config.aim_enabled:
             return []
         return self.enemy_tracker.tracked()
+
+    def tracked_teammates(self):
+        """Allies with stable ids and measured world-space speeds.
+
+        The speed is the useful part. "Has this ally moved" was answered by
+        remembering a position and timing how long it stayed the same, which
+        needs the ally to be the same ally between frames - the thing that was
+        being assumed rather than known. A tracked speed answers it directly.
+        """
+        return self.teammate_tracker.tracked()
 
     def aim_at(self, shooter_pos, target_pos, projectile_speed=None):
         """Lead a target. Returns an AimSolution, or None to just tap."""

@@ -204,6 +204,12 @@ AFK_IGNORE_FOR = 30.0
 # How close to that spot still counts as "the one I gave up on", in tiles.
 AFK_SPOT_TILES = 2.5
 
+# Below this world speed, in tiles per second, an ally counts as standing
+# still. Detection boxes jitter and the world frame is rebuilt from camera
+# pan, so it has to sit clear of both - but well under a walking brawler,
+# which covers several tiles a second.
+IDLE_SPEED_TILES = 0.35
+
 # How close to its last known position a teammate has to be to still count as
 # the same teammate, in tiles. There are no ids for teammates, so identity is
 # continuity of position: a person moves a fraction of a tile between frames,
@@ -473,6 +479,82 @@ def escape_boundary():
 #  ANTI-STAGNATION
 # ─────────────────────────────────────────────────────────────────────
 
+def followed_mate():
+    """The ally being timed, as a person rather than as a position.
+
+    Teammates now arrive with ids that survive between frames and a measured
+    world speed, from the same tracker that has been leading shots at enemies.
+    Before that, "the ally I am following" could only be guessed from
+    coordinates, and the guess was wrong in the case this rule exists for:
+    with two allies on screen the nearest one changes whenever either walks,
+    so the clock kept reading the OTHER person and starting again.
+
+    Falls back to the nearest ally when no tracker is running - a playstyle
+    with dodging switched off still has to work, just without ids.
+    """
+    mates = tracked_teammates
+    if not mates:
+        return None, None
+
+    wanted = persistent_data.get("followed_id")
+    if wanted is not None:
+        for mate in mates:
+            if mate.id == wanted:
+                return mate, mate.id
+
+    # Nobody yet, or the one being followed is gone. Take the nearest.
+    best = None
+    best_gap = float("inf")
+    for mate in mates:
+        gap = get_distance((mate.x, mate.y), player_pos)
+        if gap < best_gap:
+            best_gap = gap
+            best = mate
+    if best is None:
+        return None, None
+    persistent_data["followed_id"] = best.id
+    persistent_data["afk_since"] = time.time()
+    return best, best.id
+
+
+def watch_followed_mate():
+    """Time how long the followed ally has been standing still.
+
+    The question is "is this person moving", and a measured speed answers it
+    directly. The old version answered a different question - "is there
+    anything at the place I remembered" - and needed the ally to be the same
+    ally between frames, which was exactly what it could not know.
+    """
+    mate, mate_id = followed_mate()
+    if mate is None:
+        persistent_data["followed_id"] = None
+        return
+
+    if mate.speed > TILE_SIZE * IDLE_SPEED_TILES:
+        persistent_data["afk_since"] = time.time()
+        return
+
+    # Ignore the first few frames of a track: velocity is fitted over a
+    # handful of samples, and an ally who has only just come into view reads
+    # as stationary whatever they are doing.
+    if mate.hits < 3:
+        persistent_data["afk_since"] = time.time()
+        return
+
+    if time.time() - persistent_data.get("afk_since", time.time()) >= AFK_AFTER:
+        if debug:
+            print("ally", mate_id, "has not moved for", AFK_AFTER, "s - going it alone")
+        persistent_data["afk_ids"] = persistent_data.get("afk_ids", {})
+        persistent_data["afk_ids"][mate_id] = time.time() + AFK_IGNORE_FOR
+        persistent_data["followed_id"] = None
+
+
+def is_given_up_on(mate_id):
+    """Whether this particular ally is the one just abandoned."""
+    until = persistent_data.get("afk_ids", {}).get(mate_id)
+    return until is not None and time.time() < until
+
+
 def watched_teammate():
     """The teammate the AFK clock is timing, kept the same one across frames.
 
@@ -565,10 +647,30 @@ def is_afk_spot(coords):
 
 
 def playing_teammates():
-    """teammate_data without whoever is standing perfectly still in it."""
+    """teammate_data without whoever is standing perfectly still in it.
+
+    Two filters, because there are two ways of knowing. The id one is exact
+    and needs a tracker; the place one works without it and is what the bot
+    had before ids existed.
+    """
+    given_up = persistent_data.get("afk_ids", {})
+    still_ids = []
+    if given_up:
+        now = time.time()
+        for mate in tracked_teammates:
+            if given_up.get(mate.id, 0.0) > now:
+                still_ids.append((mate.x, mate.y))
+
     kept = []
     for mate in teammate_data:
-        if not is_afk_spot(get_entity_pos(mate)):
+        spot = get_entity_pos(mate)
+        if is_afk_spot(spot):
+            continue
+        abandoned = False
+        for point in still_ids:
+            if get_distance(spot, point) <= TILE_SIZE * AFK_SPOT_TILES:
+                abandoned = True
+        if not abandoned:
             kept.append(mate)
     return kept
 
@@ -844,6 +946,7 @@ gas_reading = is_there_poison_gas(player_data)
 # playing_teammates(), so this is the only place left that can still see them -
 # and it has to, otherwise the bot could never notice they started playing
 # again and the spot would simply expire on a timer.
+watch_followed_mate()
 watch_for_afk(watched_teammate())
 
 
@@ -1288,12 +1391,18 @@ if is_there_enemy(enemy_data):
 
 gas_movement = avoid_poison_gas()
 
+# One word for the panel about what was decided, so somebody watching can
+# see the bot thinking rather than only that it is alive. Read out of the
+# playstyle's globals by play.py; costs a string assignment per frame.
 if gas_movement is not None:
     movement = gas_movement
+    activity = "escaping gas"
 elif enemy_coords is None:
     movement = no_enemy_movement()
+    activity = "regrouping" if persistent_data.get("followed_id") else "moving up"
 else:
     movement = combat_movement(enemy_coords, enemy_distance)
+    activity = "fighting"
 
     # Do not fight alone. If a teammate has been left far behind, bias the
     # combat movement back toward them - previously the bot only regrouped when
