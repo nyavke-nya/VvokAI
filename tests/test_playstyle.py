@@ -826,10 +826,85 @@ class _FakeClock:
         return 2000.0
 
 
+def check_afk_identity(report, path):
+    """Giving up on an ally who stands still, while another one walks.
+
+    The bug: the mate being timed was re-chosen every frame as "whoever is
+    nearest", which is not an identity. With two teammates on screen the
+    nearest one changes as either of them walks, so the clock read the OTHER
+    person's coordinates, concluded the watched mate had moved, and started
+    again - and an ally standing perfectly still was never noticed for as long
+    as somebody else nearby was moving.
+    """
+    clock = {"t": 0.0}
+
+    def box(x, y):
+        return [x - 20, y - 20, x + 20, y + 20]
+
+    context = base_context()
+    context["time"] = type("_T", (), {"time": staticmethod(lambda: clock["t"])})
+    context["odometer"] = (0.0, 0.0)
+    context["player_pos"] = (960.0, 540.0)
+    context["walls"] = []
+    context["debug"] = False
+    context["persistent_data"] = {}
+
+    def closest_teammate(mates, player, walls):
+        best, best_gap = None, float("inf")
+        for mate in mates or []:
+            spot = context["get_entity_pos"](mate)
+            gap = context["get_distance"](spot, player)
+            if gap < best_gap:
+                best, best_gap = spot, gap
+        return best, best_gap
+
+    context["find_closest_teammate"] = closest_teammate
+
+    try:
+        lifted = lift(["watched_teammate", "watch_for_afk", "to_world",
+                       "is_afk_spot", "vec_len"],
+                      ["AFK_AFTER", "AFK_IGNORE_FOR", "AFK_SPOT_TILES",
+                       "IDLE_MOVE_TILES", "WATCH_REACQUIRE_TILES"], context)
+    except AssertionError:
+        return          # a playstyle without the AFK watch has nothing to check
+
+    still_at = (700.0, 540.0)
+    name = os.path.basename(path)
+
+    def sweep(teammates_for):
+        context["persistent_data"] = {}
+        step = 0
+        while step <= 80:
+            clock["t"] = step * 0.25
+            context["teammate_data"] = teammates_for(step)
+            lifted["watch_for_afk"](lifted["watched_teammate"]())
+            step += 1
+        return context["persistent_data"].get("afk_spot")
+
+    # One ally never moves; the other paces past it, which is what the
+    # nearest-teammate rule kept latching onto.
+    spot = sweep(lambda i: [box(still_at[0], still_at[1]),
+                            box(640.0 + (i % 12) * 40.0, 540.0)])
+    report.check(f"{name}: gives up on a still ally while another one walks",
+                 spot is not None, True)
+
+    # The other half. If the fix abandons allies who are playing it costs more
+    # than the bug did.
+    spot = sweep(lambda i: [box(700.0 + i * 12.0, 540.0), box(1300.0, 700.0)])
+    report.check(f"{name}: an ally who is moving is never given up on",
+                 spot, None)
+
+    # And the case that always worked still works.
+    spot = sweep(lambda i: [box(still_at[0], still_at[1])])
+    report.check(f"{name}: a single still ally is still given up on",
+                 spot is not None, True)
+
+
 def main():
     report = Failures("playstyle")
     for path in PLAYSTYLES:
         check_names(report, path)
+        check_afk_identity(report, path)
 
     # By name, not by position. These used to index PLAYSTYLES[0] and [1],
     # which silently pointed at different files the moment a third playstyle

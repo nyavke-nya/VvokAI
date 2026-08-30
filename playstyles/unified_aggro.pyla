@@ -227,6 +227,12 @@ AFK_IGNORE_FOR = 30.0
 # How close to that spot still counts as "the one I gave up on", in tiles.
 AFK_SPOT_TILES = 2.5
 
+# How close to its last known position a teammate has to be to still count as
+# the same teammate, in tiles. There are no ids for teammates, so identity is
+# continuity of position: a person moves a fraction of a tile between frames,
+# and a different person standing somewhere else does not.
+WATCH_REACQUIRE_TILES = 3.0
+
 # -- Standing: how many of us are left, and how far in we are -------------
 # Showdown is not one game, it is two. Early, dying costs a placement nobody
 # was going to keep anyway and a kill is worth taking on thin odds. Late, with
@@ -495,6 +501,49 @@ def escape_boundary():
 # ─────────────────────────────────────────────────────────────────────
 #  ANTI-STAGNATION
 # ─────────────────────────────────────────────────────────────────────
+
+def watched_teammate():
+    """The teammate the AFK clock is timing, kept the same one across frames.
+
+    "Whoever is closest right now" is not an identity, and using it as one is
+    what broke this. With two teammates on screen the nearest one changes
+    whenever either of them walks; the clock then saw the OTHER person's
+    coordinates, decided the watched mate had moved, and started again. So an
+    ally standing perfectly still was never noticed for as long as somebody
+    else nearby was moving - which is the case this rule exists for.
+
+    Identity is continuity of position instead: keep whoever is nearest to
+    where the watched one was last seen. Lose them - they died, walked into a
+    bush, left the view - and the watch starts over on whoever is here.
+    """
+    if not teammate_data:
+        persistent_data["watch_last"] = None
+        return None
+
+    last = persistent_data.get("watch_last")
+    if last is not None:
+        best = None
+        best_gap = TILE_SIZE * WATCH_REACQUIRE_TILES
+        for mate in teammate_data:
+            spot = get_entity_pos(mate)
+            world = to_world(spot)
+            gap = vec_len(world[0] - last[0], world[1] - last[1])
+            if gap < best_gap:
+                best_gap = gap
+                best = spot
+        if best is not None:
+            persistent_data["watch_last"] = to_world(best)
+            return best
+
+        # The one being watched is no longer there. Nothing about the next
+        # teammate is known yet, so the clock has to start from scratch rather
+        # than inherit somebody else's stillness.
+        persistent_data["afk_anchor"] = None
+
+    mate, _ = find_closest_teammate(teammate_data, player_pos, walls)
+    persistent_data["watch_last"] = to_world(mate) if mate is not None else None
+    return mate
+
 
 def watch_for_afk(mate_coords):
     """Time how long the followed teammate has stood in exactly one place.
@@ -824,8 +873,7 @@ gas_reading = is_there_poison_gas(player_data)
 # playing_teammates(), so this is the only place left that can still see them -
 # and it has to, otherwise the bot could never notice they started playing
 # again and the spot would simply expire on a timer.
-_watched_mate, _ = find_closest_teammate(teammate_data, player_pos, walls)
-watch_for_afk(_watched_mate)
+watch_for_afk(watched_teammate())
 
 
 def leads_into_gas(move):

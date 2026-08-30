@@ -119,4 +119,38 @@ report.check("the module says the endpoint is public",
              "anybody can find it" in _source, True)
 
 
+report.section("the numbers that were always null")
+# The first five reports that ever arrived all carried "ips": null and
+# "provider": "auto". Sent at startup, before a model was loaded or a frame
+# processed - so the data collected to find out whether TensorRT helped
+# anybody could not answer that question.
+telemetry.note_provider("TensorrtExecutionProvider")
+for _rate in (41.2, 58.9, 55.1, 12.0, 57.3, 56.8):
+    telemetry.note_ips(_rate)
+
+_live = telemetry.collect(PROFILE, provider="auto", version="0.8.14")
+report.check("the provider reported is the one that loaded, not the one asked for",
+             _live["provider"], "tensorrt")
+report.check("and a rate is actually present", _live["ips"] is not None, True)
+report.check("as the median, so one stall does not define the machine",
+             _live["ips"], 56.8)
+
+telemetry.note_ips(0)
+telemetry.note_ips(-5)
+telemetry.note_ips("fast")
+report.check("junk readings are ignored rather than averaged in",
+             telemetry.collect(PROFILE)["ips"], 56.8)
+
+_main_src = open("main.py", encoding="utf-8").read()
+report.check("the loop feeds the rate in as it measures it",
+             "note_ips_for_stats" in _main_src, True)
+report.check("and reports from a bot that is running, not only at startup",
+             "send(profile=self.stats_profile()" in _main_src, True)
+
+telemetry._measured["ips"] = []
+telemetry._measured["provider"] = ""
+report.check("with nothing measured it is null again rather than a guess",
+             telemetry.collect(PROFILE)["ips"], None)
+
+
 sys.exit(report.finish())

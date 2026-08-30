@@ -92,6 +92,50 @@ def install_id():
     return fresh
 
 
+# What the running bot measured, kept here so a report can carry it. The
+# first five reports that ever arrived all had "ips": null and
+# "provider": "auto" - sent at startup, before a model was loaded or a frame
+# was processed - which is every number about performance missing from the
+# data collected to answer questions about performance.
+_measured = {"ips": [], "provider": ""}
+
+
+def note_ips(rate):
+    """One inferences-per-second reading from the loop."""
+    try:
+        rate = float(rate)
+    except (TypeError, ValueError):
+        return
+    if rate <= 0:
+        return
+    samples = _measured["ips"]
+    samples.append(rate)
+    # A bounded window: the interesting figure is what the machine does when
+    # it is warm, not an average dragged down by the first seconds of a run.
+    if len(samples) > 600:
+        del samples[:len(samples) - 600]
+
+
+def note_provider(name):
+    """Which execution provider actually loaded, not which was configured."""
+    if name:
+        _measured["provider"] = str(name).replace("ExecutionProvider", "").lower()
+
+
+def measured_ips():
+    samples = _measured["ips"]
+    if not samples:
+        return None
+    ordered = sorted(samples)
+    # Median, not mean: one stall while the emulator hiccups should not decide
+    # what this machine is reported as capable of.
+    return round(ordered[len(ordered) // 2], 1)
+
+
+def measured_provider():
+    return _measured["provider"]
+
+
 def _win_rate(wins, total):
     return round(wins / total * 100, 1) if total else None
 
@@ -131,8 +175,10 @@ def collect(profile=None, provider="", version="", ips=None):
         "version": version,
         "os": platform.system(),
         "python": platform.python_version(),
-        "provider": provider,
-        "ips": round(float(ips), 1) if ips else None,
+        # Measured beats configured: "auto" says what the config asked for,
+        # which is not the same as what onnxruntime ended up running.
+        "provider": measured_provider() or provider,
+        "ips": round(float(ips), 1) if ips else measured_ips(),
         "matches": int(profile.get("matches") or 0),
         "win_rate": profile.get("win_rate"),
         "trophies_net": profile.get("trophies_net"),

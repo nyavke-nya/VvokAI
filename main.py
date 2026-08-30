@@ -45,6 +45,7 @@ from time_management import TimeManagement
 from utils import load_toml_as_dict, current_wall_model_is_latest, api_base_url, load_pyla_script, save_brawler_data, \
     clean_queue, get_discord_link
 from utils import get_brawler_list, update_missing_brawlers_info, check_version, notify_user, update_wall_model_classes, get_latest_wall_model_file, cprint
+from utils import resolve_project_path
 from window_controller import WindowController
 from webui import create_app
 
@@ -212,6 +213,43 @@ def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
             self._stuck_count = 0
             self._stuck_state = None
             self.restart_brawl_stars()
+
+        def note_ips_for_stats(self, rate):
+            """Hand the rate to the statistics, and report when one is due.
+
+            Reporting only at startup meant every report ever sent carried
+            "ips": null - the bot had not run yet - so the data collected to
+            find out whether TensorRT helped anybody could not answer that.
+            send() is rate limited to once every six hours, so calling it once
+            a second costs a dictionary lookup.
+            """
+            try:
+                from telemetry import note_ips, note_provider, send
+
+                note_ips(rate)
+                detector = getattr(self.Play, "Detect_main_info", None)
+                if detector is not None:
+                    note_provider(getattr(detector, "device", ""))
+                send(profile=self.stats_profile(), version=self.stats_version())
+            except Exception:
+                pass
+
+        def stats_profile(self):
+            from profile_stats import build_profile
+            import csv
+
+            path = resolve_project_path("cfg", "match_history.csv")
+            if not path.exists():
+                return {}
+            with open(path, newline="", encoding="utf-8") as handle:
+                return build_profile(list(csv.DictReader(handle)))
+
+        def stats_version(self):
+            try:
+                return resolve_project_path(".vvok_version").read_text(
+                    encoding="utf-8").strip()[:12]
+            except OSError:
+                return ""
 
         def build_activity_watchdog(self):
             """The thing that notices a screen which has stopped moving."""
@@ -580,6 +618,7 @@ def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
                         # reaching the header trace.
                         if runtime_control:
                             runtime_control.note_ips(rate)
+                        self.note_ips_for_stats(rate)
                     s_time = t_now
                     c = 0
                 self.start_crash_watchdog()
