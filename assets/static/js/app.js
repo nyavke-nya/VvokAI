@@ -272,20 +272,55 @@ async function bootstrap() {
     startRuntimePolling();
 }
 
+// The parts that change while nothing else does: the rate, the pill, the
+// indicator, and the line saying what the bot is doing. Split out of
+// updateChrome because that one also rebuilds the navigation, and running it
+// on every poll would replace the rail under the pointer once a second.
+//
+// This is why the IPS reading sat still until the page was reloaded:
+// updateChrome was called only when the runtime STATE changed, and a bot that
+// is running stays running.
+function updateLiveChrome() {
+    const runtime = state.bootstrap?.runtime;
+    if (!runtime) return;
+
+    pushIpsSample(Number(runtime.ips));
+
+    const status = document.getElementById("sidebarStatus");
+    if (status) status.textContent = runtimeLabel(runtime);
+
+    const pill = document.getElementById("runtimeStatusPill");
+    if (pill) {
+        pill.textContent = runtimeLabel(runtime);
+        pill.className = `badge ${runtimeBadgeClass(runtime)}`;
+    }
+
+    const indicator = document.getElementById("sidebarIndicator");
+    if (indicator) {
+        indicator.className = `status-indicator ${runtime.state === "error" ? "is-danger"
+            : runtime.is_running ? "is-running" : "is-idle"}`;
+    }
+
+    const doing = document.querySelector("#view-dashboard .doing");
+    if (doing) doing.textContent = runtime.activity || "";
+
+    // A stream whose bot has stopped keeps showing its last frame for ever,
+    // which is worse than showing nothing: it looks live. The poll knows the
+    // bot stopped, so it closes the connection and says so.
+    if (!runtime.is_running && liveViewShowing()) {
+        stopLiveView(LIVE_STOPPED_HINT);
+    }
+}
+
+
 function updateChrome() {
     const { app, auth, runtime } = state.bootstrap;
     const version = `${app.name} v${app.version}`;
 
     document.getElementById("sidebarVersion").textContent = version;
-    document.getElementById("sidebarStatus").textContent = runtimeLabel(runtime);
-    pushIpsSample(Number(runtime.ips));
-    document.getElementById("runtimeStatusPill").textContent = runtimeLabel(runtime);
-    document.getElementById("runtimeStatusPill").className = `badge ${runtimeBadgeClass(runtime)}`;
+    updateLiveChrome();
     document.getElementById("authStatusPill").textContent = auth.required ? (auth.authenticated ? "Authenticated" : "Login required") : "Local mode";
     document.getElementById("authStatusPill").className = `badge ${auth.required && !auth.authenticated ? "danger" : "badge-outline"}`;
-
-    const indicator = document.getElementById("sidebarIndicator");
-    indicator.className = `status-indicator ${runtime.state === "error" ? "is-danger" : runtime.is_running ? "is-running" : "is-idle"}`;
 
     renderNav();
 }
@@ -546,9 +581,21 @@ function renderDashboard() {
             <div class="command-band">
                 <div class="command-state">
                     <div class="command-title">${escapeHtml(runtimeLabel(runtime))}</div>
-                    <div class="command-sub">${queue.length} ${queue.length === 1 ? "brawler" : "brawlers"} queued</div>
+                    <div class="command-sub">${queue.length} ${queue.length === 1 ? "brawler" : "brawlers"} queued${runtime.activity ? ` <span class="doing">${escapeHtml(runtime.activity)}</span>` : ""}</div>
                 </div>
                 <div class="command-actions">${runtimePanel}</div>
+            </div>
+
+            <div class="live-view" id="liveView">
+                <div class="live-head">
+                    <p class="eyebrow">Live</p>
+                    <button id="liveToggleBtn" class="btn btn-quiet">Watch</button>
+                </div>
+                <div class="live-body" id="liveBody">
+                    <p class="live-hint">See what the bot sees, with everything it
+                    has found drawn on top. Works from anywhere the panel opens,
+                    and only runs while you are looking at it.</p>
+                </div>
             </div>
 
             <div class="measure-strip">
@@ -584,6 +631,7 @@ function renderDashboard() {
         </div>
     `;
 
+    document.getElementById("liveToggleBtn")?.addEventListener("click", toggleLiveView);
     document.getElementById("browsePlaystylesBtn")?.addEventListener("click", () => setView("playstyles"));
     document.getElementById("goToBrawlersBtn")?.addEventListener("click", () => setView("queue"));
     bindRuntimeButtons();
@@ -1141,6 +1189,75 @@ function profileForm(form) {
             </div>
             <div class="form-strip">${pips}</div>
         </section>`;
+}
+
+
+const LIVE_IDLE_HINT = `See what the bot sees, with everything it has found
+    drawn on top. Works from anywhere the panel opens, and only runs while you
+    are looking at it.`;
+const LIVE_STOPPED_HINT = `Start the bot and this becomes a live picture of
+    what it is looking at.`;
+
+
+function liveViewShowing() {
+    return Boolean(document.querySelector("#liveBody img"));
+}
+
+
+// Closing the stream is the point of this function. The connection costs the
+// bot's machine CPU for as long as it is open, and clearing the src is what
+// actually ends it - removing the element alone leaves the request running in
+// some browsers.
+function stopLiveView(hint) {
+    const body = document.getElementById("liveBody");
+    const button = document.getElementById("liveToggleBtn");
+    if (!body || !button) return;
+
+    const image = body.querySelector("img");
+    if (image) {
+        image.src = "";
+        image.remove();
+    }
+    body.innerHTML = `<p class="live-hint">${hint || LIVE_IDLE_HINT}</p>`;
+    button.textContent = "Watch";
+}
+
+
+function startLiveView() {
+    const body = document.getElementById("liveBody");
+    const button = document.getElementById("liveToggleBtn");
+    if (!body || !button) return;
+
+    // A stopped bot publishes no frames, so the stream would open, wait, and
+    // close with an empty body. An <img> given an empty 200 fires neither load
+    // nor error in every browser - tested, and it leaves the panel sitting on
+    // a black box with a Stop button, which reads as broken. The page already
+    // knows whether the bot is running, so it says so instead of finding out
+    // the hard way.
+    if (!state.bootstrap?.runtime?.is_running) {
+        stopLiveView(LIVE_STOPPED_HINT);
+        return;
+    }
+
+    const image = document.createElement("img");
+    image.className = "live-image";
+    image.alt = "What the bot is looking at";
+    // Cache-busted: without it a browser will happily reuse the previous
+    // stream's response and show a frozen first frame.
+    image.src = `/api/stream?t=${Date.now()}`;
+    image.addEventListener("error", () => stopLiveView(LIVE_STOPPED_HINT));
+    body.innerHTML = "";
+    body.appendChild(image);
+    button.textContent = "Stop";
+}
+
+
+function toggleLiveView() {
+    if (liveViewShowing()) {
+        stopLiveView();
+    } else {
+        startLiveView();
+    }
 }
 
 
@@ -2054,6 +2171,11 @@ async function refreshRuntimeState() {
                 await refreshMatchHistory();
             }
         }
+
+        // Every poll, not only when the state changes. A running bot stays
+        // "running" for hours, and everything that actually moves - the rate,
+        // what it is doing - moves inside that.
+        updateLiveChrome();
 
         if (prevState !== result.runtime.state) {
             updateChrome();

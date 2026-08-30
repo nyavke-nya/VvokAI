@@ -777,4 +777,9 @@ if __name__ == "__main__":
     open_browser_later(local_url)
     start_auto_update(app)
     report_stats(app)
-    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+    # threaded is Flask's default, but it is spelled out because the panel now
+    # holds long-lived connections: a live-view stream never returns while
+    # somebody is watching, and on a single-threaded server that one request
+    # would block every other one and freeze the whole panel.
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False,
+            threaded=True)

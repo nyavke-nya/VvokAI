@@ -22,6 +22,8 @@ class RuntimeControl:
         # by the panel for the header trace - it is the one number that says
         # the machine is alive, and it was only ever printed to a console.
         self._ips = 0.0
+        # What the playstyle is doing this frame, for the panel.
+        self._activity = ""
         # A lone stop time means "the next one", so it needs to know when the
         # run began. Without this the same time reads as "any moment past it",
         # which fires instantly whenever the run starts later in the day.
@@ -61,6 +63,18 @@ class RuntimeControl:
     def schedule_hold_reason(self) -> str:
         """Why the schedule is holding, or "" when it is not."""
         return self._schedule_reason
+
+    def note_activity(self, text) -> None:
+        """What the playstyle decided this frame, for the panel to show.
+
+        The panel could say the bot was running and how fast it was thinking,
+        and nothing about what it was doing - which is the first question
+        anybody actually has while watching it.
+        """
+        self._activity = str(text)[:40] if text else ""
+
+    def current_activity(self) -> str:
+        return getattr(self, "_activity", "")
 
     def note_ips(self, value) -> None:
         try:
@@ -114,6 +128,7 @@ class RuntimeManager:
                 "state": self._state,
                 "is_running": thread_alive,
                 "ips": control.current_ips() if (thread_alive and control) else 0.0,
+                "activity": control.current_activity() if (thread_alive and control) else "",
                 "last_error": self._last_error,
             }
 

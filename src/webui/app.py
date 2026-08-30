@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 import threading
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import (Flask, Response, jsonify, render_template, request,
+                   send_file)
 from werkzeug.exceptions import HTTPException
 
 from discord_bot import DiscordBot
@@ -291,6 +292,21 @@ def create_app(pyla_main, start_discord_bot=False):
         if icon_path is None:
             return ("", 404)
         return send_file(icon_path)
+
+    @app.get("/api/stream")
+    def stream():
+        """The bot's own view, as MJPEG.
+
+        multipart/x-mixed-replace rather than a websocket and a player: every
+        browser has understood it for twenty years, and an <img src> is the
+        whole client.
+        """
+        from live_view import frames
+
+        return Response(frames(),
+                        mimetype="multipart/x-mixed-replace; boundary=frame",
+                        headers={"Cache-Control": "no-store",
+                                 "X-Accel-Buffering": "no"})
 
     @app.get("/api/logs")
     def logs():

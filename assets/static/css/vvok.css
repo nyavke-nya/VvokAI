@@ -2276,3 +2276,57 @@ img.avatar { border-radius: 2px; }
     white-space: pre;
     tab-size: 4;
 }
+
+/* What the bot is doing this second, beside the queue count on the command
+   band. Amber because it is the one thing on the page that is happening right
+   now, which is what the accent means everywhere else in this design. */
+.command-sub .doing {
+    color: var(--live);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    letter-spacing: -0.01em;
+    margin-left: 10px;
+    padding-left: 10px;
+    border-left: 1px solid var(--rule);
+}
+
+/* The live view. A window on the bot rather than a widget: full width, its own
+   rule above and below, and nothing decorative competing with the picture. */
+.live-view {
+    border-bottom: 1px solid var(--rule);
+    padding: 22px 0 26px;
+}
+
+.live-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.live-body {
+    background: #050506;
+    border: 1px solid var(--rule);
+    min-height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.live-image {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 62vh;
+    object-fit: contain;
+}
+
+.live-hint {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    max-width: 46ch;
+    text-align: center;
+    padding: 30px 18px;
+    line-height: 1.6;
+}

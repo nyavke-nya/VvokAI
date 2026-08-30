@@ -26,3 +26,14 @@ close_game_when_scheduled = true
 shutdown_when_done = true
 enemy_exposure_radius = 40
 attack_range_multiplier = 1.35
+
+# The live view in the panel: what the bot sees, streamed to a browser.
+# It costs nothing while nobody is watching it. While somebody is, it holds
+# itself to live_view_cpu_share of one core - on a slow machine it drops its
+# own frame rate rather than taking cycles the bot needs.
+live_view_enabled = true
+live_view_width = 720
+live_view_fps = 10
+live_view_quality = 70
+live_view_cpu_share = 0.05
+live_view_idle_timeout = 6.0

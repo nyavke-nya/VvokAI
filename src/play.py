@@ -1118,6 +1118,10 @@ class Play:
                 'aimed_attack': self.aimed_attack,
                 'predict_aim': self.predict_aim,
                 'tracked_enemies': service.tracked_enemies() if service else [],
+                # Allies with ids that survive between frames, and a measured
+                # speed. Without these a playstyle can only ask "who is
+                # nearest", which changes identity whenever anybody walks.
+                'tracked_teammates': service.tracked_teammates() if service else [],
 
                 # Map boundaries, measured from the camera rather than guessed
                 # from the wall model, which cannot see the edge of the arena.
@@ -1342,6 +1346,9 @@ class Play:
         # The playstyle communicates more than a vector now: `sharp_movement`
         # tells the shaper whether to snap or glide.
         self.last_pyla_globals = updated_globals or {}
+        control = getattr(self, "runtime_control", None)
+        if control is not None and hasattr(control, "note_activity"):
+            control.note_activity(self.last_pyla_globals.get("activity"))
         return movement
 
     def build_advanced_visuals(self, debug_data):
@@ -1392,6 +1399,14 @@ class Play:
 
     def publish_debug_view(self, frame, data, state, movement=None):
         if not hasattr(self.window_controller, "debug_view"):
+            # No debug window on this machine, but the panel may still be
+            # watching - and a picture with no overlay is worth far more than
+            # no picture.
+            try:
+                from live_view import publish as publish_live
+                publish_live(frame, None)
+            except Exception:
+                pass
             return
 
         self.frame = frame
@@ -1505,6 +1520,13 @@ class Play:
             debug_data["movement"] = [float(movement[0]), float(movement[1])]
 
         self.window_controller.debug_view.publish(frame, debug_data)
+        # The same picture, for anybody watching the panel instead of sitting
+        # at the machine. Costs a reference assignment when nobody is.
+        try:
+            from live_view import publish as publish_live
+            publish_live(frame, debug_data)
+        except Exception:
+            pass
 
     def stage(self, name, started):
         """Record how long one stage of the iteration took.
