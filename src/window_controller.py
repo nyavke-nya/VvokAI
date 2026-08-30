@@ -304,11 +304,39 @@ class WindowController:
         return True
 
     def restart_brawl_stars(self):
-        self.device.app_stop(self.BRAWL_STARS_PACKAGE)
-        time.sleep(1)
-        self.device.app_start(self.BRAWL_STARS_PACKAGE)
-        time.sleep(3)
-        print("Brawl stars restarted successfully.")
+        """Stop and start the game. Returns whether it worked.
+
+        Never raises. This is the thing called WHEN something has already gone
+        wrong - usually the device dropping off ADB - so the device is exactly
+        as likely to be missing here as it was a moment ago. Throwing from a
+        recovery path took the crash watchdog's thread down with it, and after
+        that nothing was watching for crashes at all for the rest of the run.
+        """
+        try:
+            self.device.app_stop(self.BRAWL_STARS_PACKAGE)
+            time.sleep(1)
+            self.device.app_start(self.BRAWL_STARS_PACKAGE)
+            time.sleep(3)
+            print("Brawl stars restarted successfully.")
+            return True
+        except Exception as exc:
+            print(f"Could not restart Brawl Stars ({type(exc).__name__}: "
+                  f"{str(exc)[:120]}). Trying to reconnect to the device first.")
+
+        try:
+            if not self.reconnect_scrcpy():
+                print("The device is still unreachable; leaving the game alone.")
+                return False
+            self.device.app_stop(self.BRAWL_STARS_PACKAGE)
+            time.sleep(1)
+            self.device.app_start(self.BRAWL_STARS_PACKAGE)
+            time.sleep(3)
+            print("Brawl stars restarted after reconnecting.")
+            return True
+        except Exception as exc:
+            print(f"Still could not restart Brawl Stars ({type(exc).__name__}). "
+                  f"The emulator may need restarting by hand.")
+            return False
 
     def is_brawl_stars_running(self):
         try:

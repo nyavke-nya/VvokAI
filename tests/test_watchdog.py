@@ -134,4 +134,69 @@ report.check("the decision comes from the frames",
              "frame_signature" in _source, True)
 
 
+report.section("a recovery path that fails must not end the watch")
+# Reported from a real run: an ADB error was caught, the handler called
+# restart_brawl_stars to recover, that touched the same missing device and
+# raised again - from inside an except block, so nothing caught it. The crash
+# watchdog thread died and the bot silently had no crash detection for the
+# rest of the session.
+from window_controller import WindowController  # noqa: E402
+
+
+class _DeadDevice:
+    def app_stop(self, package):
+        raise RuntimeError("device offline")
+
+    def app_start(self, package):
+        raise RuntimeError("device offline")
+
+
+class _LiveDevice:
+    def app_stop(self, package):
+        pass
+
+    def app_start(self, package):
+        pass
+
+
+def _controller(reconnect):
+    controller = object.__new__(WindowController)
+    controller.device = _DeadDevice()
+    controller.BRAWL_STARS_PACKAGE = "com.supercell.brawlstars"
+    controller.reconnect_scrcpy = reconnect
+    return controller
+
+
+_hopeless = _controller(lambda *a, **k: False)
+_raised = None
+try:
+    _result = _hopeless.restart_brawl_stars()
+except Exception as exc:                      # noqa: BLE001 - that is the point
+    _raised, _result = type(exc).__name__, None
+report.check("restarting a gone device does not raise", _raised, None)
+report.check("it says it failed instead", _result, False)
+
+
+def _revive(controller):
+    def reconnect(*args, **kwargs):
+        controller.device = _LiveDevice()
+        return True
+    return reconnect
+
+
+_recovering = object.__new__(WindowController)
+_recovering.device = _DeadDevice()
+_recovering.BRAWL_STARS_PACKAGE = "com.supercell.brawlstars"
+_recovering.reconnect_scrcpy = _revive(_recovering)
+report.check("and it retries after a reconnect that worked",
+             _recovering.restart_brawl_stars(), True)
+
+_main = open("main.py", encoding="utf-8").read()
+_start = _main.index("def crash_watchdog_loop")
+_loop = _main[_start:_start + 900]
+report.check("the crash watchdog survives a bad pass", "except Exception" in _loop, True)
+report.check("and keeps looping rather than returning",
+             "Carrying on" in _loop, True)
+
+
 sys.exit(report.finish())

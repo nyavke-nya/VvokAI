@@ -427,7 +427,15 @@ def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
             while not self.crash_check_stop_event.is_set():
                 if self.should_stop():
                     return
-                self.check_and_handle_brawl_stars_crash()
+                try:
+                    self.check_and_handle_brawl_stars_crash()
+                except Exception as exc:
+                    # One bad pass must not end the watch. This thread died on
+                    # an ADB error raised from inside the handler for an ADB
+                    # error, and nothing noticed - the bot simply stopped
+                    # having crash detection, silently, for the rest of the run.
+                    print(f"Crash watchdog: {type(exc).__name__}: "
+                          f"{str(exc)[:150]}. Carrying on.")
                 self.crash_check_stop_event.wait(self.check_if_brawl_stars_crashed_timer)
 
         def check_and_handle_brawl_stars_crash(self):
