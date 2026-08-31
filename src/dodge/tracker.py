@@ -583,7 +583,19 @@ class ProjectileTracker:
         and where it was. Intersecting two differences leaves only "now", which
         keeps the centroid honest and stops one shot spawning two tracks.
         """
-        if self._prev2_gray is None:
+        if self._prev2_gray is None or self._prev_gray is None:
+            return None
+
+        # Both references must match the frame they are being differenced
+        # against. They can stop matching without warning: the emulator can
+        # change resolution, and a capture can hand back a partial frame. When
+        # that happened the difference raised out of cv2 - "'NoneType' has no
+        # attribute 'shape'" from the warp, or an absdiff assertion - and the
+        # service logged it as a tracker error nineteen times in a session,
+        # which reads like the tracker is broken rather than like one frame
+        # was skipped.
+        if (self._prev_gray.shape != gray.shape
+                or self._prev2_gray.shape != gray.shape):
             return None
 
         aligned_prev = self._warp(self._prev_gray, shift)
