@@ -47,6 +47,16 @@ DEFAULTS = {
     "dataset_capture_interval": 3.0,
     "dataset_capture_max_frames": 4000,
     "dataset_capture_quality": 92,
+    # Below this world speed, in pixels a second, it is not a shot. The bot
+    # tolerates the difference because a spurious dodge costs it almost
+    # nothing, so it never had to mask the interface out - and the interface
+    # is what the tracker latches onto between matches. A kill feed slides in,
+    # a banner wipes across, a name tag follows a brawler, and all of it is
+    # movement. None of it travels at eight hundred pixels a second.
+    "dataset_capture_min_speed": 400.0,
+    # And only while a match is actually being played. The intro banner and
+    # the results screen are nothing but moving interface.
+    "dataset_capture_states": "match",
 }
 
 _settings = None
@@ -96,7 +106,7 @@ def _folders(config):
     return root
 
 
-def _rows(debug_data, projectiles, width, height):
+def _rows(debug_data, projectiles, width, height, min_speed=0.0):
     """Every box worth writing, as YOLO lines."""
     lines = []
 
@@ -110,6 +120,10 @@ def _rows(debug_data, projectiles, width, height):
                      f"{(x2 - x1) / width:.6f} {(y2 - y1) / height:.6f}")
 
     for shot in projectiles:
+        speed = (float(getattr(shot, "vx", 0.0)) ** 2 +
+                 float(getattr(shot, "vy", 0.0)) ** 2) ** 0.5
+        if speed < min_speed:
+            continue
         radius = max(6.0, float(getattr(shot, "radius", 0.0)))
         x, y = float(shot.x), float(shot.y)
         add(PROJECTILE, x - radius, y - radius, x + radius, y + radius)
@@ -137,6 +151,10 @@ def capture(frame, debug_data, projectiles):
     if not config["dataset_capture"] or frame is None or not projectiles:
         return
 
+    wanted = str(config["dataset_capture_states"]).split(",")
+    if str((debug_data or {}).get("state", "")).strip() not in wanted:
+        return
+
     now = time.time()
     with _lock:
         if now - _state["last"] < float(config["dataset_capture_interval"]):
@@ -155,7 +173,8 @@ def capture(frame, debug_data, projectiles):
             _state["counted"] = True
 
         height, width = frame.shape[:2]
-        lines = _rows(debug_data, projectiles, width, height)
+        lines = _rows(debug_data, projectiles, width, height,
+                      float(config["dataset_capture_min_speed"]))
         if not any(line.startswith(f"{PROJECTILE} ") for line in lines):
             return
 

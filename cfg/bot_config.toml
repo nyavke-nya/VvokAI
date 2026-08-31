@@ -46,3 +46,5 @@ dataset_capture_dir = "dataset_live"
 dataset_capture_interval = 3.0
 dataset_capture_max_frames = 4000
 dataset_capture_quality = 92
+dataset_capture_min_speed = 400.0
+dataset_capture_states = "match"
