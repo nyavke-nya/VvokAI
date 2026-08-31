@@ -37,3 +37,12 @@ live_view_fps = 10
 live_view_quality = 70
 live_view_cpu_share = 0.05
 live_view_idle_timeout = 6.0
+
+# Save training frames while playing, with the projectiles the dodge tracker
+# finds. Off by default; it only writes a frame every few seconds and only
+# when a shot is actually in flight.
+dataset_capture = false
+dataset_capture_dir = "dataset_live"
+dataset_capture_interval = 3.0
+dataset_capture_max_frames = 4000
+dataset_capture_quality = 92

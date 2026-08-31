@@ -1520,6 +1520,15 @@ class Play:
             debug_data["movement"] = [float(movement[0]), float(movement[1])]
 
         self.window_controller.debug_view.publish(frame, debug_data)
+        # Training data, if it is switched on. This is the only place in the
+        # project where a frame and the projectiles found in it exist together
+        # at the rate the tracker needs - collecting either from outside was
+        # tried and does not work.
+        try:
+            from dataset_capture import capture as capture_dataset
+            capture_dataset(frame, debug_data, self.get_projectiles())
+        except Exception:
+            pass
         # The same picture, for anybody watching the panel instead of sitting
         # at the machine. Costs a reference assignment when nobody is.
         try:
