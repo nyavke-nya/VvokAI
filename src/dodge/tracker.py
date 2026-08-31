@@ -268,6 +268,12 @@ class ProjectileTracker:
         # so map-boundary detection comes essentially for free.
         self.motion = MotionMonitor(config)
 
+        # Frame size, filled in on the first update. Until then the interface
+        # test does not fire, which is the safe direction: it can only ever
+        # reject a track, so not knowing means rejecting nothing.
+        self._frame_width = 0
+        self._frame_height = 0
+
         self._prev_gray = None
         self._prev2_gray = None
         self._prev_gray_half = None
@@ -310,7 +316,8 @@ class ProjectileTracker:
             # only visible symptom is "the overlay is full of amber circles",
             # which has half a dozen possible causes.
             "lost": 0, "merged": 0, "born": 0,
-            "rejects": {"few_hits": 0, "speed": 0, "bent": 0, "origin": 0, "weak_seed": 0},
+            "rejects": {"few_hits": 0, "speed": 0, "bent": 0, "origin": 0,
+                        "weak_seed": 0, "interface": 0},
         }
 
     # ------------------------------------------------------------------
@@ -385,6 +392,7 @@ class ProjectileTracker:
         step = config.downscale
 
         height, width = frame.shape[:2]
+        self._frame_width, self._frame_height = width, height
         if config.downscale <= 0:
             # Auto: aim for a fixed working width regardless of what the capture
             # resolution happens to be. A fixed divisor would silently halve the
@@ -612,6 +620,56 @@ class ProjectileTracker:
             self._static_mask_shape = shape
         cv2.bitwise_and(mask, self._static_mask, dst=mask)
 
+    # How far above a brawler its name and trophy count sit, as a fraction of
+    # the box height. Measured off frames the bot saved while playing.
+    NAMEPLATE_ABOVE = 0.75
+
+    # The gaps HUD_REGIONS leaves open, as fractions of the frame.
+    #
+    # That constant masks the top tenth of the screen and the side panels, and
+    # the kill feed sits below it: measured off frames this tracker labelled
+    # while the bot played, the false detections landed between y=0.14 and
+    # y=0.23 - under the masked bar, over the play field.
+    #
+    # Not added to HUD_REGIONS, because a mask blinds. The game is drawn
+    # underneath the kill feed and shots do cross that strip, so blanking it
+    # would trade a false dodge for a missed one. These are used by the
+    # trajectory test below instead.
+    INTERFACE_GAPS = (
+        (0.00, 0.10, 0.38, 0.24),   # kill feed, under the scoreboard bar
+        (0.82, 0.10, 1.00, 0.24),   # between the top bar and the side cards
+    )
+
+    def _only_ever_on_the_interface(self, track):
+        """Whether this track never left a corner the interface owns.
+
+        HUD_REGIONS already blanks the parts of the screen that are always
+        interface. This covers what it deliberately leaves alone: the strip the
+        kill feed slides through, which is over the play field and where shots
+        really do fly.
+
+        So it is a test, not a mask. Blanking that strip would trade a false
+        dodge for a missed one. What separates the two cases is that a shot
+        passes through and a kill-feed card slides in and stops, so the test is
+        on the whole path: a track every sample of which stayed inside the strip
+        never was a shot.
+        """
+        width = self._frame_width
+        height = self._frame_height
+        if not width or not height:
+            return False
+
+        for _, x, y in track.samples:
+            fx, fy = x / width, y / height
+            inside = False
+            for x1, y1, x2, y2 in self.INTERFACE_GAPS:
+                if x1 <= fx <= x2 and y1 <= fy <= y2:
+                    inside = True
+                    break
+            if not inside:
+                return False
+        return True
+
     def _apply_entity_mask(self, mask, context, step):
         height, width = mask.shape[:2]
         config = self.config
@@ -628,13 +686,36 @@ class ProjectileTracker:
                 if x2 > x1 and y2 > y1:
                     mask[y1:y2, x1:x2] = 0
 
-        # Brawlers move, and so do the healthbar and name plate floating above
-        # them. Inflating upward is handled by the generic pad, which is why it
-        # is larger than it looks like it needs to be.
+        def blank_nameplate(boxes):
+            """The name, trophy count and health bar stacked above a brawler.
+
+            The generic pad was supposed to cover this and does not: collecting
+            from this tracker put projectile detections squarely on trophy
+            counters and player names. The plate is taller than the pad and it
+            flickers whenever a number changes, which is movement in exactly
+            the place the pad stops short of.
+
+            Blinding nothing new - the brawler underneath is already blanked,
+            and this only extends that upward over its own label.
+            """
+            for box in boxes:
+                if len(box) < 4:
+                    continue
+                plate = (box[3] - box[1]) * self.NAMEPLATE_ABOVE
+                x1 = int(max(0, box[0] / step))
+                y1 = int(max(0, (box[1] - plate) / step))
+                x2 = int(min(width, box[2] / step))
+                y2 = int(min(height, box[1] / step))
+                if x2 > x1 and y2 > y1:
+                    mask[y1:y2, x1:x2] = 0
+
         blank(context.enemies, config.entity_mask_inflate)
         blank(context.teammates, config.entity_mask_inflate)
+        blank_nameplate(context.enemies)
+        blank_nameplate(context.teammates)
         if context.player_box and len(context.player_box) >= 4:
             blank([context.player_box], config.entity_mask_inflate)
+            blank_nameplate([context.player_box])
         # Walls have height, so they parallax slightly differently from the
         # ground and leave a seam in the difference image.
         blank(context.walls, config.wall_mask_inflate)
@@ -1083,7 +1164,8 @@ class ProjectileTracker:
     def _collect(self, stamp, context):
         config = self.config
         projectiles = []
-        rejects = {"few_hits": 0, "speed": 0, "bent": 0, "origin": 0, "weak_seed": 0}
+        rejects = {"few_hits": 0, "speed": 0, "bent": 0, "origin": 0,
+                   "weak_seed": 0, "interface": 0}
 
         for track in self._tracks:
             if track.hits < config.min_confirm_hits:
@@ -1163,6 +1245,10 @@ class ProjectileTracker:
                 if outward < config.seed_agreement:
                     rejects["weak_seed"] += 1
                     continue
+
+            if self._only_ever_on_the_interface(track):
+                rejects["interface"] += 1
+                continue
 
             track.confirmed = True
             last_t, last_x, last_y = track.last
