@@ -7,7 +7,9 @@ matter here are about what is NOT in a report, and about the switch really
 being a switch.
 """
 import json
+import pathlib
 import sys
+import tempfile
 
 from _harness import Failures
 
@@ -151,6 +153,44 @@ telemetry._measured["ips"] = []
 telemetry._measured["provider"] = ""
 report.check("with nothing measured it is null again rather than a guess",
              telemetry.collect(PROFILE)["ips"], None)
+
+
+report.section("one version field, meaning one thing")
+
+# The bug this guards: two callers each supplied "version" and supplied
+# different things, so half the reports read "0.8.14" and half read a raw
+# commit like "8cda3f6c7d40". The one column the whole exercise depends on -
+# which version is this - could not be grouped, and nobody would notice until
+# they tried to read the data.
+from utils import PYLA_VERSION  # noqa: E402
+
+report.check("the release number is what lands in version",
+             telemetry.collect(PROFILE)["version"], PYLA_VERSION)
+report.check("neither caller names a version any more",
+             "version=self.stats_version()" in _main_src, False)
+report.check("nor the panel", "version=version)" in _main_src, False)
+
+_stamp = telemetry.resolve_project_path
+_tmp = pathlib.Path(tempfile.mkdtemp())
+telemetry.resolve_project_path = lambda name: _tmp / name
+try:
+    (_tmp / telemetry.VERSION_STAMP_FILE).write_text("a" * 40, encoding="utf-8")
+    report.check("the exact commit rides along in build",
+                 telemetry.collect(PROFILE)["build"], "a" * 12)
+
+    # "exe:first" is a marker the launcher writes, not a commit. Reporting it
+    # as one would put a fake build in the data.
+    (_tmp / telemetry.VERSION_STAMP_FILE).write_text("exe:first", encoding="utf-8")
+    report.check("a marker is not passed off as a build",
+                 telemetry.collect(PROFILE)["build"], "")
+
+    (_tmp / telemetry.VERSION_STAMP_FILE).unlink()
+    report.check("and an install with no stamp reports no build",
+                 telemetry.collect(PROFILE)["build"], "")
+    report.check("but still reports its version",
+                 telemetry.collect(PROFILE)["version"], PYLA_VERSION)
+finally:
+    telemetry.resolve_project_path = _stamp
 
 
 sys.exit(report.finish())

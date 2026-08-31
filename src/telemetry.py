@@ -37,7 +37,8 @@ import urllib.parse
 import urllib.request
 import uuid
 
-from utils import config_bool, load_toml_as_dict, resolve_project_path
+from utils import (PYLA_VERSION, config_bool, load_toml_as_dict,
+                   resolve_project_path)
 
 # Where reports go. Empty means telemetry is off no matter what else is set -
 # which is how it ships, so a fork of this fork is not quietly reporting to
@@ -136,11 +137,31 @@ def measured_provider():
     return _measured["provider"]
 
 
+VERSION_STAMP_FILE = ".vvok_version"
+
+
+def _build_stamp():
+    """The commit the updater last installed, short, or blank.
+
+    Only exists on an install the auto-updater has written to. A source
+    checkout or a freshly unpacked exe has no commit to name, and a made-up
+    one would be worse than none.
+    """
+    try:
+        stamp = resolve_project_path(VERSION_STAMP_FILE).read_text(
+            encoding="utf-8").strip()
+    except OSError:
+        return ""
+    # The updater writes a full SHA; anything else in there is a marker like
+    # "exe:first", which is not a build and should not pretend to be one.
+    return stamp[:12] if len(stamp) >= 40 and stamp.isalnum() else ""
+
+
 def _win_rate(wins, total):
     return round(wins / total * 100, 1) if total else None
 
 
-def collect(profile=None, provider="", version="", ips=None):
+def collect(profile=None, provider="", version="", ips=None, build=""):
     """Build the report. Aggregate numbers only - see the module docstring."""
     if profile is None:
         profile = {}
@@ -172,7 +193,18 @@ def collect(profile=None, provider="", version="", ips=None):
 
     return {
         "id": install_id(),
-        "version": version,
+        # Resolved here, not taken from whoever called. Two callers used to
+        # supply this field and they supplied different things: the bot sent
+        # the commit the updater last installed, the panel sent the release
+        # number. Half the reports read "0.8.14" and half read "8cda3f6c7d40",
+        # so the one column the whole point rests on - which version is this -
+        # could not be grouped at all. A caller may still override it, but it
+        # no longer has to, and by default cannot get it wrong.
+        "version": version or PYLA_VERSION,
+        # And the exact build alongside it, because a release number cannot
+        # tell two commits apart and that is what a bug report needs. Blank
+        # for an install the updater has never touched.
+        "build": build or _build_stamp(),
         "os": platform.system(),
         "python": platform.python_version(),
         # Measured beats configured: "auto" says what the config asked for,
@@ -223,14 +255,15 @@ def _mark_sent():
         pass
 
 
-def send(profile=None, provider="", version="", ips=None, force=False):
+def send(profile=None, provider="", version="", ips=None, force=False,
+         build=""):
     """Report, on a thread, if switched on and not too recent. Never raises."""
     if not enabled() or (not force and not _due()):
         return False
 
     def work():
         try:
-            report = collect(profile, provider, version, ips)
+            report = collect(profile, provider, version, ips, build)
             if _post(report):
                 _mark_sent()
         except Exception:

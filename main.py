@@ -230,7 +230,7 @@ def pyla_main(remote, queue_data, stop_event=None, runtime_control=None):
                 detector = getattr(self.Play, "Detect_main_info", None)
                 if detector is not None:
                     note_provider(getattr(detector, "device", ""))
-                send(profile=self.stats_profile(), version=self.stats_version())
+                send(profile=self.stats_profile())
             except Exception:
                 pass
 
@@ -704,15 +704,12 @@ def report_stats(app):
 
         service = app.config.get("data_service")
         profile = {}
-        version = ""
         if service is not None:
             profile = (service.get_match_history_payload() or {}).get("profile") or {}
-            version = service.get_current_version()
 
         general = load_toml_as_dict("cfg/general_config.toml")
         send(profile=profile,
-             provider=str(general.get("execution_provider", "auto")),
-             version=version)
+             provider=str(general.get("execution_provider", "auto")))
     except Exception:
         # Statistics are the least important thing here by a wide margin.
         pass
