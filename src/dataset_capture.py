@@ -44,8 +44,8 @@ DEFAULTS = {
     "dataset_capture_dir": "dataset_live",
     # A shot stays on screen for well under a second, so frames closer than
     # this show the same one barely moved.
-    "dataset_capture_interval": 3.0,
-    "dataset_capture_max_frames": 4000,
+    "dataset_capture_interval": 1.5,
+    "dataset_capture_max_frames": 12000,
     "dataset_capture_quality": 92,
     # Below this world speed, in pixels a second, it is not a shot. The bot
     # tolerates the difference because a spurious dodge costs it almost
@@ -53,10 +53,48 @@ DEFAULTS = {
     # is what the tracker latches onto between matches. A kill feed slides in,
     # a banner wipes across, a name tag follows a brawler, and all of it is
     # movement. None of it travels at eight hundred pixels a second.
-    "dataset_capture_min_speed": 400.0,
+    "dataset_capture_min_speed": 220.0,
     # And only while a match is actually being played. The intro banner and
     # the results screen are nothing but moving interface.
     "dataset_capture_states": "match",
+    # Screen regions where the interface lives, as fractions of the frame:
+    # x1,y1,x2,y2 separated by semicolons. A shot detected inside one of these
+    # is thrown away.
+    #
+    # The interface is anchored to the screen while the world scrolls under
+    # it, so these hold whatever the map is. The kill feed is the one that
+    # actually mattered: it slides in fast enough to pass the speed test and
+    # it is drawn over the play area, so it cannot be cut off as a border.
+    #
+    # Deliberately generous. Losing a real shot that happened to fly under the
+    # joystick costs one training box out of thousands; keeping a kill-feed
+    # card teaches a detector that a portrait with a skull on it is a
+    # projectile. Only projectile labels are dropped - a brawler standing
+    # under the buttons is still a brawler.
+    # How sure the tracker has to be, and how many frames it has actually seen
+    # the thing for. A muzzle flash or an explosion produces motion that looks
+    # like a shot for two or three frames and then stops; a shot keeps going in
+    # a straight line, so the tracks with the most hits behind them are the
+    # ones that really were shots.
+    #
+    # This is the filter that separates "something dangerous is happening" -
+    # all the bot needs, and why it dodges explosions quite happily - from
+    # "this region is a projectile", which is what a label claims.
+    #
+    # Set loose on purpose. A box that should not be there is one keypress to
+    # delete while reviewing; a shot that was never labelled means going back
+    # through a night of frames to find it again, and nobody will. So these
+    # let through more than they are sure of, and the certain rubbish is
+    # handled by the zone and name-plate masks below instead - those cover
+    # places a projectile genuinely never is.
+    "dataset_capture_min_confidence": 0.45,
+    "dataset_capture_min_hits": 3,
+    "dataset_capture_ui_zones": (
+        "0.00,0.00,0.38,0.24;"    # teams left, and the kill feed under it
+        "0.84,0.00,1.00,0.50;"    # player cards down the right edge
+        "0.00,0.68,0.24,1.00;"    # joystick
+        "0.60,0.66,1.00,1.00"     # attack, super and gadget buttons
+    ),
 }
 
 _settings = None
@@ -106,7 +144,57 @@ def _folders(config):
     return root
 
 
-def _rows(debug_data, projectiles, width, height, min_speed=0.0):
+def _parse_zones(text):
+    """The configured interface rectangles, as fractions of the frame."""
+    zones = []
+    for chunk in str(text).split(";"):
+        parts = chunk.strip().split(",")
+        if len(parts) != 4:
+            continue
+        try:
+            x1, y1, x2, y2 = (float(v) for v in parts)
+        except ValueError:
+            continue
+        zones.append((min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)))
+    return zones
+
+
+def _in_ui(x, y, zones):
+    for x1, y1, x2, y2 in zones:
+        if x1 <= x <= x2 and y1 <= y <= y2:
+            return True
+    return False
+
+
+NAMEPLATE_ABOVE = 0.75
+
+
+def _on_a_nameplate(x, y, debug_data):
+    """Whether this sits on the name and trophy count above a brawler.
+
+    The tracker masks the brawlers themselves before looking for movement,
+    but not the label floating over their heads - which slides with them,
+    flickers as the numbers change, and is the last thing a fixed screen
+    rectangle can catch, because it goes wherever the brawler goes.
+
+    Anything the models found is a brawler with a nameplate above it, so the
+    band over each detected box is excluded. It is a band rather than a
+    point because the plate is a name, a trophy count and a health bar
+    stacked up, and its height varies with what the brawler is carrying.
+    """
+    for key in ("player", "teammate", "enemy"):
+        for box in (debug_data or {}).get(key) or []:
+            if len(box) < 4:
+                continue
+            x1, y1, x2, y2 = (float(v) for v in box[:4])
+            height = max(1.0, y2 - y1)
+            if x1 <= x <= x2 and (y1 - height * NAMEPLATE_ABOVE) <= y <= y2:
+                return True
+    return False
+
+
+def _rows(debug_data, projectiles, width, height, min_speed=0.0,
+          ui_zones=(), min_confidence=0.0, min_hits=0):
     """Every box worth writing, as YOLO lines."""
     lines = []
 
@@ -123,6 +211,14 @@ def _rows(debug_data, projectiles, width, height, min_speed=0.0):
         speed = (float(getattr(shot, "vx", 0.0)) ** 2 +
                  float(getattr(shot, "vy", 0.0)) ** 2) ** 0.5
         if speed < min_speed:
+            continue
+        if _in_ui(float(shot.x) / width, float(shot.y) / height, ui_zones):
+            continue
+        if _on_a_nameplate(float(shot.x), float(shot.y), debug_data):
+            continue
+        if float(getattr(shot, "confidence", 0.0)) < min_confidence:
+            continue
+        if int(getattr(shot, "hits", 0)) < min_hits:
             continue
         radius = max(6.0, float(getattr(shot, "radius", 0.0)))
         x, y = float(shot.x), float(shot.y)
@@ -174,7 +270,10 @@ def capture(frame, debug_data, projectiles):
 
         height, width = frame.shape[:2]
         lines = _rows(debug_data, projectiles, width, height,
-                      float(config["dataset_capture_min_speed"]))
+                      float(config["dataset_capture_min_speed"]),
+                      _parse_zones(config["dataset_capture_ui_zones"]),
+                      float(config["dataset_capture_min_confidence"]),
+                      int(config["dataset_capture_min_hits"]))
         if not any(line.startswith(f"{PROJECTILE} ") for line in lines):
             return
 
@@ -191,6 +290,13 @@ def capture(frame, debug_data, projectiles):
                 "projectiles": sum(1 for line in lines
                                    if line.startswith(f"{PROJECTILE} ")),
                 "boxes": len(lines),
+                # What the tracker thought of each one, so precision can be
+                # measured later rather than argued about.
+                "tracks": [{"conf": round(float(getattr(t, "confidence", 0.0)), 2),
+                            "hits": int(getattr(t, "hits", 0)),
+                            "speed": round((float(getattr(t, "vx", 0.0)) ** 2 +
+                                            float(getattr(t, "vy", 0.0)) ** 2) ** 0.5)}
+                           for t in projectiles],
             }) + "\n")
         _state["kept"] += 1
     except Exception:
