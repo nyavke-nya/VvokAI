@@ -386,6 +386,13 @@ class ProjectileTracker:
 
     def update(self, frame, context, stamp=None):
         """Process one frame. Returns (projectiles, camera_shift)."""
+        if frame is None:
+            # The capture drops a frame now and then - five times over a
+            # session of several hours, measured. It used to reach frame.shape
+            # and raise, which the service caught and logged as a tracker
+            # error, so a routine hiccup read like a fault in the tracker.
+            return [], (0.0, 0.0)
+
         started = time.perf_counter()
         stamp = time.time() if stamp is None else stamp
         config = self.config

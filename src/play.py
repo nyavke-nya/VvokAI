@@ -1440,6 +1440,26 @@ class Play:
             })
         debug_data["joystick_directions"] = sectors
 
+    def capture_training_frame(self, frame, data, state):
+        """Save this frame for training, if that is switched on.
+
+        Called from the loop rather than from publish_debug_view, which is
+        where it started and where it never ran once: that method returns
+        early when there is no debug window, and almost nobody plays with one
+        open. It collected nothing for hours before that was noticed.
+
+        The detection dict goes straight through. It already holds the boxes
+        in the shape the writer wants, and unlike the debug overlay it exists
+        whether or not anything is being drawn.
+        """
+        try:
+            from dataset_capture import capture as capture_dataset
+            boxes = dict(data) if isinstance(data, dict) else {}
+            boxes["state"] = state
+            capture_dataset(frame, boxes, self.get_projectiles())
+        except Exception:
+            pass
+
     def publish_debug_view(self, frame, data, state, movement=None):
         if not hasattr(self.window_controller, "debug_view"):
             # No debug window on this machine, but the panel may still be
@@ -1563,15 +1583,6 @@ class Play:
             debug_data["movement"] = [float(movement[0]), float(movement[1])]
 
         self.window_controller.debug_view.publish(frame, debug_data)
-        # Training data, if it is switched on. This is the only place in the
-        # project where a frame and the projectiles found in it exist together
-        # at the rate the tracker needs - collecting either from outside was
-        # tried and does not work.
-        try:
-            from dataset_capture import capture as capture_dataset
-            capture_dataset(frame, debug_data, self.get_projectiles())
-        except Exception:
-            pass
         # The same picture, for anybody watching the panel instead of sitting
         # at the machine. Costs a reference assignment when nobody is.
         try:
@@ -1685,6 +1696,7 @@ class Play:
         movement = self.loop(brawler, data, current_time)
         mark = self.stage("playstyle", mark)
         self.publish_debug_view(frame, data, state, movement)
+        self.capture_training_frame(frame, data, state)
         mark = self.stage("debugview", mark)
         if movement is not None:
             self.do_movement(movement)
