@@ -532,9 +532,18 @@ report.section("scrolling only starts once the brawler list is really open")
 # instead, and only then did the scan loop notice and give up. Which looks,
 # from outside, like a bot that says it is picking a brawler and never opens
 # the menu.
+import time as _time2
+import lobby_automation as _lobby_mod
 from lobby_automation import LobbyAutomation as _Lobby2
 
 _taps = []
+
+# How far in the past the capture's newest frame was taken, in seconds. 0 is a
+# frame from after the tap; a positive number backdates it, which is what a
+# machine whose capture runs behind hands back.
+_frame_age = [0.0]
+# What the checker last read, which is also what is in that frame.
+_seen = [None]
 
 
 class _Clicker:
@@ -543,18 +552,31 @@ class _Clicker:
     def click(self, x, y, already_include_ratio=True):
         _taps.append((x, y))
 
+    def get_latest_frame(self):
+        return _seen[0], _time2.time() - _frame_age[0]
 
-def _open(states):
+
+# The frame carries the reading, so the two sources cannot disagree by accident
+# and each test below says exactly one thing.
+_lobby_mod.is_in_brawler_selection = lambda frame: frame == "brawler_selection"
+
+
+def _open(states, frame_age=0.0, stale_limit=1.0):
     """states is consumed one reading per poll, then repeats its last value."""
     _taps.clear()
+    _frame_age[0] = frame_age
+    _seen[0] = states[0]
     lobby = object.__new__(_Lobby2)
     lobby.window_controller = _Clicker()
     lobby.MENU_OPEN_TIMEOUT = 0.5
     lobby.MENU_OPEN_ATTEMPTS = 3
+    lobby.MENU_OPEN_STALE_LIMIT = stale_limit
+    lobby.verbose_debug = False
     seq = list(states)
 
     def latest():
-        return seq.pop(0) if len(seq) > 1 else seq[0]
+        _seen[0] = seq.pop(0) if len(seq) > 1 else seq[0]
+        return _seen[0]
 
     return lobby._open_brawler_menu(latest)
 
@@ -567,6 +589,20 @@ report.check("still one tap", len(_taps), 1)
 report.check("a list that never opens is reported, not scrolled",
              _open(["lobby"]), "closed")
 report.check("after retrying the tap", len(_taps), 3)
+
+
+report.section("and the tap is never repeated on the strength of an old frame")
+# The second tap is the damaging one. It lands on the list that is already open
+# and opens whatever sits under it, so the bot ends up on another screen
+# instead of on a brawler - "auto select just opens the list". No bug of its
+# own is needed: a capture running behind hands back a frame from before the
+# tap with the lobby still in it, and that used to read as "the tap missed".
+report.check("a frame older than the tap does not earn a second tap",
+             _open(["lobby"], frame_age=30.0), "stuck")
+report.check("so the button was pressed once and left alone", len(_taps), 1)
+report.check("while a frame from after the tap still does",
+             _open(["lobby"], frame_age=0.0), "closed")
+report.check("and that one is retried", len(_taps), 3)
 
 _src = read_source("lobby_automation.py")
 _body = _src[_src.index("def select_brawler("):]

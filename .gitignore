@@ -68,3 +68,7 @@ models/trt_cache/
 # Per-install, and not ours to publish.
 .vvok_install_id
 .vvok_stats_sent
+
+# The run's own log, rewritten every start. It landed in a commit once because
+# nothing here covered it.
+vvokai_log.txt

@@ -182,5 +182,21 @@ class DiscordBot:
         self.started = True
         try:
             self.client.run(discord_bot_token)
+        except discord.LoginFailure:
+            # A token Discord will not accept is a typo, not a crash. It used
+            # to leave the thread as an unhandled LoginFailure, which prints
+            # forty lines of discord.py internals into the log and reads like
+            # the bot itself fell over - people opened the log, saw a traceback
+            # at startup, and assumed nothing was working.
+            print("Discord: the API rejected this token. Check discord_bot_token "
+                  "in cfg/webhook_config.toml, or clear it to turn the Discord "
+                  "bot off. Nothing else is affected - the panel, Telegram and "
+                  "the run itself carry on.")
+        except Exception as exc:
+            # Same reasoning for everything else it can throw. Discord is one
+            # optional way to talk to the bot; losing it must not look like the
+            # bot dying, and must not take the thread down noisily.
+            print(f"Discord: the bot stopped ({exc}). The panel, Telegram and "
+                  f"the run itself are unaffected.")
         finally:
             self.started = False

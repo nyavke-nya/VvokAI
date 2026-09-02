@@ -2,7 +2,8 @@ import time
 
 import cv2
 from state_finder import (is_connection_lost_on_screen,
-                          is_idle_disconnect_on_screen, is_team_invite_on_screen)
+                          is_idle_disconnect_on_screen, is_in_brawler_selection,
+                          is_team_invite_on_screen)
 from utils import (
     EasyOCRInitializationError,
     count_hsv_pixels,
@@ -233,6 +234,12 @@ class LobbyAutomation:
     MENU_OPEN_TIMEOUT = 4.0
     MENU_OPEN_ATTEMPTS = 3
 
+    # How long to keep waiting when the capture has not produced a single frame
+    # since the tap. Past this the feed is the problem, not the game, and there
+    # is nothing to be gained by holding the run any longer. Comfortably beyond
+    # window_controller's own 15s stale-frame warning, so that gets said first.
+    MENU_OPEN_STALE_LIMIT = 20.0
+
     # Swipes to get back to the start. More than the list is long, because a
     # swipe that lands while the view is still gliding does nothing at all -
     # so the count has to cover the wasted ones as well as the useful ones.
@@ -373,18 +380,60 @@ class LobbyAutomation:
 
         The state comes from the checker thread, which keeps reading frames
         while this blocks, so polling it here sees the screen change.
+
+        What it must never do is tap twice on one open menu. The second tap
+        lands wherever the list happens to have put something - on this layout,
+        the panel down the left - and opens it, so instead of picking a brawler
+        the bot walks into another screen and gives up there. That is the
+        "auto select just opens the list" people were seeing, and it needs no
+        bug of its own to happen: a machine whose capture runs a little behind
+        hands back a frame from BEFORE the tap, the lobby is still in it, and
+        four seconds of that is indistinguishable from a tap that missed.
+
+        So a re-tap now needs positive evidence: a frame captured after the tap
+        that does not have the list in it. A frame older than the tap says
+        nothing about whether the tap worked, and is no longer allowed to argue
+        for pressing the button again.
         """
         x, y = load_toml_as_dict("cfg/buttons_config.toml")["brawlers_menu"]
         for attempt in range(self.MENU_OPEN_ATTEMPTS):
             if self._should_interrupt(runtime_control, stop_event):
                 return "aborted"
             self.window_controller.click(x, y, already_include_ratio=False)
-            deadline = time.time() + self.MENU_OPEN_TIMEOUT
-            while time.time() < deadline:
+            tapped_at = time.time()
+            deadline = tapped_at + self.MENU_OPEN_TIMEOUT
+            while True:
                 if self._should_interrupt(runtime_control, stop_event):
                     return "aborted"
+
+                # The shared state can be believed the moment it says the list
+                # is up, however old the frame behind it is: the bot was in the
+                # lobby a moment ago, so this reading cannot be left over from
+                # some earlier visit to the menu. It is only the opposite
+                # verdict - "still the lobby" - that a stale frame can get
+                # wrong, and that is the one this no longer acts on.
                 if get_latest_state() == "brawler_selection":
                     return "open"
+
+                frame, frame_time = self.window_controller.get_latest_frame()
+                after_tap = frame is not None and frame_time > tapped_at
+                if after_tap and is_in_brawler_selection(frame):
+                    return "open"
+
+                if time.time() >= deadline:
+                    if after_tap:
+                        break
+                    if time.time() >= tapped_at + self.MENU_OPEN_STALE_LIMIT:
+                        print("No frame has arrived since the brawlers button "
+                              "was tapped, so there is no way to tell whether "
+                              "the list opened. Leaving it alone rather than "
+                              "tapping into whatever is on screen.")
+                        return "stuck"
+                    # A frame from before the tap proves nothing. Keep waiting
+                    # for one that was taken after it.
+                    if self.verbose_debug:
+                        print("Waiting for a frame taken after the tap before "
+                              "deciding whether the brawler list opened.")
                 time.sleep(0.2)
             print(f"The brawler list did not open (attempt {attempt + 1} of "
                   f"{self.MENU_OPEN_ATTEMPTS}), tapping again.")

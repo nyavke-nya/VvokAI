@@ -37,6 +37,7 @@
         "Use": "Взять", "Matches": "Матчи", "Won": "Выиграно", "Wins": "Победы", "Losses": "Поражения",
         "Win Rate": "Процент побед", "Universal": "Универсальный",
         "Preparing local session...": "Подготовка локального сеанса...",
+        "Support the project": "Поддержать проект",
 
         // ---- status pills
         "Idle": "Простой", "Running": "Работает", "Paused": "Пауза",
