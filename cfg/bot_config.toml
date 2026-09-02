@@ -1,4 +1,4 @@
-minimum_movement_delay = 0.1
+minimum_movement_delay = 0.05
 unstuck_movement_delay = 2.4
 unstuck_movement_hold_time = 1.4
 perceived_tile_size = 35
@@ -10,22 +10,22 @@ super_pixels_minimum = 1800.0
 idle_pixels_minimum = 75000.0
 decline_team_invites = true
 buffie_hold_seconds = 5.0
-team_invite_green_minimum = 3500.0
+team_invite_green_minimum = 3500
 team_invite_mute_x = 0.89
 team_invite_mute_y = 0.29
 centered_wall_detection = false
 poison_gas_fraction = 0.078
-wall_detection_confidence = 0.7
+wall_detection_confidence = 0.5
 entity_detection_confidence = 0.65
 seconds_to_hold_attack_after_reaching_max = 1.5
-play_again_on_win = "no"
+play_again_on_win = "yes"
 current_playstyle = "unified_dodge.pyla"
 stop_at = ""
 resume_at = ""
 close_game_when_scheduled = true
 shutdown_when_done = true
 enemy_exposure_radius = 40
-attack_range_multiplier = 1.1
+attack_range_multiplier = 1.35
 
 # The live view in the panel: what the bot sees, streamed to a browser.
 # It costs nothing while nobody is watching it. While somebody is, it holds
@@ -37,7 +37,9 @@ live_view_fps = 10
 live_view_quality = 70
 live_view_cpu_share = 0.05
 live_view_idle_timeout = 6.0
+
 # Save training frames while playing, with the projectiles the dodge tracker
+# finds. Off by default; it only writes a frame every few seconds and only
 # when a shot is actually in flight.
 dataset_capture = false
 dataset_capture_dir = "dataset_live"
@@ -52,7 +54,7 @@ dataset_capture_min_hits = 3
 # Whether to press Enter after typing a name into the brawler list's search
 # box. A box that filters as you type does not need it; a box that closes on
 # Enter throws the filter away and puts the whole list back, which looks
-# exactly like a search that did nothing. Set it to false if the log says the
-# search found the brawler's card and then the wrong one was equipped, or if
-# "After searching, the cards on screen read:" keeps listing six brawlers.
+# exactly like a search that did nothing. Set it to false if the log's
+# "After searching, the cards on screen read:" line keeps listing six
+# brawlers rather than the one that was asked for.
 brawler_search_press_enter = true

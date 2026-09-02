@@ -964,45 +964,6 @@ textarea:focus {
 
 .vvok-contact svg { width: 15px; height: 15px; flex-shrink: 0; }
 
-/* The donation link sits directly under the Telegram one and is the same
-   control, so it keeps the same shape. Only the colour differs, and only on
-   hover: an ask that shouts from the sidebar every second the panel is open
-   wears out its welcome, and this one has to live next to a status light the
-   user actually needs to read.
-
-   The two are one block rather than two stacked buttons: the pair rounds at
-   the outside corners only, and the negative margin pulls the donation link up
-   by exactly the width of the outline both of them carry, so the two hairlines
-   land on top of each other and read as a single divider instead of a seam. */
-.vvok-contact:not(.vvok-donate) {
-    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-}
-
-.vvok-donate {
-    margin-top: -1px;
-    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-}
-
-/* Whichever half is hovered paints over the shared edge, so the lit one keeps
-   a whole outline instead of being clipped by its neighbour. */
-.vvok-contact:hover {
-    position: relative;
-    z-index: 1;
-}
-
-.vvok-donate svg { color: var(--accent-pink, #ff5a8a); }
-
-.vvok-donate:hover {
-    color: #08080a;
-    background: linear-gradient(180deg, #ff9ab5, #ff5a8a);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.9),
-        0 4px 16px rgba(0, 0, 0, 0.5),
-        0 0 28px rgba(255, 90, 138, 0.32);
-}
-
-.vvok-donate:hover svg { color: #08080a; }
-
 /* --------------------------------------------------------------------------
    SCROLLBAR
    -------------------------------------------------------------------------- */
