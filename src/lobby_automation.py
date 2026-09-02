@@ -22,6 +22,8 @@ class LobbyAutomation:
         self.last_team_invite_handled = 0.0
         self.ocr_scale_down_factor = max(0.5, min(1, load_toml_as_dict("./cfg/general_config.toml").get('ocr_scale_down_factor', 1)))
         self.ocr_scale_up_factor = 1 / self.ocr_scale_down_factor
+        self.press_enter_after_search = config_bool(
+            bot_config.get("brawler_search_press_enter"), True)
         self.all_brawlers_names = load_all_brawlers_names()
         self.window_controller = window_controller
         self.verbose_debug = config_bool(load_toml_as_dict("cfg/debug_settings.toml").get('verbose_debug'), False)
@@ -213,63 +215,147 @@ class LobbyAutomation:
             time.sleep(min(poll_interval, max(end_time - time.time(), 0)))
         return False
 
-    # The list is long, so a scan that starts at the top needs room to reach the
-    # bottom - but not 100 screens of room. Anything past this is not scrolling,
-    # it is stuck, and grinding through it costs minutes before anyone is told.
+    # The list is long, so a scan that starts at the beginning needs room to
+    # reach the end - but not 100 screens of room. Anything past this is not
+    # scrolling, it is stuck, and grinding through it costs minutes before
+    # anyone is told.
     MAX_SCANS = 40
+
+    # Reads allowed after a search. The list is down to the cards that matched
+    # by then, so these are only waiting for the frame to catch up with the
+    # typing - not a hunt. Keeping it short means a search box that quietly did
+    # nothing costs a second before the scrolling fallback starts, rather than
+    # as long as the scrolling it was meant to replace.
+    SEARCH_SCANS = 3
 
     # How long to give the brawler list to appear after tapping the button,
     # and how many times to tap again if it does not. See _open_brawler_menu.
     MENU_OPEN_TIMEOUT = 4.0
     MENU_OPEN_ATTEMPTS = 3
 
-    # Swipes to get back to the top. More than the list is tall, because a
+    # Swipes to get back to the start. More than the list is long, because a
     # swipe that lands while the view is still gliding does nothing at all -
     # so the count has to cover the wasted ones as well as the useful ones.
     #
-    # Fourteen was not enough in practice: with a brawler far down the list the
+    # Fourteen was not enough in practice: with a brawler far along the list the
     # view still had further to go when the swiping stopped, the search then
-    # started from halfway, and everything above that point was invisible to it
+    # started from halfway, and everything before that point was invisible to it
     # - which looks exactly like the brawler not existing. Overshooting costs
-    # nothing, because a list already at the top ignores the extra swipes.
+    # nothing, because a list already at the start ignores the extra swipes.
     SCROLL_TOP_SWIPES = 19
 
-    # The column the list is dragged by, on a 1920-wide screen.
+    # The row the list is dragged along, on a 1920x1080 screen.
     #
-    # 1700 was on the cards. Their right edge sits at about x=1696, so every
-    # swipe started on a brawler, and a drag that the game read as a tap opened
-    # whichever one it landed on - the bot would be scrolling and suddenly be
-    # inside a random brawler's page. Measured across the band the swipes
-    # travel through, colour variation at x=1700 is 85 and at x=1760 and beyond
-    # it is 3: cards, then plain background.
-    #
-    # 1820 is clear of the cards with room to spare, and far enough from the
-    # screen edge that Android does not read it as a back gesture.
-    SCROLL_COLUMN = 1820
+    # The list used to scroll down a column; it now scrolls along a row, so the
+    # thing to keep clear of moved with it. The cards fill three rows - y
+    # 190-428, 484-697 and 777-1014 - and a drag that starts on a card and is
+    # read as a tap opens that brawler's page, which is how the old bot ended
+    # up inside a random brawler mid-scroll. 737 is the middle of the 80-pixel
+    # gap between the second and third rows: the widest band the new layout
+    # leaves empty right across the screen.
+    SWIPE_ROW = 737
 
-    def _scroll_to_list_top(self, runtime_control=None, stop_event=None):
-        """Put the brawler list back at the top before searching it.
+    # How far along that row each swipe drags. Both ends stay inside the cards
+    # - the left edge of the screen has the offer banner on it and the right
+    # edge is close enough that Android may take the gesture as a back swipe.
+    SWIPE_NEAR_X = 500
+    SWIPE_FAR_X = 1500
+
+    # Where the search box sits in the list's top bar, on a 1920x1080 screen.
+    # Measured off the new menu: the magnifier is at x=1447, the word SEARCH at
+    # x=1594, and the bar holding them runs from roughly 1410 to 1730 across
+    # y 25-90. 1550 is between the two and clear of the button on the right end
+    # that clears the query.
+    #
+    # It is in buttons_config.toml too, so it can be nudged without editing
+    # code - but read with this as the default, because a fork updated from an
+    # older config will not have the key at all.
+    SEARCH_FIELD = (1550, 57)
+
+    def _search_field(self):
+        buttons = load_toml_as_dict("cfg/buttons_config.toml")
+        spot = buttons.get("brawler_search") or self.SEARCH_FIELD
+        return int(spot[0]), int(spot[1])
+
+    def _search_for_brawler(self, brawler, runtime_control=None, stop_event=None):
+        """Type the name into the list's own search box.
+
+        The update that turned the list sideways also gave it a search box, and
+        searching is not a workaround for the new layout - it is better than any
+        amount of scrolling ever was. One tap and one string leaves the card we
+        want on an otherwise empty screen, whatever the account owns, wherever
+        the game had scrolled to, and without forty screens of OCR to get there.
+
+        Returns "searched", "unavailable" when the typing did not go through -
+        the caller's cue to fall back to scrolling rather than to read an
+        unfiltered list three times and give up - or "aborted".
+        """
+        x, y = self._search_field()
+        print(f"Tapping the search box at ({x}, {y}) and typing '{brawler}'.")
+        self.window_controller.click(x, y, already_include_ratio=False)
+        # The box has to take focus before anything typed can land in it. No
+        # keyboard slides up over the game - the box is a plain text line that
+        # takes hardware keys - so this waits on the tap, not on an animation.
+        if self._sleep_interruptible(0.8, runtime_control, stop_event):
+            return "aborted"
+
+        self.window_controller.clear_text_field()
+        if not self.window_controller.type_text(brawler):
+            return "unavailable"
+        if self._sleep_interruptible(0.4, runtime_control, stop_event):
+            return "aborted"
+
+        # Whether the query needs committing. A box that filters as it is typed
+        # does not, and pressing Enter at one that closes on Enter throws the
+        # filter away and puts the whole list back on screen - which reads
+        # exactly like a search that did nothing. The two cannot be told apart
+        # without running it, and both are recoverable, because the scrolling
+        # fallback below still finds the brawler either way. So it is a switch
+        # in bot_config rather than a guess baked into the code.
+        if self.press_enter_after_search:
+            self.window_controller.submit_text()
+        if self._sleep_interruptible(1.2, runtime_control, stop_event):
+            return "aborted"
+        return "searched"
+
+    def _clear_search(self, runtime_control=None, stop_event=None):
+        """Empty the search box so the whole list is back on screen.
+
+        Only needed on the way to the scrolling fallback: scrolling a list
+        filtered down to nothing would find nothing however far it went.
+        """
+        x, y = self._search_field()
+        self.window_controller.click(x, y, already_include_ratio=False)
+        if self._sleep_interruptible(0.6, runtime_control, stop_event):
+            return True
+        self.window_controller.clear_text_field()
+        if self.press_enter_after_search:
+            self.window_controller.submit_text()
+        return self._sleep_interruptible(1.0, runtime_control, stop_event)
+
+    def _scroll_to_list_start(self, runtime_control=None, stop_event=None):
+        """Wind the brawler list back to its first card before reading it.
 
         The menu opens wherever the currently selected brawler is. That is
         normally fine, and quietly wrong after a reward unlocks a new brawler:
-        the game switches to it, it sits near the bottom of the list, and every
-        brawler above it - Shelly, who is first of all of them - is off-screen
-        upward. Searching by scrolling down from there walks away from the
-        target and never comes back, so the scan ran its full length and gave
-        up, over and over, on a brawler that was three swipes above it.
+        the game switches to it, it sits near the end of the list, and every
+        brawler before it - Shelly, who is first of all of them - is off-screen.
+        Searching by scrolling onward from there walks away from the target and
+        never comes back, so the scan ran its full length and gave up, over and
+        over, on a brawler that was three swipes behind it.
 
-        Starting from the top makes the search cover the whole list whatever
-        the game had selected when the menu opened.
+        Starting from the first card makes the scan cover the whole list
+        whatever the game had selected when the menu opened.
         """
         wr = self.window_controller.width_ratio
         hr = self.window_controller.height_ratio
+        row = int(self.SWIPE_ROW * hr)
         for _ in range(self.SCROLL_TOP_SWIPES):
             if self._should_interrupt(runtime_control, stop_event):
                 return True
-            # Finger downward, which moves the list up.
-            column = int(self.SCROLL_COLUMN * wr)
-            self.window_controller.swipe(column, int(650 * hr),
-                                         column, int(1000 * hr), duration=0.25)
+            # Finger to the right, which drags the list back toward its start.
+            self.window_controller.swipe(int(self.SWIPE_NEAR_X * wr), row,
+                                         int(self.SWIPE_FAR_X * wr), row, duration=0.25)
             time.sleep(0.15)
         # Let the overscroll bounce settle, or the first OCR reads a blur.
         return self._sleep_interruptible(1.0, runtime_control, stop_event)
@@ -336,42 +422,159 @@ class LobbyAutomation:
                 hits.append(name)
         return hits[0] if len(hits) == 1 else None
 
-    def select_brawler(self, brawler, get_latest_state, stop_event=None, runtime_control=None):
+    def _save_debug_frame(self, label):
+        """Keep the frame the bot just judged, so a bad call can be looked at.
+
+        The brawler list is the one screen the bot drives blind: it types a
+        name, waits, and believes whatever OCR reports back. When that goes
+        wrong the log says "not found" and nothing says what was on screen -
+        which is how a menu redesign became a bot that could not pick a
+        brawler at all, with no way to see why short of standing over it.
+
+        Only while verbose_debug is on. An account missing one brawler asks for
+        it every match, and a 1920x1080 PNG per attempt would fill a disk.
+        """
+        if not self.verbose_debug:
+            return None
+        import os
+        try:
+            os.makedirs("./debug_frames", exist_ok=True)
+            path = f"./debug_frames/brawler_{label}_{int(time.time())}.png"
+            cv2.imwrite(path, cv2.cvtColor(self.window_controller.screenshot(),
+                                           cv2.COLOR_RGB2BGR))
+            print(f"Saved the brawler list frame to {path}")
+            return path
+        except Exception as exc:
+            print(f"Could not save the brawler list frame: {exc}")
+            return None
+
+    def _read_names(self):
+        """Every word on screen, cleaned up the way brawler names are.
+
+        Raises EasyOCRInitializationError if OCR could not start at all, which
+        is a setup problem rather than a bad frame and is worth saying so.
+        """
+        screenshot = self.window_controller.screenshot()
+        screenshot = cv2.resize(screenshot, (int(screenshot.shape[1] * self.ocr_scale_down_factor), int(screenshot.shape[0] * self.ocr_scale_down_factor)), interpolation=cv2.INTER_AREA)
+
+        print("Extracting text on current screen...")
+        results = extract_text_and_positions(screenshot)
+        results = {k: v for k, v in results.items() if len(k) >= 2}
+        clean_results = {}
+        for key in results.keys():
+            orig_key = key
+            for symbol in [' ', '-', '.', "&"]:
+                key = key.replace(symbol, "")
+            clean_results[key.lower()] = results[orig_key]
+        return clean_results
+
+    # The band the cards occupy, on a 1920x1080 screen. The top bar ends at
+    # about y=110 and the first row of cards starts at y=190; the third and
+    # last row ends at y=1014.
+    CARD_AREA = (150, 1020)
+
+    def _cards_only(self, clean_results):
+        """Drop what OCR read outside the grid of cards.
+
+        Searching puts the query on screen twice: once on the card and once in
+        the search box that is showing it back. Matching the copy in the box
+        would tap the box - which is already focused - and then press confirm
+        on whichever brawler happened to be selected already, quietly picking
+        the wrong one. Nothing but the top bar is above the first row, so
+        cutting at its height separates the two.
+
+        The floor matters for the same reason. A keyboard that did not go away
+        offers the typed word back as a suggestion along the bottom of the
+        screen, which OCR reads just as happily as a card.
+        """
+        hr = self.window_controller.height_ratio or 1
+        scale = hr * self.ocr_scale_down_factor
+        top, bottom = (limit * scale for limit in self.CARD_AREA)
+        return {name: hit for name, hit in clean_results.items()
+                if top <= hit['center'][1] <= bottom}
+
+    def _match_name(self, brawler, clean_results):
+        """Which word on screen is this brawler, or None.
+
+        Four ways of saying the same thing, cheapest first: the name itself,
+        the alias list, a fuzzy ratio, and finally the single-character rule
+        that short names need. See _near_miss for why the last one exists.
+        """
+        if brawler in clean_results.keys():
+            return brawler
+
+        aliases = self.all_brawlers_names.get(brawler) or []
+        for detected_name in clean_results.keys():
+            if detected_name in aliases:
+                print(f"Matched detected name '{detected_name}' to brawler '{brawler}' using alias list.")
+                return detected_name
+
+        # Fallback to fuzzy matching
+        import difflib
+        best_match = None
+        best_ratio = 0.0
+        for detected_name in clean_results.keys():
+            ratio = difflib.SequenceMatcher(None, detected_name, brawler).ratio()
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_match = detected_name
+
+        if best_ratio >= 0.8:
+            print(f"Fuzzy matched detected name '{best_match}' to brawler '{brawler}' with ratio {best_ratio:.2f}.")
+            return best_match
+
+        # Still nothing, and the ratio test cannot help a short name:
+        # see _near_miss.
+        near = self._near_miss(brawler, clean_results.keys())
+        if near:
+            print(f"Matched '{near}' to brawler '{brawler}': one character "
+                  f"out, and nothing else on screen was close.")
+        return near
+
+    def _tap_and_confirm(self, brawler, matched_key, clean_results,
+                         runtime_control=None, stop_event=None):
+        """Open the card OCR found, then press the button that equips it."""
+        x, y = clean_results[matched_key]['center']
+        y_offset = 50*self.ocr_scale_down_factor
+        y -= y_offset
+        self.window_controller.click(int(x * self.ocr_scale_up_factor), int(y * self.ocr_scale_up_factor))
+        print(f"Found brawler {brawler} ({matched_key}) clicking on its icon at {int(x * self.ocr_scale_up_factor)} {int(y * self.ocr_scale_up_factor)}")
+        if self._sleep_interruptible(1, runtime_control, stop_event):
+            print("Brawler selection aborted by user.")
+            return "aborted"
+        select_x, select_y = load_toml_as_dict("cfg/buttons_config.toml")["select_brawler"]
+        self.window_controller.click(select_x, select_y, already_include_ratio=False)
+        if self._sleep_interruptible(1.5, runtime_control, stop_event):
+            print("Brawler selection aborted by user.")
+            return "aborted"
         self.window_controller.screenshot()
-        wr = self.window_controller.width_ratio
-        hr = self.window_controller.height_ratio
-        brawler = str(brawler).lower().strip()
-        for symbol in [' ', '-', '.', "&"]:
-            brawler = brawler.replace(symbol, "")
+        print("Selected brawler ", brawler)
+        return "success"
 
-        print("Automatic brawler selection started for", brawler)
-        opened = self._open_brawler_menu(get_latest_state, runtime_control, stop_event)
-        if opened == "aborted":
-            print("Brawler selection aborted by user.")
-            return "aborted"
-        if opened != "open":
-            print("The brawler list never opened, so there is nothing to scroll. "
-                  "Leaving the selected brawler alone.")
-            return "stuck"
-        if self._scroll_to_list_top(runtime_control, stop_event):
-            print("Brawler selection aborted by user.")
-            return "aborted"
+    def _scan_for_brawler(self, brawler, get_latest_state, scans, swipe,
+                          runtime_control=None, stop_event=None):
+        """Read the screen, and pick the brawler off it if he is there.
 
+        `swipe` says whether to drag the list along between reads. After a
+        search there is nothing to drag to - what matched is already on screen
+        - so a miss means the search did not take, not that we have not looked
+        far enough, and saying so quickly is the point.
+        """
         c = 0
         shop_counter = 0
         # What the previous screen read, to notice when scrolling stops moving.
         seen_before = None
         stalled = 0
-        for i in range(self.MAX_SCANS):
+        wr = self.window_controller.width_ratio
+        hr = self.window_controller.height_ratio
+        row = int(self.SWIPE_ROW * hr)
+        for i in range(scans):
             if self._should_interrupt(runtime_control, stop_event):
                 print("Brawler selection aborted by user.")
                 return "aborted"
-            screenshot = self.window_controller.screenshot()
-            screenshot = cv2.resize(screenshot, (int(screenshot.shape[1] * self.ocr_scale_down_factor), int(screenshot.shape[0] * self.ocr_scale_down_factor)), interpolation=cv2.INTER_AREA)
 
-            print("Extracting text on current screen...")
             try:
-                results = extract_text_and_positions(screenshot)
+                clean_results = self._read_names()
             except EasyOCRInitializationError as exc:
                 raise RuntimeError(
                     f"Automatic brawler selection could not start OCR: {exc}"
@@ -380,13 +583,6 @@ class LobbyAutomation:
                 print(f"WARNING: Automatic brawler selection could not read this screen with OCR: {exc}")
                 print("The bot will continue without changing the currently selected brawler.")
                 return "error"
-            results = {k: v for k, v in results.items() if len(k) >= 2}
-            clean_results = {}
-            for key in results.keys():
-                orig_key = key
-                for symbol in [' ', '-', '.', "&"]:
-                    key = key.replace(symbol, "")
-                clean_results[key.lower()] = results[orig_key]
 
             current_state = get_latest_state()
             if "shop" in clean_results.keys():
@@ -399,73 +595,44 @@ class LobbyAutomation:
             elif current_state != "brawler_selection":
                 print("Latest screenshot is no longer of the lobby, aborting brawler selection...")
                 return "stuck"
-            elif brawler in clean_results.keys():
-                matched_key = brawler
-            else:
-                matched_key = None
-                aliases = self.all_brawlers_names.get(brawler) or []
-                for detected_name in clean_results.keys():
-                    if detected_name in aliases:
-                        matched_key = detected_name
-                        print(f"Matched detected name '{detected_name}' to brawler '{brawler}' using alias list.")
-                        break
-                
-                # Fallback to fuzzy matching
-                if not matched_key:
-                    import difflib
-                    best_match = None
-                    best_ratio = 0.0
-                    for detected_name in clean_results.keys():
-                        ratio = difflib.SequenceMatcher(None, detected_name, brawler).ratio()
-                        if ratio > best_ratio:
-                            best_ratio = ratio
-                            best_match = detected_name
-                    
-                    if best_ratio >= 0.8:
-                        matched_key = best_match
-                        print(f"Fuzzy matched detected name '{best_match}' to brawler '{brawler}' with ratio {best_ratio:.2f}.")
 
-                # Still nothing, and the ratio test cannot help a short name:
-                # see _near_miss.
-                if not matched_key:
-                    near = self._near_miss(brawler, clean_results.keys())
-                    if near:
-                        matched_key = near
-                        print(f"Matched '{near}' to brawler '{brawler}': one character "
-                              f"out, and nothing else on screen was close.")
+            cards = self._cards_only(clean_results)
+            matched_key = self._match_name(brawler, cards)
+
+            # After a search this one line is the whole diagnosis, so it goes in
+            # the ordinary log rather than behind verbose_debug. Nothing in the
+            # band means the typing never reached the game; six names still in
+            # it means the typing arrived and filtered nothing.
+            if not swipe:
+                print(f"After searching, the cards on screen read: "
+                      f"{', '.join(sorted(cards)) or '(nothing)'}")
 
             if self.verbose_debug:
                 print("OCR detected the following potential matches for the brawler name:")
                 import difflib
-                for detected_name in clean_results.keys():
+                for detected_name in cards.keys():
                     match_ratio = difflib.SequenceMatcher(None, detected_name, brawler).ratio()
                     if match_ratio >= 0.25:
                         print(f" - '{detected_name}' with match ratio {match_ratio:.2f}")
             if matched_key:
-                x, y = clean_results[matched_key]['center']
-                y_offset = 50*self.ocr_scale_down_factor
-                y -= y_offset
-                self.window_controller.click(int(x * self.ocr_scale_up_factor), int(y * self.ocr_scale_up_factor))
-                print(f"Found brawler {brawler} ({matched_key}) clicking on its icon at {int(x * self.ocr_scale_up_factor)} {int(y * self.ocr_scale_up_factor)}")
-                if self._sleep_interruptible(1, runtime_control, stop_event):
-                    print("Brawler selection aborted by user.")
-                    return "aborted"
-                select_x, select_y = load_toml_as_dict("cfg/buttons_config.toml")["select_brawler"]
-                self.window_controller.click(select_x, select_y, already_include_ratio=False)
-                if self._sleep_interruptible(1.5, runtime_control, stop_event):
-                    print("Brawler selection aborted by user.")
-                    return "aborted"
-                self.window_controller.screenshot()
-                print("Selected brawler ", brawler)
-                return "success"
-            else:
-                print("Brawler name not found on screen, scrolling down to load more brawlers...")
+                return self._tap_and_confirm(brawler, matched_key, cards,
+                                             runtime_control, stop_event)
 
-            # The bottom of the list looks exactly like a swipe that did not
+            if not swipe:
+                # One more read only buys time for the frame to catch up; there
+                # is nothing else for it to find.
+                if i + 1 < scans and self._sleep_interruptible(0.8, runtime_control, stop_event):
+                    print("Brawler selection aborted by user.")
+                    return "aborted"
+                continue
+
+            print("Brawler name not found on screen, scrolling along to load more brawlers...")
+
+            # The end of the list looks exactly like a swipe that did not
             # register, so it has to be recognised rather than waited out: two
             # identical screens in a row means the list is not moving and the
             # brawler is genuinely not in it.
-            names = frozenset(clean_results.keys())
+            names = frozenset(cards.keys())
             if names and names == seen_before:
                 stalled += 1
                 if stalled >= 2:
@@ -478,22 +645,79 @@ class LobbyAutomation:
             seen_before = names
 
             if c == 0:
-                wr = self.window_controller.width_ratio
-                hr = self.window_controller.height_ratio
-                column = int(self.SCROLL_COLUMN * wr)
-                self.window_controller.swipe(column, int(900 * hr), column, int(850 * hr), duration=0.5)
+                # A short drag first. The list is still settling from the wind
+                # back to the start, and a full swipe into a moving view is the
+                # one most likely to be swallowed.
+                self.window_controller.swipe(int(self.SWIPE_FAR_X * wr), row,
+                                             int((self.SWIPE_FAR_X - 50) * wr), row, duration=0.5)
                 if self._sleep_interruptible(3, runtime_control, stop_event):
                     print("Brawler selection aborted by user.")
                     return "aborted"
                 c += 1
                 continue
 
-            column = int(self.SCROLL_COLUMN * wr)
-            self.window_controller.swipe(column, int(900 * hr), column, int(650 * hr), duration=0.5)
+            # Finger to the left, which pulls the later cards into view.
+            self.window_controller.swipe(int(self.SWIPE_FAR_X * wr), row,
+                                         int(self.SWIPE_NEAR_X * wr), row, duration=0.5)
             if self._sleep_interruptible(3, runtime_control, stop_event):
                 print("Brawler selection aborted by user.")
                 return "aborted"
 
-        print(f"WARNING: Brawler '{brawler}' was not found after {self.MAX_SCANS} "
-              f"scroll attempts.")
         return "failed"
+
+    def select_brawler(self, brawler, get_latest_state, stop_event=None, runtime_control=None):
+        """Put the bot on a named brawler.
+
+        Search first, scroll only if searching did not work. The search box
+        arrived in the same update that turned the list sideways, and it does
+        in one string what the scan below does in up to forty screenfuls of
+        OCR - so the scrolling path is kept as a fallback for the case where
+        the typing never reaches the game, not as the normal route.
+        """
+        self.window_controller.screenshot()
+        brawler = str(brawler).lower().strip()
+        for symbol in [' ', '-', '.', "&"]:
+            brawler = brawler.replace(symbol, "")
+
+        print("Automatic brawler selection started for", brawler)
+        opened = self._open_brawler_menu(get_latest_state, runtime_control, stop_event)
+        if opened == "aborted":
+            print("Brawler selection aborted by user.")
+            return "aborted"
+        if opened != "open":
+            print("The brawler list never opened, so there is nothing to search. "
+                  "Leaving the selected brawler alone.")
+            return "stuck"
+
+        searched = self._search_for_brawler(brawler, runtime_control, stop_event)
+        if searched == "aborted":
+            print("Brawler selection aborted by user.")
+            return "aborted"
+        if searched == "searched":
+            outcome = self._scan_for_brawler(
+                brawler, get_latest_state, self.SEARCH_SCANS, False,
+                runtime_control, stop_event)
+            if outcome != "failed":
+                return outcome
+            print(f"Searching for '{brawler}' turned up nothing. Falling back to "
+                  f"scrolling the whole list.")
+            if not self._save_debug_frame("search_missed"):
+                print("Turn on verbose_debug in cfg/debug_settings.toml to have "
+                      "that frame saved to debug_frames/ next time - it is the "
+                      "only way to tell a search box that ignored the typing "
+                      "from one that filtered down to nothing.")
+            if self._clear_search(runtime_control, stop_event):
+                print("Brawler selection aborted by user.")
+                return "aborted"
+
+        if self._scroll_to_list_start(runtime_control, stop_event):
+            print("Brawler selection aborted by user.")
+            return "aborted"
+
+        outcome = self._scan_for_brawler(
+            brawler, get_latest_state, self.MAX_SCANS, True,
+            runtime_control, stop_event)
+        if outcome == "failed":
+            print(f"WARNING: Brawler '{brawler}' was not found after {self.MAX_SCANS} "
+                  f"scroll attempts.")
+        return outcome

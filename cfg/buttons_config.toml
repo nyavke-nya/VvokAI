@@ -9,6 +9,10 @@ continue_or_equip = [700, 1000]
 idle_reconnect = [540, 630]
 brawlers_menu = [110, 490]
 select_brawler = [150, 950]
+# The search box in the brawler list's top bar, between the magnifier at
+# x=1447 and the word SEARCH at x=1594. Tapping here focuses it so the name
+# can be typed straight in, which is what replaced scrolling the list.
+brawler_search = [1550, 57]
 buffie_machine = [1700, 860]
 middle = [960, 540]
 middle_noodle = [960, 740]

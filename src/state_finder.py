@@ -160,7 +160,7 @@ def is_in_shop(image) -> bool:
 
 
 def is_in_brawler_selection(image) -> bool:
-    return is_template_in_region(image, states_path + 'brawler_menu_heart.png', region_data.get("brawler_menu_heart", [1470, 0, 430, 140]))
+    return is_template_in_region(image, states_path + 'brawler_menu_heart.png', region_data.get("brawler_menu_heart", [1250, 0, 650, 140]))
 
 
 def is_in_offer_popup(image) -> bool:

@@ -50,3 +50,11 @@ dataset_capture_min_speed = 220.0
 dataset_capture_states = "match"
 dataset_capture_min_confidence = 0.45
 dataset_capture_min_hits = 3
+
+# Whether to press Enter after typing a name into the brawler list's search
+# box. A box that filters as you type does not need it; a box that closes on
+# Enter throws the filter away and puts the whole list back, which looks
+# exactly like a search that did nothing. Set it to false if the log's
+# "After searching, the cards on screen read:" line keeps listing six
+# brawlers rather than the one that was asked for.
+brawler_search_press_enter = true

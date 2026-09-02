@@ -568,6 +568,70 @@ class WindowController:
             self.touch_move(int(cx), int(cy), pointer_id=self.PID_ATTACK)
         self.touch_up(int(end_x), int(end_y), pointer_id=self.PID_ATTACK)
 
+    def type_text(self, text):
+        """Type a string into whatever field the game has focused.
+
+        scrcpy hands the string to the device's input method in one message, so
+        this needs no on-screen keyboard, no per-character taps and no guessing
+        where the letters are. That is the whole reason searching the brawler
+        list beats scrolling it.
+
+        Returns False if the text never made it, so the caller can fall back to
+        something that does not depend on typing rather than carry on believing
+        a search box was filled in.
+        """
+        if not text:
+            return True
+        try:
+            self.scrcpy_client.control.text(str(text))
+            return True
+        except Exception as e:
+            print(f"Error while typing '{text}': {e}")
+            if self.reconnect_scrcpy():
+                try:
+                    self.scrcpy_client.control.text(str(text))
+                    return True
+                except Exception as e2:
+                    print(f"Retry after reconnect failed while typing '{text}': {e2}")
+        return False
+
+    def send_key(self, keycode, times=1):
+        """Press a hardware key, down and up, `times` in a row.
+
+        Both halves are sent explicitly: a keycode with only ACTION_DOWN leaves
+        the key held as far as Android is concerned, and the next one to arrive
+        behaves as a repeat rather than a fresh press.
+        """
+        try:
+            for _ in range(max(1, int(times))):
+                self.scrcpy_client.control.keycode(keycode, scrcpy.ACTION_DOWN)
+                self.scrcpy_client.control.keycode(keycode, scrcpy.ACTION_UP)
+            return True
+        except Exception as e:
+            print(f"Error while sending keycode {keycode}: {e}")
+            return False
+
+    def clear_text_field(self, presses=24):
+        """Backspace over anything already in the focused field.
+
+        Twenty-four covers the longest brawler name several times over, and a
+        backspace on an empty field does nothing - so this is cheap insurance
+        against a search box that kept the last query and would otherwise be
+        asked to find "jessiecolt".
+        """
+        return self.send_key(scrcpy.KEYCODE_DEL, times=presses)
+
+    def submit_text(self):
+        """Enter: commits the text and drops the keyboard.
+
+        The keyboard matters more than the commit. It covers the bottom of the
+        screen, which is where the button that confirms a brawler lives, so
+        leaving it up means the next tap lands on a key instead of the game.
+        Enter rather than Back because Back with no keyboard up would close the
+        menu itself.
+        """
+        return self.send_key(scrcpy.KEYCODE_ENTER)
+
     def close(self):
         try:
             self.debug_view.close()

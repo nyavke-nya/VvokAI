@@ -1,6 +1,13 @@
 [template_matching]
 powerpoint = [1000, 5, 80, 80]
-brawler_menu_heart = [1470, 0, 430, 140]
+# The pink heart in the brawler list's top bar. It used to sit at about
+# x=1600; the update that added the search box pushed it left to x=1347, out of
+# the old [1470, 0, 430, 140] box entirely - so the bot stopped recognising the
+# brawler list at all, and every selection ended in "the list never opened"
+# before a single swipe was tried. This box reaches back far enough to hold the
+# heart wherever the bar puts it, and stays inside the top bar, where nothing
+# else on any screen is a pink heart.
+brawler_menu_heart = [1250, 0, 650, 140]
 close_popup = [1740, 140, 140, 100]
 lobby_menu = [1790, 20, 75, 65]
 brawl_pass_house = [1750, 0, 169, 100]

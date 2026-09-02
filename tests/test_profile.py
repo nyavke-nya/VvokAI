@@ -391,20 +391,24 @@ report.check("the flag exists before any match",
              "self.brawler_needs_selecting = False\n        self.ping_when_stuck" in stage_src, True)
 
 
-report.section("the brawler list is dragged beside the cards, not across them")
-# 1700 was on the cards - their right edge is at about x=1696 - so every swipe
-# started on a brawler, and a drag the game read as a tap opened whichever one
-# it landed on. Colour variation over the band the swipes travel: 85 at x=1700,
-# 3 from x=1760 outward. Cards, then plain background.
+report.section("the brawler list is dragged between the cards, not across them")
+# The list scrolls sideways now, so the swipe follows a row rather than a
+# column - and the thing to stay off is unchanged: a drag that starts on a card
+# and is read as a tap opens that brawler's page. Measured off the new menu,
+# the three rows of cards fill y 190-428, 484-697 and 777-1014, so the only
+# bands clear right across the screen are the two gaps between them.
 lobby_src = read_source("lobby_automation.py")
 import re as _re3
-column = int(_re3.search(r"SCROLL_COLUMN = (\d+)", lobby_src).group(1))
-report.at_least("clear of the cards", column, 1760)
-report.at_most("and not on the screen edge, where Android takes the gesture", column, 1880)
-report.check("no swipe still uses a hardcoded column",
-             "int(1700 * wr)" in lobby_src, False)
-report.check("every swipe uses the constant",
-             lobby_src.count("self.SCROLL_COLUMN * wr"), 3)
+row = int(_re3.search(r"SWIPE_ROW = (\d+)", lobby_src).group(1))
+report.check("the swipe runs down a gap between two rows of cards",
+             any(low < row < high for low, high in [(428, 484), (697, 777)]), True)
+report.check("no swipe still uses the old column",
+             "SCROLL_COLUMN" in lobby_src, False)
+near = int(_re3.search(r"SWIPE_NEAR_X = (\d+)", lobby_src).group(1))
+far = int(_re3.search(r"SWIPE_FAR_X = (\d+)", lobby_src).group(1))
+report.check("and drags a useful distance", far - near >= 800, True)
+report.at_least("clear of the offer banner down the left edge", near, 300)
+report.at_most("and of the right edge, where Android takes the gesture", far, 1750)
 
 
 report.section("brawler ranges are corrected for the real size of a tile")
@@ -565,11 +569,92 @@ report.check("a list that never opens is reported, not scrolled",
 report.check("after retrying the tap", len(_taps), 3)
 
 _src = read_source("lobby_automation.py")
-_body = _src[_src.index("def select_brawler("):_src.index("MAX_SCANS)")]
+_body = _src[_src.index("def select_brawler("):]
 report.check("select_brawler no longer taps and hopes",
              "time.sleep(0.5)" in _body, False)
-report.check("and refuses to scroll a list that is not there",
-             _body.index("_open_brawler_menu") < _body.index("_scroll_to_list_top"), True)
+report.check("and refuses to search a list that is not there",
+             _body.index("_open_brawler_menu") < _body.index("_search_for_brawler"), True)
+report.check("or to scroll one",
+             _body.index("_open_brawler_menu") < _body.index("_scroll_to_list_start"), True)
+
+
+report.section("the brawler is searched for before the list is scrolled")
+# The update that turned the list sideways also gave it a search box. Typing
+# the name leaves one card on screen, which beats up to forty screenfuls of OCR
+# - so scrolling is the fallback for typing that never reached the game, not
+# the normal route.
+report.check("search comes first",
+             _body.index("_search_for_brawler") < _body.index("_scroll_to_list_start"), True)
+report.check("a search that found nothing is cleared before scrolling",
+             _body.index("_clear_search") < _body.index("_scroll_to_list_start"), True)
+report.check("the short post-search scan does not swipe",
+             "self.SEARCH_SCANS, False" in _body, True)
+report.check("and the fallback scan does",
+             "self.MAX_SCANS, True" in _body, True)
+
+_search_body = _src[_src.index("def _search_for_brawler("):_src.index("def _clear_search(")]
+report.check("the box is cleared before a name is typed into it",
+             _search_body.index("clear_text_field") < _search_body.index("type_text"), True)
+report.check("and the keyboard is dropped afterwards, off the confirm button",
+             _search_body.index("type_text") < _search_body.index("submit_text"), True)
+report.check("typing that never landed falls back instead of pretending",
+             "return \"unavailable\"" in _search_body, True)
+
+# The search box is only useful if the tap lands in it: the bar runs from about
+# x=1410 to x=1730 across y 25-90 on a 1920x1080 screen.
+_sx, _sy = _re3.search(r"SEARCH_FIELD = \((\d+), (\d+)\)", _src).groups()
+report.check("the search tap lands inside the box",
+             1410 < int(_sx) < 1730 and 25 < int(_sy) < 90, True)
+_buttons = load_toml_as_dict("cfg/buttons_config.toml")
+report.check("and the config agrees with it",
+             list(_buttons.get("brawler_search", [])), [int(_sx), int(_sy)])
+
+
+report.section("the word in the search box is not mistaken for the card")
+# Searching puts the query on screen twice - on the card and in the box that
+# is showing it back. Tapping the box instead of the card would then press
+# confirm on whichever brawler was already selected, so the bot would search
+# for one brawler and walk into a match with another.
+_lobby_obj = object.__new__(_Lobby2)
+_lobby_obj.window_controller = _Clicker()
+_lobby_obj.ocr_scale_down_factor = 1.0
+
+
+def _hits(**names):
+    return {name: {"center": (100.0, y)} for name, y in names.items()}
+
+
+_seen = _lobby_obj._cards_only(_hits(jessie=57, rarity=61, search=59))
+report.check("nothing in the top bar counts as a card", _seen, {})
+_seen = _lobby_obj._cards_only(_hits(jessie=378))
+report.check("the card itself does", sorted(_seen), ["jessie"])
+_both = _lobby_obj._cards_only(_hits(shelly=378, jessie=57))
+report.check("with both on screen only the card survives", sorted(_both), ["shelly"])
+report.check("and a keyboard suggestion along the bottom does not",
+             _lobby_obj._cards_only(_hits(jessie=1050)), {})
+# Half-size OCR halves every coordinate with it, so the cut has to scale too.
+_lobby_obj.ocr_scale_down_factor = 0.5
+report.check("the cut follows the OCR scale down",
+             sorted(_lobby_obj._cards_only(_hits(jessie=189, rarity=28))), ["jessie"])
+_lobby_obj.ocr_scale_down_factor = 1.0
+_scan_body = _src[_src.index("def _scan_for_brawler("):_src.index("def select_brawler(")]
+report.check("the scan matches against cards, not the whole screen",
+             "self._match_name(brawler, cards)" in _scan_body, True)
+report.check("and taps the card it matched",
+             "_tap_and_confirm(brawler, matched_key, cards" in _scan_body, True)
+
+
+report.section("the brawler list is still recognised after the search box moved in")
+# The heart the state check looks for used to sit at about x=1600. The search
+# box pushed it left to x=1347, out of the old [1470, 0, 430, 140] box - so
+# is_in_brawler_selection went false, and every selection died at "the list
+# never opened" without a single swipe being tried.
+_heart = load_toml_as_dict("cfg/lobby_config.toml")["template_matching"]["brawler_menu_heart"]
+_hx, _hy, _hw, _hh = _heart
+report.check("the heart's new home is inside the search box", _hx <= 1306 and _hx + _hw >= 1388, True)
+report.check("and its old one still is, for a game yet to update",
+             _hx <= 1560 and _hx + _hw >= 1640, True)
+report.at_most("without reaching across the whole bar", _hw, 700)
 
 
 sys.exit(report.finish())
