@@ -189,7 +189,17 @@ TUNING = {
         "idle_restart_cooldown",
         "team_invite",
     ),
-    "cfg/lobby_config.toml": (),
+    "cfg/lobby_config.toml": (
+        # Where the pink heart that identifies the brawler list is looked for.
+        # The update that added the search box pushed the heart left, out of
+        # the box entirely, and the bot stopped recognising the list at all -
+        # every selection ended in "the list never opened". Correcting it in
+        # the shipped file is not enough on its own: cfg/ is protected as a
+        # whole, so an install that updates rather than reinstalls keeps its
+        # own copy, and this is a measurement of where the game draws a thing
+        # rather than anything anyone chose. So it is listed, and overwritten.
+        "brawler_menu_heart",
+    ),
     # Every value in the dodge config is calibration; there is nothing personal
     # in the file. Listing no keys means "add anything new, change nothing" -
     # deliberately conservative, because anyone who has tuned their dodging has

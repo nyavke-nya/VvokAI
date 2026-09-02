@@ -73,6 +73,21 @@ if errorlevel 1 (
 if exist "build\launcher" rmdir /s /q "build\launcher"
 mkdir "build\launcher" >nul 2>&1
 
+set "VERSIONARG="
+
+:: A version resource: company, description, product name, version. An exe
+:: with none of that is one of the things Defender's machine-learning models
+:: weigh, and an unsigned onefile that downloads Python and starts other
+:: processes is already most of the rest of that shape. It does not make the
+:: file trusted - only a signature does that - it removes a free reason to
+:: distrust it, and tells the properties dialog what the file is.
+%BUILD_PY% tools\make_version_file.py "%~dp0..\build\launcher\version_info.txt"
+if exist "%~dp0..\build\launcher\version_info.txt" (
+    set "VERSIONARG=--version-file=%~dp0..\build\launcher\version_info.txt"
+) else (
+    echo [WARN] The version resource could not be written; building without it.
+)
+
 :: The mark from the corner of the panel, as a Windows icon. It is a styled
 
 :: letter in CSS there and no use to Windows, so tools/make_icon.py redraws it
@@ -121,6 +136,7 @@ echo.
     --workpath build\launcher ^
     --specpath build\launcher ^
     !ICONARG! ^
+    !VERSIONARG! ^
     --exclude-module numpy ^
     --exclude-module torch ^
     --exclude-module cv2 ^
@@ -159,6 +175,16 @@ echo   Put it in an empty folder and run it. It will fetch Python,
 echo   the project and the dependencies on first start, then open
 echo   the application window. Later starts go straight to the
 echo   window, checking for updates on the way.
+echo.
+echo   If Defender quarantines it: that detection is Bearfoos.B^!ml or
+echo   one like it, an ML guess rather than a match on anything known,
+echo   and an unsigned onefile that downloads Python and starts other
+echo   processes is the exact shape it guesses on. Send the file to
+echo   Microsoft as a false positive - it is free, takes a day or two,
+echo   and clears it for everyone rather than one machine:
+echo     https://www.microsoft.com/en-us/wdsi/filesubmission
+echo   An exclusion only ever fixes the machine it is added on, and a
+echo   signing certificate is the only thing that stops it recurring.
 echo.
 pause
 exit /b 0
