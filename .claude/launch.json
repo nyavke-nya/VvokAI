@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "vvokai-panel",
+      "runtimeExecutable": "venv/Scripts/python.exe",
+      "runtimeArgs": ["-u", "tools/panel_only.py"],
+      "port": 5051
+    }
+  ]
+}

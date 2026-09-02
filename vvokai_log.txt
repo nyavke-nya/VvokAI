@@ -1,0 +1,13 @@
+VvokAI log - 2026-09-02 23:19:21
+Log: D:\windw\PylaAI-main\vvokai_log.txt
+Discord bot token is not configured. Skipping Discord bot startup.
+2026-09-02 23:19:27,672 INFO [werkzeug] Press CTRL+C to quit
+2026-09-02 23:19:27,677 INFO [werkzeug] 127.0.0.1 - - [02/Sep/2026 23:19:27] "GET / HTTP/1.1" 200 -
+2026-09-02 23:19:28,000 INFO [werkzeug] 127.0.0.1 - - [02/Sep/2026 23:19:28] "GET / HTTP/1.1" 200 -
+2026-09-02 23:19:28,079 INFO [werkzeug] 127.0.0.1 - - [02/Sep/2026 23:19:28] "GET /static/css/tailwind.css HTTP/1.1" 200 -
+2026-09-02 23:19:28,081 INFO [werkzeug] 127.0.0.1 - - [02/Sep/2026 23:19:28] "GET /static/js/vvok-fx.js HTTP/1.1" 200 -
+2026-09-02 23:19:28,083 INFO [werkzeug] 127.0.0.1 - - [02/Sep/2026 23:19:28] "GET /static/css/vvok.css HTTP/1.1" 200 -
+2026-09-02 23:19:28,083 INFO [werkzeug] 127.0.0.1 - - [02/Sep/2026 23:19:28] "GET /static/js/app.js HTTP/1.1" 200 -
+2026-09-02 23:19:28,084 INFO [werkzeug] 127.0.0.1 - - [02/Sep/2026 23:19:28] "GET /static/js/i18n.js HTTP/1.1" 200 -
+2026-09-02 23:19:28,521 INFO [werkzeug] 127.0.0.1 - - [02/Sep/2026 23:19:28] "GET /api/bootstrap HTTP/1.1" 200 -
+2026-09-02 23:19:28,538 INFO [werkzeug] 127.0.0.1 - - [02/Sep/2026 23:19:28] "GET /api/player-info?tag=%23299JJ2GJ8 HTTP/1.1" 200 -
