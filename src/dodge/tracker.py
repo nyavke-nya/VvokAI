@@ -282,6 +282,15 @@ class ProjectileTracker:
         # Smoothed gap between frames, i.e. what waiting for one more sample
         # costs. Zero until two frames have been seen.
         self._frame_interval = 0.0
+        # The divisor update() actually reduced this frame by. Set every frame;
+        # kept here so _estimate_camera_shift can convert a full-resolution
+        # limit into the reduced space without re-deriving it - and, crucially,
+        # without dividing by config.downscale, which is 0 in the auto mode and
+        # made the shift check raise ZeroDivisionError every frame, taking the
+        # whole tracker (and with it all dodging and aim leading) down for the
+        # session. Defaults to 1 so a call before the first update cannot divide
+        # by zero either.
+        self._step = 1
         self._patches = None
         self._patch_shape = None
         self._static_mask = None
@@ -406,6 +415,9 @@ class ProjectileTracker:
             # detector's effective resolution the moment capture_max_width is
             # lowered to give the emulator's encoder some breathing room.
             step = max(1, int(round(width / max(config.target_width, 1))))
+        # Remembered for _estimate_camera_shift, which must divide by the divisor
+        # actually used, not by config.downscale (0 in auto mode).
+        self._step = max(1, step)
         # INTER_LINEAR rather than stride slicing: 3x faster here, and the
         # averaging keeps small bright projectiles alive instead of letting
         # them fall between sample points.
@@ -570,7 +582,7 @@ class ProjectileTracker:
         dx = _median(xs) * factor
         dy = _median(ys) * factor
 
-        limit = self.config.camera_max_shift / self.config.downscale
+        limit = self.config.camera_max_shift / self._step
         if abs(dx) > limit or abs(dy) > limit:
             return (0.0, 0.0), False
 

@@ -169,9 +169,50 @@ def check_urgency(report):
                  urgency(distance=270, speed=800, interval=1 / 8.0, slack=0.0), True)
 
 
+def check_auto_downscale(report):
+    """The 'auto' downscale (0) must not divide the camera check by zero.
+
+    vision.downscale defaults to 0, documented as "auto": update() then picks a
+    real divisor from the frame width. _estimate_camera_shift used to divide the
+    shift limit by config.downscale directly, so in auto mode it raised
+    ZeroDivisionError on the second frame - which the service caught and logged
+    as a per-frame "tracker error", leaving the tracker emitting nothing and
+    dodging (and aim leading) dead for the whole session. Only the shipped
+    config's downscale = 3 hid it.
+    """
+    report.section("auto downscale must not kill the tracker every frame")
+    config = DodgeConfig(load_toml_as_dict("cfg/dodge_config.toml"), 1.0, 54.0)
+    config.downscale = 0            # the documented "auto" value
+    config.camera_enabled = True
+    tracker = ProjectileTracker(config)
+
+    report.check("a real divisor is in place before the first frame",
+                 tracker._step >= 1, True)
+
+    rng = np.random.default_rng(11)
+    frame = rng.integers(0, 255, (H, W, 3), dtype=np.uint8).astype(np.uint8)
+    ctx = FrameContext()
+
+    raised = None
+    try:
+        tracker.update(frame, ctx, stamp=0.0)
+        # A second frame with a small shift: the camera patches correlate, so
+        # the divide the bug lived on is actually reached.
+        shifted = np.roll(frame, 2, axis=1)
+        tracker.update(shifted, ctx, stamp=0.03)
+    except ZeroDivisionError as exc:
+        raised = exc
+
+    report.check("two frames at downscale=0 do not raise ZeroDivisionError",
+                 raised is None, True)
+    report.check("and the effective divisor is what the frame width implies",
+                 tracker._step, max(1, round(W / max(config.target_width, 1))))
+
+
 def main():
     report = Failures("tracker association")
     check_urgency(report)
+    check_auto_downscale(report)
 
     report.section("a shot must be followed as ONE track, at every speed and rate")
     for speed in (700, 1500, 2600):
