@@ -761,6 +761,11 @@ report.check("at a threshold the restyled icons can still clear",
 # the match sweeps a range of sizes rather than trusting one fixed scale.
 report.check("and it searches a range of icon sizes, not one",
              "_matches_at_any_scale" in _isb and "BRAWLER_ICON_SCALES" in _isb, True)
+# The size sweep is looser than a fixed match and found a heart-ish blob in the
+# lobby's own top bar, so the bot thought the list was open in the lobby and
+# hammered the friend-slot plus. The lobby is ruled out before the sweep runs.
+report.check("the lobby is ruled out before the icon sweep, not after",
+             _isb.index("is_in_lobby(image)") < _isb.index("_matches_at_any_scale"), True)
 import re as _re_scales
 _scale_src = _sf[_sf.index("BRAWLER_ICON_SCALES = ("):]
 _scales = [float(x) for x in _re_scales.findall(r"[0-9]*\.[0-9]+", _scale_src[:_scale_src.index(")")])]
