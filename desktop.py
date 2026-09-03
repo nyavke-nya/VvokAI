@@ -105,10 +105,28 @@ def wait_for_server(port, timeout=SERVER_TIMEOUT):
     return False
 
 
+# Addresses that are the panel itself. Everything else a link points at
+# belongs in the user's own browser, not in this window.
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def is_external_link(scheme, host):
+    """Whether this address should be handed to the system browser.
+
+    Split out from the Qt classes below so the rule can be read and tested on
+    its own. Only http and https: a link the panel makes to a blob, a data URL
+    or a file of its own is not somebody choosing to leave, and handing those
+    to the operating system does nothing useful and occasionally something
+    strange.
+    """
+    return scheme in ("http", "https") and host not in LOCAL_HOSTS
+
+
 def main():
     from PySide6.QtCore import QUrl, Qt
-    from PySide6.QtGui import QIcon
+    from PySide6.QtGui import QDesktopServices, QIcon
     from PySide6.QtWidgets import QApplication, QMainWindow, QLabel
+    from PySide6.QtWebEngineCore import QWebEnginePage
     from PySide6.QtWebEngineWidgets import QWebEngineView
 
     from utils import resolve_project_path
@@ -146,7 +164,47 @@ def main():
                        f"The reason is in {log_path or LOG_NAME}.")
         return application.exec()
 
-    view = QWebEngineView()
+    # The links out of the panel - Telegram, the donation page - carry
+    # target="_blank", which asks Chromium for a second window. A plain
+    # QWebEngineView cannot make one and returns nothing, so clicking them did
+    # precisely nothing: no window, no browser, not even an error. In a browser
+    # tab the same markup works, which is why it went unnoticed.
+    #
+    # Both halves below exist because a link can leave this window two ways,
+    # and only one of them goes through createWindow.
+
+    class ExternalLinkPage(QWebEnginePage):
+        """Send anything that is not the panel to the system browser."""
+
+        def acceptNavigationRequest(self, url, kind, is_main_frame):
+            if is_main_frame and is_external_link(url.scheme(), url.host()):
+                QDesktopServices.openUrl(url)
+                # Refused on purpose. Loading it here would replace the panel
+                # with a web page and leave no way back - there is no address
+                # bar and no back button in this window.
+                return False
+            return super().acceptNavigationRequest(url, kind, is_main_frame)
+
+    class PanelView(QWebEngineView):
+        """A view that can be asked for a new window and answer sensibly."""
+
+        def createWindow(self, _kind):
+            # createWindow is not told where the link goes, so this hands back
+            # a throwaway view for the sole purpose of being told a moment
+            # later, on urlChanged. It is never shown and never loads anything.
+            catcher = QWebEngineView(self)
+            catcher.hide()
+
+            def opened(url):
+                QDesktopServices.openUrl(url)
+                catcher.stop()
+                catcher.deleteLater()
+
+            catcher.urlChanged.connect(opened)
+            return catcher
+
+    view = PanelView()
+    view.setPage(ExternalLinkPage(view))
     view.setUrl(QUrl(f"http://127.0.0.1:{port}/"))
     window.setCentralWidget(view)
     return application.exec()

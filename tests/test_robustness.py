@@ -9,7 +9,7 @@ import logging
 import os
 import sys
 
-from _harness import Failures, read_source
+from _harness import REPO, Failures, read_source
 
 sys.path.insert(0, ".")
 import webui.app as webui_app  # noqa: E402
@@ -531,6 +531,38 @@ report.check("installing it does not by itself switch it on",
 # people who set the bot up months ago rather than only new downloads.
 report.check("the setup fingerprint covers the installer itself",
              "tools/installer.py" in _inst_src and "def fingerprint" in _inst_src, True)
+
+
+report.section("a link out of the panel opens somewhere")
+# In a browser tab, target="_blank" opens a tab. In the desktop build the page
+# lives in a QWebEngineView, which gets asked for a second window and has no
+# way to make one - so it returns nothing and the click does literally nothing.
+# No window, no browser, no error to go looking for. Both links in the sidebar,
+# Telegram and the donation page, were dead in the exe and fine on the site,
+# which is exactly the sort of thing nobody reports for months.
+sys.path.insert(0, REPO)
+import desktop as _desktop  # noqa: E402
+
+report.check("an outside address is handed to the browser",
+             _desktop.is_external_link("https", "www.donationalerts.com"), True)
+report.check("and so is the Telegram one",
+             _desktop.is_external_link("https", "t.me"), True)
+report.check("the panel's own pages stay in the window",
+             [_desktop.is_external_link("http", host)
+              for host in ("127.0.0.1", "localhost", "::1")],
+             [False, False, False])
+# The panel builds these itself, for screenshots and downloads. Handing one to
+# the operating system is at best useless.
+report.check("a blob or data URL is not an address to leave by",
+             [_desktop.is_external_link(scheme, "")
+              for scheme in ("blob", "data", "file", "about")],
+             [False, False, False, False])
+
+_desktop_src = read_source("desktop.py")
+report.check("the view can answer a request for a new window",
+             "def createWindow" in _desktop_src, True)
+report.check("and the panel refuses to navigate away from itself",
+             "acceptNavigationRequest" in _desktop_src, True)
 
 
 sys.exit(report.finish())
