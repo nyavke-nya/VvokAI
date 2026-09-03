@@ -279,6 +279,56 @@ class LobbyAutomation:
     # older config will not have the key at all.
     SEARCH_FIELD = (1550, 57)
 
+    # The back arrow in the list's top bar, on a 1920x1080 screen. The same
+    # corner the shop's is in, which is why quit_shop uses these numbers too.
+    LIST_BACK_BUTTON = (100, 60)
+
+    def _list_is_open(self, get_latest_state=None):
+        """Is the brawler list on screen, as of the newest frame there is?
+
+        The state the checker publishes is enough on its own when it says yes.
+        The frame is consulted as well because the checker can be a moment
+        behind, and every caller of this is about to press something.
+        """
+        if get_latest_state is not None and get_latest_state() == "brawler_selection":
+            return True
+        frame, _ = self.window_controller.get_latest_frame()
+        if frame is None:
+            return False
+        try:
+            return bool(is_in_brawler_selection(frame))
+        except Exception:
+            return False
+
+    def _leave_brawler_menu(self):
+        """Back out of the list, if the list is what is on screen.
+
+        An attempt that failed used to be left exactly where it stopped, which
+        is inside the open list. The next attempt then starts by tapping the
+        brawlers button again - and on this screen that button's spot is the
+        glory panel down the left, so the bot opened that instead and got no
+        further. That is what people were reporting as "auto select does not
+        select": not one bad tap, but a second attempt beginning where the
+        first one gave up.
+
+        Guarded on the frame, because the very same tap in the lobby lands on
+        the player's own profile card and opens that instead.
+        """
+        if not self._list_is_open():
+            return
+        x, y = self.LIST_BACK_BUTTON
+        self.window_controller.click(x * self.window_controller.width_ratio,
+                                     y * self.window_controller.height_ratio)
+        print("Left the brawler list open-handed, so the next attempt starts "
+              "from the lobby.")
+        time.sleep(1.0)
+
+    def _done(self, outcome):
+        """Hand back an outcome, leaving the game where the next try expects it."""
+        if outcome in ("failed", "error"):
+            self._leave_brawler_menu()
+        return outcome
+
     def _search_field(self):
         buttons = load_toml_as_dict("cfg/buttons_config.toml")
         spot = buttons.get("brawler_search") or self.SEARCH_FIELD
@@ -399,6 +449,18 @@ class LobbyAutomation:
         for attempt in range(self.MENU_OPEN_ATTEMPTS):
             if self._should_interrupt(runtime_control, stop_event):
                 return "aborted"
+
+            # Look before pressing. This is the tap that was doing the damage:
+            # it fired unconditionally, so anything that called selection twice
+            # in a row - a retry after a failure, a queue rotating - tapped the
+            # brawlers button while the list from the first attempt was still
+            # open. On this screen those coordinates are the glory panel, so
+            # that is what opened, and selection never got started.
+            if self._list_is_open(get_latest_state):
+                print("The brawler list is already open, so the button is not "
+                      "tapped again.")
+                return "open"
+
             self.window_controller.click(x, y, already_include_ratio=False)
             tapped_at = time.time()
             deadline = tapped_at + self.MENU_OPEN_TIMEOUT
@@ -747,7 +809,7 @@ class LobbyAutomation:
                 brawler, get_latest_state, self.SEARCH_SCANS, False,
                 runtime_control, stop_event)
             if outcome != "failed":
-                return outcome
+                return self._done(outcome)
             print(f"Searching for '{brawler}' turned up nothing. Falling back to "
                   f"scrolling the whole list.")
             if not self._save_debug_frame("search_missed"):
@@ -769,4 +831,4 @@ class LobbyAutomation:
         if outcome == "failed":
             print(f"WARNING: Brawler '{brawler}' was not found after {self.MAX_SCANS} "
                   f"scroll attempts.")
-        return outcome
+        return self._done(outcome)

@@ -581,8 +581,11 @@ def _open(states, frame_age=0.0, stale_limit=1.0):
     return lobby._open_brawler_menu(latest)
 
 
-report.check("it stops as soon as the list is up", _open(["brawler_selection"]), "open")
-report.check("one tap was enough", len(_taps), 1)
+report.check("a list already open is not tapped into",
+             _open(["brawler_selection"]), "open")
+report.check("so the button is not pressed at all", len(_taps), 0)
+report.check("a tap from the lobby opens it", _open(["lobby", "brawler_selection"]), "open")
+report.check("with one press", len(_taps), 1)
 report.check("a slow animation is waited out",
              _open(["lobby", "lobby", "brawler_selection"]), "open")
 report.check("still one tap", len(_taps), 1)
@@ -604,7 +607,56 @@ report.check("while a frame from after the tap still does",
              _open(["lobby"], frame_age=0.0), "closed")
 report.check("and that one is retried", len(_taps), 3)
 
+
+report.section("a failed attempt does not leave the next one tapping the glory panel")
+# This is the bug people kept reporting as "auto select just opens the list".
+# _open_brawler_menu tapped the brawlers button first thing, every time. When a
+# selection failed it left the list open, and the next attempt - a retry, or
+# the next brawler in a queue - tapped that same spot again. On the sideways
+# layout those coordinates are the glory panel down the left, so instead of
+# picking a brawler the bot opened that and got nowhere.
+
+
+def _fresh_lobby(state="lobby"):
+    _taps.clear()
+    _frame_age[0] = 0.0
+    _seen[0] = state
+    lobby = object.__new__(_Lobby2)
+    lobby.window_controller = _Clicker()
+    lobby.verbose_debug = False
+    return lobby
+
+
+# The button is only pressed when the list is not already up.
+_lobby = _fresh_lobby("brawler_selection")
+_lobby.MENU_OPEN_TIMEOUT = 0.5
+_lobby.MENU_OPEN_ATTEMPTS = 3
+_lobby.MENU_OPEN_STALE_LIMIT = 1.0
+report.check("an already-open list short-circuits to open",
+             _lobby._open_brawler_menu(lambda: "brawler_selection"), "open")
+report.check("without touching the button", len(_taps), 0)
+
+# A failed outcome backs out of the list; a good one is left alone.
+_lobby = _fresh_lobby("brawler_selection")
+report.check("a failed attempt is walked back to the lobby",
+             _lobby._done("failed"), "failed")
+report.check("by tapping the list's back arrow once", len(_taps), 1)
+report.check("at the corner, not the brawlers button",
+             _taps[0], (100 * 1.0, 60 * 1.0))
+
+_lobby = _fresh_lobby("brawler_selection")
+report.check("a success is not walked back", _lobby._done("success"), "success")
+report.check("nothing is tapped on the way out", len(_taps), 0)
+
+# And if somehow the frame says lobby already, backing out does nothing rather
+# than tapping the player's own profile card.
+_lobby = _fresh_lobby("lobby")
+_lobby._leave_brawler_menu()
+report.check("the back-out is a no-op when the list is not open", len(_taps), 0)
+
 _src = read_source("lobby_automation.py")
+report.check("the button tap is guarded on the list not already being open",
+             "_list_is_open(get_latest_state)" in _src, True)
 _body = _src[_src.index("def select_brawler("):]
 report.check("select_brawler no longer taps and hopes",
              "time.sleep(0.5)" in _body, False)
