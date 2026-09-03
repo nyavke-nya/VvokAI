@@ -169,6 +169,11 @@ TUNING = {
         "team_invite_green_minimum",
         "team_invite_mute_x",
         "team_invite_mute_y",
+        # emulator_frame_lag is deliberately NOT here. It is a property of each
+        # person's emulator, not a game measurement, so overwriting it every
+        # update would wipe the 2.0 a LDPlayer user set back to the shipped
+        # default. It still REACHES them: a key the file has never had is added
+        # as the shipped value, so it arrives once as 0.6 and is theirs to keep.
         # stop_at and resume_at are deliberately absent.
         # When somebody may run their bot is their decision, not calibration,
         # and pushing this machine's hours onto theirs would be rude. They

@@ -572,6 +572,7 @@ def _open(states, frame_age=0.0, stale_limit=1.0):
     lobby.MENU_OPEN_ATTEMPTS = 3
     lobby.MENU_OPEN_STALE_LIMIT = stale_limit
     lobby.verbose_debug = False
+    lobby.emulator_frame_lag = 0.0
     seq = list(states)
 
     def latest():
@@ -624,6 +625,7 @@ def _fresh_lobby(state="lobby"):
     lobby = object.__new__(_Lobby2)
     lobby.window_controller = _Clicker()
     lobby.verbose_debug = False
+    lobby.emulator_frame_lag = 0.0
     return lobby
 
 

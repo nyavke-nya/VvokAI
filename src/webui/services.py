@@ -133,6 +133,7 @@ class WebDataService:
         "seconds_to_hold_attack_after_reaching_max": ("float", 1.5),
         "idle_pixels_minimum": ("float", 75000.0),
         "decline_team_invites": ("bool", True),
+        "emulator_frame_lag": ("float", 0.6),
         "team_invite_green_minimum": ("float", 3500.0),
         "super_pixels_minimum": ("float", 1800.0),
         "gadget_pixels_minimum": ("float", 1300.0),

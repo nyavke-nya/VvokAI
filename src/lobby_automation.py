@@ -25,6 +25,18 @@ class LobbyAutomation:
         self.ocr_scale_up_factor = 1 / self.ocr_scale_down_factor
         self.press_enter_after_search = config_bool(
             bot_config.get("brawler_search_press_enter"), True)
+        # How long the emulator's video pipeline lags behind the game, in
+        # seconds. Frames are stamped when they ARRIVE here, not when the device
+        # drew them, so on a laggy emulator a frame still showing the lobby can
+        # arrive AFTER the brawlers button was tapped and look, by its stamp,
+        # like a fresh post-tap frame. The menu-open check then reads old
+        # content, concludes the list never opened, and taps again - onto the
+        # menu that did open, landing on the glory panel. MuMu is quick enough
+        # that this never shows; LDPlayer and MemU are not. Waiting this long
+        # after a tap before trusting what is on screen lets the real frame
+        # arrive first. Default 0.6s helps a little everywhere and costs a rare
+        # operation almost nothing; raise it toward 2.0 on a slow emulator.
+        self.emulator_frame_lag = max(0.0, float(bot_config.get("emulator_frame_lag", 0.6)))
         self.all_brawlers_names = load_all_brawlers_names()
         self.window_controller = window_controller
         self.verbose_debug = config_bool(load_toml_as_dict("cfg/debug_settings.toml").get('verbose_debug'), False)
@@ -353,7 +365,9 @@ class LobbyAutomation:
         # The box has to take focus before anything typed can land in it. No
         # keyboard slides up over the game - the box is a plain text line that
         # takes hardware keys - so this waits on the tap, not on an animation.
-        if self._sleep_interruptible(0.8, runtime_control, stop_event):
+        # The emulator lag is added on top: on a slow pipeline the tap itself
+        # lands late, and typing into an unfocused box loses the query.
+        if self._sleep_interruptible(0.8 + self.emulator_frame_lag, runtime_control, stop_event):
             return "aborted"
 
         self.window_controller.clear_text_field()
@@ -371,7 +385,9 @@ class LobbyAutomation:
         # in bot_config rather than a guess baked into the code.
         if self.press_enter_after_search:
             self.window_controller.submit_text()
-        if self._sleep_interruptible(1.2, runtime_control, stop_event):
+        # The scan that follows reads the screen straight away, so the filtered
+        # list has to be showing by the time this returns - emulator lag and all.
+        if self._sleep_interruptible(1.2 + self.emulator_frame_lag, runtime_control, stop_event):
             return "aborted"
         return "searched"
 
@@ -463,7 +479,12 @@ class LobbyAutomation:
 
             self.window_controller.click(x, y, already_include_ratio=False)
             tapped_at = time.time()
-            deadline = tapped_at + self.MENU_OPEN_TIMEOUT
+            # Let the emulator's frame pipeline catch up before believing
+            # anything on screen, or a lagged lobby frame reads as "the list
+            # did not open" and earns a wrong second tap (see emulator_frame_lag).
+            if self._sleep_interruptible(self.emulator_frame_lag, runtime_control, stop_event):
+                return "aborted"
+            deadline = time.time() + self.MENU_OPEN_TIMEOUT
             while True:
                 if self._should_interrupt(runtime_control, stop_event):
                     return "aborted"
