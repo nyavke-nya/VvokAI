@@ -58,15 +58,3 @@ dataset_capture_min_hits = 3
 # "After searching, the cards on screen read:" line keeps listing six
 # brawlers rather than the one that was asked for.
 brawler_search_press_enter = true
-
-# How far behind the game the emulator's video feed runs, in seconds. Frames
-# are timestamped when they arrive here, not when the device drew them, so on a
-# laggy emulator a frame still showing the lobby can arrive just after the
-# brawlers button is tapped and pass for a fresh post-tap frame - the bot then
-# reads old content, thinks the list never opened, and taps again onto the menu
-# that did open (landing on the glory panel). This is why selection works on
-# MuMu, which is quick, and fails on LDPlayer and MemU, which lag. The bot
-# waits this long after a tap before trusting the screen. Raise it toward 2.0
-# if selection still opens the wrong thing on a slow emulator; lower it toward
-# 0 on a fast one to shave a second off each pick.
-emulator_frame_lag = 0.6

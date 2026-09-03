@@ -572,7 +572,7 @@ def _open(states, frame_age=0.0, stale_limit=1.0):
     lobby.MENU_OPEN_ATTEMPTS = 3
     lobby.MENU_OPEN_STALE_LIMIT = stale_limit
     lobby.verbose_debug = False
-    lobby.emulator_frame_lag = 0.0
+    lobby.MENU_READ_DELAY = 0.0
     seq = list(states)
 
     def latest():
@@ -625,7 +625,7 @@ def _fresh_lobby(state="lobby"):
     lobby = object.__new__(_Lobby2)
     lobby.window_controller = _Clicker()
     lobby.verbose_debug = False
-    lobby.emulator_frame_lag = 0.0
+    lobby.MENU_READ_DELAY = 0.0
     return lobby
 
 
@@ -756,6 +756,16 @@ report.check("and the list is recognised by either icon, not the heart alone",
              "brawler_menu_task.png" in _isb and "brawler_menu_heart.png" in _isb, True)
 report.check("at a threshold the restyled icons can still clear",
              "0.68" in _isb, True)
+# The icon is drawn a different SIZE on different emulators (this is what made
+# selection work on MuMu and fail on LDPlayer/MemU with the same templates), so
+# the match sweeps a range of sizes rather than trusting one fixed scale.
+report.check("and it searches a range of icon sizes, not one",
+             "_matches_at_any_scale" in _isb and "BRAWLER_ICON_SCALES" in _isb, True)
+import re as _re_scales
+_scale_src = _sf[_sf.index("BRAWLER_ICON_SCALES = ("):]
+_scales = [float(x) for x in _re_scales.findall(r"[0-9]*\.[0-9]+", _scale_src[:_scale_src.index(")")])]
+report.check("the size sweep spans at least below and above 1.0",
+             min(_scales) < 0.8 and max(_scales) > 1.3, True)
 
 
 sys.exit(report.finish())

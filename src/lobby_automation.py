@@ -25,18 +25,6 @@ class LobbyAutomation:
         self.ocr_scale_up_factor = 1 / self.ocr_scale_down_factor
         self.press_enter_after_search = config_bool(
             bot_config.get("brawler_search_press_enter"), True)
-        # How long the emulator's video pipeline lags behind the game, in
-        # seconds. Frames are stamped when they ARRIVE here, not when the device
-        # drew them, so on a laggy emulator a frame still showing the lobby can
-        # arrive AFTER the brawlers button was tapped and look, by its stamp,
-        # like a fresh post-tap frame. The menu-open check then reads old
-        # content, concludes the list never opened, and taps again - onto the
-        # menu that did open, landing on the glory panel. MuMu is quick enough
-        # that this never shows; LDPlayer and MemU are not. Waiting this long
-        # after a tap before trusting what is on screen lets the real frame
-        # arrive first. Default 0.6s helps a little everywhere and costs a rare
-        # operation almost nothing; raise it toward 2.0 on a slow emulator.
-        self.emulator_frame_lag = max(0.0, float(bot_config.get("emulator_frame_lag", 0.6)))
         self.all_brawlers_names = load_all_brawlers_names()
         self.window_controller = window_controller
         self.verbose_debug = config_bool(load_toml_as_dict("cfg/debug_settings.toml").get('verbose_debug'), False)
@@ -246,6 +234,16 @@ class LobbyAutomation:
     MENU_OPEN_TIMEOUT = 4.0
     MENU_OPEN_ATTEMPTS = 3
 
+    # A fixed pause after tapping the brawlers button, before anything on screen
+    # is read. The frame that scrcpy hands back is stamped when it ARRIVES here,
+    # not when the device drew it, so on a slow emulator a frame still showing
+    # the lobby can arrive right after the tap and pass for a fresh one - the
+    # menu-open check then reads old content and taps again onto the glory
+    # panel. Waiting a flat 1.5s lets the real post-tap frame arrive first. It is
+    # deliberately not a setting: a knob here only invites tuning a number that
+    # should just be large enough, and 1.5s is, on every emulator seen.
+    MENU_READ_DELAY = 1.5
+
     # How long to keep waiting when the capture has not produced a single frame
     # since the tap. Past this the feed is the problem, not the game, and there
     # is nothing to be gained by holding the run any longer. Comfortably beyond
@@ -365,9 +363,9 @@ class LobbyAutomation:
         # The box has to take focus before anything typed can land in it. No
         # keyboard slides up over the game - the box is a plain text line that
         # takes hardware keys - so this waits on the tap, not on an animation.
-        # The emulator lag is added on top: on a slow pipeline the tap itself
-        # lands late, and typing into an unfocused box loses the query.
-        if self._sleep_interruptible(0.8 + self.emulator_frame_lag, runtime_control, stop_event):
+        # The same flat menu-read delay is folded in: on a slow pipeline the tap
+        # itself lands late, and typing into an unfocused box loses the query.
+        if self._sleep_interruptible(0.8 + self.MENU_READ_DELAY, runtime_control, stop_event):
             return "aborted"
 
         self.window_controller.clear_text_field()
@@ -387,7 +385,7 @@ class LobbyAutomation:
             self.window_controller.submit_text()
         # The scan that follows reads the screen straight away, so the filtered
         # list has to be showing by the time this returns - emulator lag and all.
-        if self._sleep_interruptible(1.2 + self.emulator_frame_lag, runtime_control, stop_event):
+        if self._sleep_interruptible(1.2 + self.MENU_READ_DELAY, runtime_control, stop_event):
             return "aborted"
         return "searched"
 
@@ -481,8 +479,8 @@ class LobbyAutomation:
             tapped_at = time.time()
             # Let the emulator's frame pipeline catch up before believing
             # anything on screen, or a lagged lobby frame reads as "the list
-            # did not open" and earns a wrong second tap (see emulator_frame_lag).
-            if self._sleep_interruptible(self.emulator_frame_lag, runtime_control, stop_event):
+            # did not open" and earns a wrong second tap (see MENU_READ_DELAY).
+            if self._sleep_interruptible(self.MENU_READ_DELAY, runtime_control, stop_event):
                 return "aborted"
             deadline = time.time() + self.MENU_OPEN_TIMEOUT
             while True:
@@ -541,7 +539,9 @@ class LobbyAutomation:
     def _dump_unreadable_menu(self, frame):
         """Save a frame the bot tapped into but could not recognise as the list."""
         saved = getattr(self, "_menu_debug_saves", 0)
-        if saved >= self.MENU_DEBUG_FRAME_CAP or frame is None:
+        # An actual image only: getattr guards a None or, in tests, a string
+        # stand-in frame, neither of which cvtColor can take.
+        if saved >= self.MENU_DEBUG_FRAME_CAP or getattr(frame, "ndim", None) is None:
             return
         import os
         try:

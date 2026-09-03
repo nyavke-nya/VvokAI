@@ -224,9 +224,6 @@
         "Decline Team Invites": "Отклонять приглашения в команду",
         "Turn down team invites and mute the sender for ten minutes, so a stream of invitations cannot interrupt the farm. Checked every couple of seconds while out of a match.":
             "Отклонять приглашения в команду и мутить отправителя на десять минут, чтобы поток приглашений не мешал фарму. Проверяется раз в пару секунд вне матча.",
-        "Emulator Frame Lag": "Задержка кадров эмулятора",
-        "Seconds the emulator's video feed runs behind the game. Frames are timestamped on arrival, so on a laggy emulator an old lobby frame can pass for a fresh one right after a tap - the bot then thinks the brawler list never opened and taps again onto the glory panel. This is why selection works on MuMu and fails on LDPlayer/MemU. Raise toward 2.0 if selection opens the wrong screen; lower toward 0 on a fast emulator to pick quicker.":
-            "На сколько секунд видеопоток эмулятора отстаёт от игры. Кадры метятся временем прихода, поэтому на медленном эмуляторе старый кадр лобби может сойти за свежий сразу после тапа - и бот решает, что список бойцов не открылся, и жмёт снова, попадая по панели славы. Поэтому на MuMu выбор работает, а на LDPlayer/MemU нет. Поднимите к 2.0, если выбор открывает не тот экран; опустите к 0 на быстром эмуляторе, чтобы выбирать быстрее.",
         "Invite Green Pixels": "Пиксели приглашения",
         "How much of the ACCEPT button's green has to be on screen before the bot reads the dialog. Raise it if invites are detected where there are none, lower it if real ones are missed.":
             "Сколько зелёного с кнопки ACCEPT должно быть на экране, чтобы бот стал читать диалог. Повысить, если приглашения находятся там, где их нет; понизить, если настоящие пропускаются.",

@@ -159,6 +159,75 @@ def is_in_shop(image) -> bool:
     return is_template_in_region(image, states_path + 'powerpoint.png', region_data.get("powerpoint", [1000, 5, 80, 80]))
 
 
+# Sizes to try the toolbar icons at, as multiples of the resolution-scaled
+# template. is_template_in_region scales the template by capture_width/1920,
+# which assumes the emulator draws the icon at the same fraction of the screen
+# the template was cut from. Emulators do not agree on that: on one the heart
+# fills the button, on another it sits smaller inside it, and a heart 20% off
+# the expected size drops TM_CCOEFF_NORMED well under any sane threshold. That
+# is why selection recognised the list on MuMu and not on LDPlayer/MemU with
+# the SAME templates - the icons were there, just the wrong size. Searching a
+# spread of sizes finds the icon wherever the emulator drew it.
+BRAWLER_ICON_SCALES = (0.55, 0.65, 0.78, 0.9, 1.0, 1.12, 1.28, 1.45, 1.65)
+
+
+# The multi-scale match is O(search-area x template-area) per scale, which over
+# a whole toolbar band and nine sizes runs to ~70 ms/frame at full resolution -
+# far too slow for a check the state thread makes every frame. Both the crop and
+# the templates are shrunk to this working width first: TM_CCOEFF_NORMED matches
+# on shape, which survives the downscale intact, and the cost falls by roughly
+# the fourth power of the factor - to a couple of ms. Small enough to be quick,
+# large enough that a ~25 px icon stays recognisable.
+ICON_MATCH_WIDTH = 260
+
+
+def _matches_at_any_scale(image, template_path, region, threshold, scales):
+    """True if the template matches inside the region at ANY of the scales.
+
+    Same crop and resolution scaling as is_template_in_region, but the template
+    is then resized to each scale before matching, so an icon the emulator drew
+    larger or smaller than expected is still found. Crop and template are both
+    shrunk to a fixed working width first, purely for speed (see ICON_MATCH_WIDTH).
+    """
+    current_height, current_width = image.shape[:2]
+    orig_x, orig_y, orig_width, orig_height = region
+    width_ratio, height_ratio = current_width / orig_screen_width, current_height / orig_screen_height
+    new_x, new_y = int(orig_x * width_ratio), int(orig_y * height_ratio)
+    new_width, new_height = int(orig_width * width_ratio), int(orig_height * height_ratio)
+    crop = image[new_y:new_y + new_height, new_x:new_x + new_width]
+    if crop.size == 0:
+        return False
+
+    base = load_template(template_path, current_width, current_height)
+    if base is None:
+        return False
+
+    # Shrink the crop to the working width, and the template by the same factor,
+    # so their relative sizes - all matchTemplate cares about - are preserved.
+    work = min(1.0, ICON_MATCH_WIDTH / max(crop.shape[1], 1))
+    if work < 1.0:
+        crop = cv2.resize(crop, (max(1, int(crop.shape[1] * work)),
+                                 max(1, int(crop.shape[0] * work))),
+                          interpolation=cv2.INTER_AREA)
+        base = cv2.resize(base, (max(1, int(base.shape[1] * work)),
+                                 max(1, int(base.shape[0] * work))),
+                          interpolation=cv2.INTER_AREA)
+
+    base_h, base_w = base.shape[:2]
+    for scale in scales:
+        tw, th = max(1, int(base_w * scale)), max(1, int(base_h * scale))
+        if th > crop.shape[0] or tw > crop.shape[1]:
+            # Too big for the search area at this scale; a larger one will be too.
+            continue
+        scaled = base if scale == 1.0 else cv2.resize(
+            base, (tw, th), interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR)
+        result = cv2.matchTemplate(crop, scaled, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, _ = cv2.minMaxLoc(result)
+        if max_val > threshold:
+            return True
+    return False
+
+
 def is_in_brawler_selection(image) -> bool:
     # The sideways-menu update moved everything on this screen except the two
     # icons in its top toolbar: a task clipboard and a heart. The old check
@@ -168,19 +237,22 @@ def is_in_brawler_selection(image) -> bool:
     # this layout lands on the glory panel. That is the "auto select just opens
     # the list / glory" everyone was reporting.
     #
-    # Two things make this robust to the redesign. It matches EITHER icon, so
-    # losing one to a restyle is not fatal. And it searches the whole toolbar
-    # band rather than one icon's former spot, so the icons moving along the bar
-    # - which is exactly what a re-layout does - no longer hides them. The
-    # threshold is a touch lower than the default for the same reason: the icons
-    # now sit on a lighter toolbar than the templates were cut against, which
-    # costs a little correlation.
+    # Three things make this robust to the redesign and to the emulator:
+    #   - it matches EITHER icon, so losing one to a restyle is not fatal;
+    #   - it searches the whole toolbar band, not one icon's former spot, so the
+    #     icons sliding along the bar in a re-layout no longer hides them;
+    #   - it tries a spread of icon SIZES, so an emulator that draws the icon a
+    #     little larger or smaller than the template is still recognised. That
+    #     last one is what made selection work on MuMu and fail on LDPlayer/MemU
+    #     with identical templates - the heart was on screen, just a size the
+    #     fixed-scale match could not clear.
     #
-    # If BOTH still miss, the list is genuinely unreadable and lobby_automation
-    # saves the frame to debug_frames/ so the templates can be recut to it.
+    # If EVERY icon at every size still misses, the list is genuinely unreadable
+    # and lobby_automation saves the frame to debug_frames/ to be recut to.
     region = region_data.get("brawler_menu_heart", [1050, 0, 700, 150])
     for name in ("brawler_menu_heart.png", "brawler_menu_task.png"):
-        if is_template_in_region(image, states_path + name, region, threshold=0.68):
+        if _matches_at_any_scale(image, states_path + name, region,
+                                 0.68, BRAWLER_ICON_SCALES):
             return True
     return False
 
