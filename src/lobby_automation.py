@@ -484,6 +484,14 @@ class LobbyAutomation:
 
                 if time.time() >= deadline:
                     if after_tap:
+                        # We have a frame taken after the tap and it did not
+                        # read as the brawler list. Either the tap missed, or -
+                        # the case that keeps biting after a game update - the
+                        # list IS open and the templates no longer recognise
+                        # it. The two look identical from here, so keep the
+                        # actual frame: it is the one thing that settles which,
+                        # and the one thing nobody could send before.
+                        self._dump_unreadable_menu(frame)
                         break
                     if time.time() >= tapped_at + self.MENU_OPEN_STALE_LIMIT:
                         print("No frame has arrived since the brawlers button "
@@ -500,6 +508,34 @@ class LobbyAutomation:
             print(f"The brawler list did not open (attempt {attempt + 1} of "
                   f"{self.MENU_OPEN_ATTEMPTS}), tapping again.")
         return "closed"
+
+    # How many "could not read the open list" frames to keep per run. Enough to
+    # catch the problem, few enough that an account permanently missing a
+    # brawler cannot fill a disk overnight. Unlike the search-missed frames this
+    # is NOT gated on verbose_debug: it fires only when the bot is already stuck
+    # and about to give up, and it is the one picture that turns "it does not
+    # work on my machine" into a template anyone can recut.
+    MENU_DEBUG_FRAME_CAP = 6
+
+    def _dump_unreadable_menu(self, frame):
+        """Save a frame the bot tapped into but could not recognise as the list."""
+        saved = getattr(self, "_menu_debug_saves", 0)
+        if saved >= self.MENU_DEBUG_FRAME_CAP or frame is None:
+            return
+        import os
+        try:
+            os.makedirs("./debug_frames", exist_ok=True)
+            path = f"./debug_frames/brawler_menu_unread_{int(time.time())}.png"
+            # get_latest_frame hands back the same RGB the detector saw; imwrite
+            # wants BGR, so convert or the saved PNG has red and blue swapped
+            # and looks nothing like the screen.
+            cv2.imwrite(path, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+            self._menu_debug_saves = saved + 1
+            print(f"Could not read the brawler list on screen. Saved what the "
+                  f"bot saw to {path} - if selection keeps failing, send that "
+                  f"file so the menu templates can be fixed to match your game.")
+        except Exception as exc:
+            print(f"Could not save the unreadable-menu frame: {exc}")
 
     @staticmethod
     def _near_miss(brawler, detected_names):

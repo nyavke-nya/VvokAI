@@ -160,7 +160,29 @@ def is_in_shop(image) -> bool:
 
 
 def is_in_brawler_selection(image) -> bool:
-    return is_template_in_region(image, states_path + 'brawler_menu_heart.png', region_data.get("brawler_menu_heart", [1250, 0, 650, 140]))
+    # The sideways-menu update moved everything on this screen except the two
+    # icons in its top toolbar: a task clipboard and a heart. The old check
+    # looked for the heart alone, in one narrow box the icon no longer sits in,
+    # so it stopped matching the moment the layout changed - and a bot that
+    # cannot see the open list taps the brawlers button a second time, which on
+    # this layout lands on the glory panel. That is the "auto select just opens
+    # the list / glory" everyone was reporting.
+    #
+    # Two things make this robust to the redesign. It matches EITHER icon, so
+    # losing one to a restyle is not fatal. And it searches the whole toolbar
+    # band rather than one icon's former spot, so the icons moving along the bar
+    # - which is exactly what a re-layout does - no longer hides them. The
+    # threshold is a touch lower than the default for the same reason: the icons
+    # now sit on a lighter toolbar than the templates were cut against, which
+    # costs a little correlation.
+    #
+    # If BOTH still miss, the list is genuinely unreadable and lobby_automation
+    # saves the frame to debug_frames/ so the templates can be recut to it.
+    region = region_data.get("brawler_menu_heart", [1050, 0, 700, 150])
+    for name in ("brawler_menu_heart.png", "brawler_menu_task.png"):
+        if is_template_in_region(image, states_path + name, region, threshold=0.68):
+            return True
+    return False
 
 
 def is_in_offer_popup(image) -> bool:

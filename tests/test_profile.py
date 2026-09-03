@@ -743,6 +743,17 @@ report.check("the heart's new home is inside the search box", _hx <= 1306 and _h
 report.check("and its old one still is, for a game yet to update",
              _hx <= 1560 and _hx + _hw >= 1640, True)
 report.at_most("without reaching across the whole bar", _hw, 700)
+# The heart alone stopped being enough: a later restyle dropped its match below
+# the old 0.75, so the check now accepts EITHER toolbar icon and the box has to
+# reach back far enough to hold the task clipboard that sits left of the heart.
+report.check("the task clipboard, left of the heart, is inside the box too",
+             _hx <= 1180, True)
+_sf = read_source("state_finder.py")
+_isb = _sf[_sf.index("def is_in_brawler_selection("):_sf.index("def is_in_offer_popup(")]
+report.check("and the list is recognised by either icon, not the heart alone",
+             "brawler_menu_task.png" in _isb and "brawler_menu_heart.png" in _isb, True)
+report.check("at a threshold the restyled icons can still clear",
+             "0.68" in _isb, True)
 
 
 sys.exit(report.finish())

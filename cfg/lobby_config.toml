@@ -1,13 +1,19 @@
 [template_matching]
 powerpoint = [1000, 5, 80, 80]
-# The pink heart in the brawler list's top bar. It used to sit at about
-# x=1600; the update that added the search box pushed it left to x=1347, out of
-# the old [1470, 0, 430, 140] box entirely - so the bot stopped recognising the
-# brawler list at all, and every selection ended in "the list never opened"
-# before a single swipe was tried. This box reaches back far enough to hold the
-# heart wherever the bar puts it, and stays inside the top bar, where nothing
-# else on any screen is a pink heart.
-brawler_menu_heart = [1250, 0, 650, 140]
+# The brawler list's top toolbar, searched for EITHER of its two stable icons -
+# a task clipboard and a heart (see is_in_brawler_selection). The heart moved
+# more than once as the bar was re-laid-out (x=1600, then x=1347), and widening
+# the box to hold it was not enough on its own: the redesign put the icons on a
+# lighter bar than the templates were cut against, dropping the match below the
+# old 0.75 and leaving the bot blind to the open list - it then tapped the
+# brawlers button again and hit the glory panel. This box reaches from the task
+# clipboard on the left to past the heart's furthest seen position on the right,
+# so neither icon can slide out of it, and the two-icon OR plus a lower
+# threshold cover the restyle. It stops short of the home button and the far
+# ends of the bar, where nothing needs matching - and nothing else on any
+# screen puts a heart or a checked clipboard up here, so a false positive is
+# not a risk.
+brawler_menu_heart = [1050, 0, 700, 150]
 close_popup = [1740, 140, 140, 100]
 lobby_menu = [1790, 20, 75, 65]
 brawl_pass_house = [1750, 0, 169, 100]
