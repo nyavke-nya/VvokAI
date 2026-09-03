@@ -368,8 +368,12 @@ def check_standing(report):
 # ---------------------------------------------------------------------------
 
 IDLE_FUNCS = {"update_stagnation", "to_world", "vec_len", "map_center",
-              "center_run_active", "head_to_center"}
-IDLE_CONSTS = {"IDLE_AFTER", "IDLE_MOVE_TILES", "IDLE_COMMIT", "REGROUP_TILES"}
+              "center_run_active", "head_to_center",
+              # head_to_center now crosses the map on a committed heading
+              # instead of milling in place, so its helpers come along.
+              "roam_heading", "is_blocked", "normalize_move", "first_unblocked"}
+IDLE_CONSTS = {"IDLE_AFTER", "IDLE_MOVE_TILES", "IDLE_COMMIT", "REGROUP_TILES",
+               "ROAM_COMMIT"}
 
 
 def check_idle(report):
@@ -380,7 +384,9 @@ def check_idle(report):
         def time():
             return clock[0]
 
-    context = lift(IDLE_FUNCS, IDLE_CONSTS, base_context(time=Clock))
+    context = lift(IDLE_FUNCS, IDLE_CONSTS,
+                   base_context(time=Clock, map_boundary=(0.0, 0.0),
+                                get_random_movement=lambda: (60.0, -60.0)))
 
     def reset():
         context["persistent_data"] = {"last_activity": 0.0, "idle_anchor": None,
@@ -459,6 +465,51 @@ def check_idle(report):
     report.check("committed", context["center_run_active"](), True)
     clock[0] += 7.0
     report.check("released after IDLE_COMMIT", context["center_run_active"](), False)
+
+    report.section("and it actually walks, rather than milling on the spot")
+    # The bug this replaces: "head to centre" aimed at map_center(), the middle
+    # of the SCREEN, which the camera keeps the player on - so move_toward
+    # returned a zero vector and the bot stood still all match. head_to_center
+    # must now hand back a real heading.
+    reset()
+    moved = context["head_to_center"]()
+    report.check("head_to_center returns a real heading", moved != (0, 0), True)
+
+
+def check_roam(report):
+    """Crossing the map when there is nothing to chase, instead of milling.
+
+    map_center() is the middle of the SCREEN, and the camera keeps the player
+    there, so "walk to the centre" was a walk to where the bot already stood -
+    a zero move, and then a fall-through to milling in one place for the whole
+    match. roam_heading commits to a heading and holds it, and re-rolls off a
+    wall rather than grinding into it.
+    """
+    report.section("roaming commits to a heading and holds it")
+    clock = [1000.0]
+
+    class Clock:
+        @staticmethod
+        def time():
+            return clock[0]
+
+    context = base_context(time=Clock, map_boundary=(0.0, 0.0),
+                           get_random_movement=lambda: (60.0, -60.0))
+    lift({"roam_heading", "is_blocked", "normalize_move", "first_unblocked",
+          "vec_len"}, {"ROAM_COMMIT"}, context)
+    context["persistent_data"] = {}
+
+    first = context["roam_heading"]()
+    report.check("it commits to a real heading, not a standstill",
+                 first != (0, 0), True)
+    report.check("and holds it on the next frame", context["roam_heading"](), first)
+
+    report.section("a wall ahead makes it re-roll, not grind")
+    clock[0] += 100.0  # past ROAM_COMMIT, so the heading is up for reconsideration
+    context["is_path_blocked"] = lambda player, move, walls: move == first
+    nxt = context["roam_heading"]()
+    report.check("re-rolls off a blocked heading onto an open one",
+                 nxt != first and nxt != (0, 0), True)
 
 
 # rotate_movement is supplied by the engine, not defined in the playstyle.
@@ -990,6 +1041,7 @@ def main():
     check_standing(report)
     check_afk(report)
     check_idle(report)
+    check_roam(report)
     return report.finish()
 
 

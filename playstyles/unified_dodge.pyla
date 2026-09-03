@@ -684,6 +684,56 @@ def map_center():
     return (width / 2.0, height / 2.0)
 
 
+# How long to hold a roam heading before re-rolling, in seconds. Long enough
+# that the bot crosses ground instead of vibrating on the spot, short enough
+# that a heading into a dead end is dropped quickly.
+ROAM_COMMIT = 2.5
+
+
+def roam_heading():
+    """A committed direction to cross the map when there is nothing to chase.
+
+    "Walk toward the centre" used to aim at map_center(), the middle of the
+    SCREEN - but the camera keeps the player at the middle of the screen, so
+    that point is the player's own position and move_toward() returned a zero
+    vector. The bot then fell through to milling on the spot: the "stomps in
+    one area all game" people were seeing. There is no way to know where the
+    map's real centre is in world terms from here, so instead of aiming at a
+    point the bot commits to a HEADING and holds it, re-rolling only when the
+    commit expires or the heading walks into a wall - and never straight back
+    the way it came, so it travels the map instead of pacing one patch of it.
+    A real fight coming into view clears the idle state through
+    update_stagnation, so this only runs while there is genuinely nothing to do.
+    """
+    now = time.time()
+    heading = persistent_data.get("roam_heading")
+    until = persistent_data.get("roam_until", 0.0)
+    if heading is not None and now < until and not is_blocked(heading):
+        return heading
+
+    forward = (0, -JOYSTICK_RADIUS)
+    if map_boundary[1] < 0:
+        forward = (0, JOYSTICK_RADIUS)
+
+    options = []
+    for _ in range(8):
+        candidate = normalize_move(*get_random_movement())
+        if candidate == (0, 0):
+            continue
+        # Not a near-reversal of the heading just held, or the bot paces back
+        # and forth over the same ground instead of covering new.
+        if heading is not None and candidate[0] * heading[0] + candidate[1] * heading[1] < 0:
+            continue
+        options.append(candidate)
+    options.append(forward)
+
+    chosen = first_unblocked(options, forward)
+    if chosen != (0, 0):
+        persistent_data["roam_heading"] = chosen
+        persistent_data["roam_until"] = now + ROAM_COMMIT
+    return chosen
+
+
 def update_stagnation(mate_coords, mate_distance=None):
     """Notice when the match has stopped happening around the bot.
 
@@ -751,15 +801,11 @@ def head_to_center():
         print("[unified] nothing happening for "
               f"{IDLE_AFTER:.0f}s - moving to map centre")
 
-    center = map_center()
-    if vec_len(center[0] - player_pos[0], center[1] - player_pos[1]) > TILE_SIZE * 2:
-        return move_toward(center)
-
-    # Already central and still nothing is happening: sweep instead of idling,
-    # so the bot actually finds someone.
-    persistent_data["last_activity"] = now
-    persistent_data["idle_anchor"] = None
-    return random_safe_movement()
+    # There is no on-screen point to walk to: the camera keeps the player at
+    # the centre of the screen, so map_center() was the player's own position
+    # and move_toward() returned nothing, leaving the bot milling on the spot.
+    # Cross the map on a committed heading instead (see roam_heading).
+    return roam_heading()
 
 
 def center_run_active():
@@ -1024,24 +1070,11 @@ def no_enemy_movement():
         # Already together: drift instead of standing on their head.
         return strafe_around(mate_coords)
 
-    # 2. Alone: rotate toward the middle of the map, which is where the
-    #    objective is in every mode and where the showdown gas closes to last.
-    center_x, center_y = map_center()
-    dx = center_x - player_pos[0]
-    dy = center_y - player_pos[1]
-    if vec_len(dx, dy) > TILE_SIZE * 2:
-        return move_toward((center_x, center_y))
-
-    # 3. Already central: push forward, then anywhere that is not a wall.
-    #    "Forward" flips if the map has already run out that way. This is the
-    #    only place the boundary reading steers movement - as a hint, not as a
-    #    ban, because banning directions is what got the bot wedged before.
-    forward = (0, -JOYSTICK_RADIUS)
-    if map_boundary[1] < 0:
-        forward = (0, JOYSTICK_RADIUS)
-    if not is_blocked(forward):
-        return forward
-    return random_safe_movement()
+    # 2. Alone and nothing in sight: cross the map to find the fight. Aiming at
+    #    map_center() did nothing - it is the middle of the SCREEN, which the
+    #    camera keeps the player on, so the bot walked at its own position and
+    #    milled in one place. A committed roam heading actually travels.
+    return roam_heading()
 
 
 # ─────────────────────────────────────────────────────────────────────
