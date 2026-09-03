@@ -249,6 +249,17 @@ def is_in_brawler_selection(image) -> bool:
     #
     # If EVERY icon at every size still misses, the list is genuinely unreadable
     # and lobby_automation saves the frame to debug_frames/ to be recut to.
+    #
+    # The lobby is ruled out first, and this is not redundant. get_in_game_state
+    # checks the lobby before this and would never reach here in the lobby - but
+    # lobby_automation._list_is_open calls this DIRECTLY on a frame, bypassing
+    # that order. Without the guard the size-sweep, which is looser than a fixed
+    # match, found a heart-ish blob in the lobby's own top bar and reported the
+    # list already open: the bot then skipped the brawlers button and hammered
+    # the friend-slot plus instead. The lobby's hamburger button is a reliable
+    # tell the brawler list does not share, so one cheap check settles it.
+    if is_in_lobby(image):
+        return False
     region = region_data.get("brawler_menu_heart", [1050, 0, 700, 150])
     for name in ("brawler_menu_heart.png", "brawler_menu_task.png"):
         if _matches_at_any_scale(image, states_path + name, region,
