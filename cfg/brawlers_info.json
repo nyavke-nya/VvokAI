@@ -1049,5 +1049,15 @@
         "ignore_walls_for_supers": true,
         "hold_attack": 2.5,
         "placed_attack": false
+    },
+    "wendy": {
+        "safe_range": 360.0,
+        "attack_range": 560.0,
+        "super_type": "other",
+        "super_range": 500,
+        "ignore_walls_for_attacks": false,
+        "ignore_walls_for_supers": true,
+        "hold_attack": 0,
+        "placed_attack": false
     }
 }
