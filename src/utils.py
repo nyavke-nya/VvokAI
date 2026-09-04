@@ -107,13 +107,39 @@ def _get_project_root():
 
 PROJECT_ROOT = _get_project_root()
 
+# Multi-instance support. When several Brawl Stars accounts run at once - one
+# MuMu window each - every instance points at its own config tree through this
+# environment variable, so their settings, API tokens and match history never
+# collide. Unset means the single shared cfg/ directory, i.e. behaviour is
+# exactly as it was before instances existed.
+#
+# Only the cfg/ tree is redirected. Models, playstyles and tooling stay shared
+# across instances: they are the same for every account and duplicating them
+# would waste gigabytes.
+_CFG_DIR_ENV = os.environ.get("VVOK_CFG_DIR")
+
+
+def _cfg_root() -> Path:
+    if not _CFG_DIR_ENV:
+        return PROJECT_ROOT / "cfg"
+    candidate = Path(_CFG_DIR_ENV)
+    return candidate if candidate.is_absolute() else (PROJECT_ROOT / candidate)
+
 
 def resolve_project_path(*parts) -> Path:
+    if parts and str(parts[0]) == "cfg":
+        return _cfg_root().joinpath(*[str(p) for p in parts[1:]])
     return PROJECT_ROOT.joinpath(*parts)
+
+
+def _config_full_path(file_path) -> Path:
+    """Absolute path for a cfg-relative file, honouring the per-instance dir."""
+    rel = str(file_path).replace('\\', '/').lstrip('/')
+    return resolve_project_path(*rel.split('/'))
 
 cached_toml = {}
 def load_toml_as_dict(file_path, cache=True):
-    full_path = PROJECT_ROOT / str(file_path).lstrip('/\\')
+    full_path = _config_full_path(file_path)
     if str(full_path) in cached_toml and cache:
         return cached_toml[str(full_path)]
 
@@ -136,12 +162,13 @@ def load_toml_as_dict(file_path, cache=True):
         return {}
 
 def invalidate_toml_cache(file_path):
-    full_path = PROJECT_ROOT / str(file_path).lstrip('/\\')
-    del cached_toml[str(full_path)]
+    full_path = _config_full_path(file_path)
+    cached_toml.pop(str(full_path), None)
 
 
 def save_dict_as_toml(data, file_path):
-    full_path = PROJECT_ROOT / str(file_path).lstrip('/\\')
+    full_path = _config_full_path(file_path)
+    full_path.parent.mkdir(parents=True, exist_ok=True)
     with open(full_path, 'w', encoding='utf-8') as f:
         toml.dump(data, f)
     cached_toml[str(full_path)] = data
@@ -896,14 +923,29 @@ def load_vvok_script(filename):
 def get_playstyles_list():
     playstyles_dir = resolve_project_path("playstyles")
     playstyles = []
-    if playstyles_dir.exists():
-        for filename in os.listdir(playstyles_dir):
-            if filename.endswith(PLAYSTYLE_EXTS):
-                metadata, _ = load_vvok_script(filename)
-                playstyles.append({
-                    "filename": filename,
-                    "metadata": metadata
-                })
+    if not playstyles_dir.exists():
+        return playstyles
+
+    # Dedupe by name, not by filename. Both .vvok and .pyla are accepted for
+    # backward compatibility, so a machine that still has the old unified_dodge
+    # .pyla next to the new .vvok would otherwise list every style twice - the
+    # "playstyles keep multiplying" bug. One entry per stem, .vvok winning.
+    by_stem = {}
+    for filename in os.listdir(playstyles_dir):
+        if not filename.endswith(PLAYSTYLE_EXTS):
+            continue
+        stem = filename.rsplit(".", 1)[0]
+        chosen = by_stem.get(stem)
+        if chosen is None or (filename.endswith(".vvok") and not chosen.endswith(".vvok")):
+            by_stem[stem] = filename
+
+    for stem in sorted(by_stem):
+        filename = by_stem[stem]
+        metadata, _ = load_vvok_script(filename)
+        playstyles.append({
+            "filename": filename,
+            "metadata": metadata
+        })
     return playstyles
 
 

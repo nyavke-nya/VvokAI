@@ -739,15 +739,29 @@ def in_bush():
     return False
 
 
-def hold_in_bush():
-    """A small oscillation that stays in cover without reading as idle.
+def bush_to_move_to():
+    """Nearest bush worth actually walking to, or None.
 
-    Sitting perfectly still is the strongest hide, but Brawl Stars flags a
-    brawler that never moves as AFK. A third-radius drift that flips every
-    STRAFE_PERIOD keeps the bot inside the bush while still sending input."""
-    side = 1 if int(time.time() / STRAFE_PERIOD) % 2 == 0 else -1
-    step = normalize_move(side, 0, JOYSTICK_RADIUS * 0.35)
-    return first_unblocked([step, normalize_move(0, side, JOYSTICK_RADIUS * 0.35)], (0, 0))
+    The point is to travel THROUGH cover, not to freeze in it. Sitting still is
+    a mistake twice over: Brawl Stars flags a motionless brawler as AFK (a
+    joystick nudge does not count as activity - it has to be real displacement),
+    and a camped spot gets swallowed by the gas with nowhere to run. So a bush
+    the bot is essentially already standing in is skipped, and it heads for the
+    NEXT patch of cover instead - which keeps it moving, hidden and rotating."""
+    if SEEK_BUSH_TILES <= 0 or not bushes:
+        return None
+    best = None
+    best_gap = TILE_SIZE * SEEK_BUSH_TILES
+    for bush in bushes:
+        spot = get_entity_pos(bush)
+        gap = get_distance(spot, player_pos)
+        if gap < TILE_SIZE * 2.0:
+            # Cover we are already in - not worth vibrating on the spot for.
+            continue
+        if gap < best_gap:
+            best_gap = gap
+            best = spot
+    return best
 
 
 # How long to hold a roam heading before re-rolling, in seconds. Long enough
@@ -1121,22 +1135,15 @@ def avoid_poison_gas():
 # ─────────────────────────────────────────────────────────────────────
 
 def no_enemy_movement():
-    # SURVIVAL: no teammates. Nothing to regroup on, nobody to follow - the
-    # whole regroup branch of the base brain is gone. With nothing to fight the
-    # right place to be is out of sight.
-
-    # 1. Already in cover: stay put, drifting just enough not to be flagged idle.
-    if in_bush():
-        return hold_in_bush()
-
-    # 2. A bush within reach: go hide in it.
-    cover = nearest_bush()
-    if cover is not None:
-        return move_toward(cover)
-
-    # 3. No cover nearby: cross the map on a committed heading to find some,
-    #    rather than milling on the spot (the camera keeps the player centred,
-    #    so there is no on-screen point to walk toward).
+    # SURVIVAL: no teammates to regroup on, and NEVER stand still - a motionless
+    # brawler gets AFK-flagged and then caught by the gas. So always travel, but
+    # travel through cover: walk to the next bush, and when none is in reach,
+    # roam on a committed heading to find fresh cover and rotate inward. There
+    # is no on-screen point to aim at for "the centre" - the camera keeps the
+    # player centred - so roam_heading commits to a direction instead.
+    target = bush_to_move_to()
+    if target is not None:
+        return move_toward(target)
     return roam_heading()
 
 
@@ -1707,6 +1714,37 @@ if is_stuck and stuck_for > BREAK_OUT_AFTER:
 
     if debug:
         print("breaking out, stuck for", round(stuck_for, 1), "s toward", target)
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  ANTI-IDLE  (never stand still attacking in place)
+#
+#  The engine's break-out only fires when the stick is HELD but the world is not
+#  panning. A frame that decides to stand still - all headings blocked, a strafe
+#  with no room, nothing to chase - holds nothing, so break-out never sees it
+#  and the bot sits attacking in place until something else happens. The game
+#  flags that as AFK, and a joystick nudge does not clear it: it takes real
+#  displacement. So if no real movement has gone out for a moment, force a
+#  committed heading. Skipped while dodging (that vector is sacred) and mid
+#  charge (a hold-attack brawler must not be dragged off its shot).
+# ─────────────────────────────────────────────────────────────────────
+
+# Seconds of no real movement before a heading is forced.
+ANTI_IDLE_AFTER = 1.5
+
+if movement is not None and vec_len(movement[0], movement[1]) >= JOYSTICK_RADIUS * 0.25:
+    persistent_data["last_real_move_at"] = time.time()
+elif not sharp_movement and persistent_data.get("time_since_holding_attack") is None:
+    _idle_since = persistent_data.get("last_real_move_at")
+    if _idle_since is None:
+        persistent_data["last_real_move_at"] = time.time()
+    elif time.time() - _idle_since > ANTI_IDLE_AFTER:
+        _forced = roam_heading()
+        if vec_len(_forced[0], _forced[1]) > 0:
+            movement = _forced
+            persistent_data["last_real_move_at"] = time.time()
+            if debug:
+                print("anti-idle: forced a heading, was standing still")
 
 
 # ─────────────────────────────────────────────────────────────────────

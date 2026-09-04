@@ -1692,6 +1692,37 @@ if is_stuck and stuck_for > BREAK_OUT_AFTER:
 
 
 # ─────────────────────────────────────────────────────────────────────
+#  ANTI-IDLE  (never stand still attacking in place)
+#
+#  The engine's break-out only fires when the stick is HELD but the world is not
+#  panning. A frame that decides to stand still - all headings blocked, a strafe
+#  with no room, nothing to chase - holds nothing, so break-out never sees it
+#  and the bot sits attacking in place until something else happens. The game
+#  flags that as AFK, and a joystick nudge does not clear it: it takes real
+#  displacement. So if no real movement has gone out for a moment, force a
+#  committed heading. Skipped while dodging (that vector is sacred) and mid
+#  charge (a hold-attack brawler must not be dragged off its shot).
+# ─────────────────────────────────────────────────────────────────────
+
+# Seconds of no real movement before a heading is forced.
+ANTI_IDLE_AFTER = 1.5
+
+if movement is not None and vec_len(movement[0], movement[1]) >= JOYSTICK_RADIUS * 0.25:
+    persistent_data["last_real_move_at"] = time.time()
+elif not sharp_movement and persistent_data.get("time_since_holding_attack") is None:
+    _idle_since = persistent_data.get("last_real_move_at")
+    if _idle_since is None:
+        persistent_data["last_real_move_at"] = time.time()
+    elif time.time() - _idle_since > ANTI_IDLE_AFTER:
+        _forced = roam_heading()
+        if vec_len(_forced[0], _forced[1]) > 0:
+            movement = _forced
+            persistent_data["last_real_move_at"] = time.time()
+            if debug:
+                print("anti-idle: forced a heading, was standing still")
+
+
+# ─────────────────────────────────────────────────────────────────────
 #  SAFETY
 # ─────────────────────────────────────────────────────────────────────
 

@@ -1,0 +1,30 @@
+# Multi-account farming: one MuMu (or any emulator) window per Brawl Stars
+# account, all running at once. Copy this file to cfg/instances.toml and edit.
+#
+# tools/run_instances.py reads cfg/instances.toml and launches one full VvokAI
+# panel per entry. Each instance is an independent process - resources are not
+# shared or time-sliced, so every account runs at full speed - with:
+#
+#   * its own config tree (instances/<name>/cfg), seeded from the shared cfg/
+#     on first launch. Set that account's API token, player tag, playstyle and
+#     queue in ITS panel; nothing you change there touches the other accounts.
+#   * its own emulator, pinned by ADB serial so instances never fight over the
+#     connection.
+#   * its own panel on a fixed port, so the URL is predictable.
+#
+# The bot still never auto-starts: each panel waits for you to press Start, so
+# you can bring accounts online one at a time.
+#
+# Finding the ADB serial of a MuMu window: MuMu exposes each window on its own
+# port. Window 0 is usually 127.0.0.1:16384, the next 127.0.0.1:16416, and so
+# on (+32 each). `adb devices` lists whatever is currently connected.
+
+[[instance]]
+name = "acc1"
+adb_serial = "127.0.0.1:16384"
+port = 5001
+
+[[instance]]
+name = "acc2"
+adb_serial = "127.0.0.1:16416"
+port = 5002

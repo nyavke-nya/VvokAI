@@ -1,5 +1,6 @@
 import atexit
 import math
+import os
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
@@ -41,6 +42,26 @@ def online_devices():
 
 
 def discover_device(verbose: bool = False) -> AdbDevice:
+    # Multi-instance: when a device is pinned (one MuMu window per account),
+    # connect straight to it and skip the port scan entirely. The scan connects
+    # to a dozen candidate ports and can restart the shared adb server, which
+    # would knock every other running instance off its own device - so a pinned
+    # instance must never run it.
+    forced = os.environ.get("VVOK_ADB_SERIAL")
+    if forced:
+        try:
+            adb.connect(forced)
+        except Exception:
+            pass
+        for d in online_devices():
+            if d.serial == forced:
+                if verbose:
+                    print(f"Using pinned ADB device {forced}")
+                return d
+        raise ConnectionError(
+            f"Pinned ADB device {forced} (VVOK_ADB_SERIAL) did not come online. "
+            f"Is that MuMu window running with ADB enabled?")
+
     preferred_port = load_toml_as_dict("cfg/general_config.toml")["emulator_port"]
     candidates = [5137, 5555, 16384, 7555, 5635, 62001, 62025, 62026, 7556, 7565, 16416] + list(range(5556, 5566)) + list(range(5565, 5756, 10))
 

@@ -766,11 +766,17 @@ if __name__ == "__main__":
 
     print("VvokAI - Brawl Stars bot with projectile dodging and aimed fire")
     print("Telegram: https://t.me/nyavke")
-    port = find_open_port()
+    # Multi-instance: the supervisor pins a fixed panel port per account so each
+    # has a predictable URL, and suppresses the browser pop-up so launching ten
+    # accounts does not open ten tabs. Both fall back to the single-instance
+    # behaviour (a free port, browser opens) when unset.
+    _forced_port = os.environ.get("VVOK_WEB_PORT")
+    port = int(_forced_port) if _forced_port else find_open_port()
     app = create_app(vvok_main, start_discord_bot=True)
     local_url = f"http://127.0.0.1:{port}"
     print(f"VvokAI web UI: {local_url}")
-    open_browser_later(local_url)
+    if not os.environ.get("VVOK_NO_BROWSER"):
+        open_browser_later(local_url)
     start_auto_update(app)
     report_stats(app)
     # threaded is Flask's default, but it is spelled out because the panel now
