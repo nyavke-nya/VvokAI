@@ -713,6 +713,36 @@ def map_center():
     return (width / 2.0, height / 2.0)
 
 
+# AGGRESSIVE: barely uses cover - the point is to be where the enemy is. Small,
+# so it only steps into a bush that is essentially on the way. 0 disables.
+SEEK_BUSH_TILES = 2.0
+
+
+def nearest_bush():
+    """Centre of the closest bush within SEEK_BUSH_TILES, or None."""
+    if SEEK_BUSH_TILES <= 0 or not bushes:
+        return None
+    best = None
+    best_gap = TILE_SIZE * SEEK_BUSH_TILES
+    for bush in bushes:
+        spot = get_entity_pos(bush)
+        gap = get_distance(spot, player_pos)
+        if gap < best_gap:
+            best_gap = gap
+            best = spot
+    return best
+
+
+def in_bush():
+    """Whether the player's centre sits inside any detected bush box."""
+    px = player_pos[0]
+    py = player_pos[1]
+    for bush in bushes:
+        if bush[0] <= px <= bush[2] and bush[1] <= py <= bush[3]:
+            return True
+    return False
+
+
 # How long to hold a roam heading before re-rolling, in seconds. Long enough
 # that the bot crosses ground instead of vibrating on the spot, short enough
 # that a heading into a dead end is dropped quickly.
@@ -1099,10 +1129,16 @@ def no_enemy_movement():
         # Already together: drift instead of standing on their head.
         return strafe_around(mate_coords)
 
-    # 2. Alone and nothing in sight: cross the map to find the fight. Aiming at
-    #    map_center() did nothing - it is the middle of the SCREEN, which the
-    #    camera keeps the player on, so the bot walked at its own position and
-    #    milled in one place. A committed roam heading actually travels.
+    # 2. Alone and nothing in sight. Prefer concealment: duck into a nearby bush
+    #    and travel under cover rather than pacing the open. Falls back to a
+    #    committed roam heading when no bush is close (or cover is disabled).
+    #    Aiming at map_center() did nothing - it is the middle of the SCREEN,
+    #    which the camera keeps the player on, so the bot walked at its own
+    #    position and milled in one place. A roam heading actually travels.
+    if not in_bush():
+        cover = nearest_bush()
+        if cover is not None:
+            return move_toward(cover)
     return roam_heading()
 
 

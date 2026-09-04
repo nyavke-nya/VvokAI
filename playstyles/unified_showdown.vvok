@@ -1,43 +1,45 @@
-{"name": "Unified Light", "description": "Same tactics as Unified + Dodge - archetype spacing, regrouping, health awareness, smooth movement - with the projectile stack removed. The tracker thread never starts, so it costs no CPU.", "brawlers": ["all"], "gamemodes": ["all"], "author": "vvok", "date": "2026-08-14", "dodge": false}
+{"name": "Showdown Survival", "description": "Solo showdown tuned for placement above all. Ignores teammates, sits in bushes when nothing is close, kites away shooting when an enemy gets on top of it, and declines almost every fight. Dodging stays on - staying alive is the whole point.", "brawlers": ["all"], "gamemodes": ["showdown"], "author": "vvok", "date": "2026-09-04"}
 
 # ═══════════════════════════════════════════════════════════════════════
-#  UNIFIED LIGHT
+#  SHOWDOWN SURVIVAL
 #
-#  Everything Unified + Dodge does, minus the projectile evasion: the combat
-#  tree, regrouping with teammates, rotation to the centre, fleeing the gas,
-#  archetype-driven spacing, health awareness and target selection are all
-#  identical. Keep changes in step with unified_dodge.vvok - the two are meant
-#  to differ in exactly one thing.
+#  The same vetted brain as unified_dodge.vvok - same archetypes, same tap and
+#  charge machinery, same projectile dodging and break-out - with the tactics
+#  bent all the way toward staying alive. Placement, not kills, is what banks
+#  trophies in solo showdown, so this style:
 #
-#  The metadata header carries "dodge": false, and that is not decoration. The
-#  projectile tracker runs on its own thread at capture rate whether or not
-#  anything reads it, so a playstyle that merely never calls solve_dodge()
-#  still pays for tracking it ignores. That flag stops the tracker and the aim
-#  solver from starting at all.
+#    - IGNORES teammates. Solo showdown has none, and treating a nearby player
+#      as an ally is how the bot walks into a fight it did not have to take.
+#      All the teammate/AFK code is left in place (harmless) but never steers
+#      movement.
+#    - HIDES in bushes. When nothing is close it walks to the nearest bush and
+#      holds there, drifting just enough not to be flagged idle. Concealment is
+#      the strongest survival tool in the mode and the bot never used it.
+#    - KITES when cornered. If an enemy gets inside KITE_TILES it runs directly
+#      away and keeps firing - the attack button and the joystick are separate
+#      pointers, so fleeing costs no shots.
+#    - DECLINES fights. Caution is cranked to the ceiling: it retreats early,
+#      holds at maximum range, and never chases.
 #
-#  Two consequences worth knowing:
-#
-#    - Aimed shots are off. Leading a target needs the tracker's camera-pan
-#      estimate to tell a moving enemy from a moving camera; without it the
-#      game's own auto-aim is the better choice.
-#
-#    - `is_stuck`, `stuck_for` and `map_boundary` are all measured from the
-#      camera, so here they never fire. The break-out block and
-#      escape_boundary() below are therefore inert, and getting unwedged falls
-#      to the engine's timer-based rotation (unstuck_movement_delay in
-#      cfg/bot_config.toml) - which is what every official playstyle used.
-#      They are left in place rather than deleted so the two files stay
-#      line-for-line comparable.
-#
-#  Health reading and movement smoothing do not depend on the tracker, so the
-#  bot still disengages when hurt and still glides rather than flicking
-#  between compass directions.
+#  Movement philosophy (unchanged from the base brain):
+#    - normally the joystick GLIDES; while dodging it SNAPS (sharp_movement).
 # ═══════════════════════════════════════════════════════════════════════
 
 
 # ─────────────────────────────────────────────────────────────────────
 #  TUNING
 # ─────────────────────────────────────────────────────────────────────
+
+# Ignore shaky tracks. Raise toward 0.7 if the bot twitches at nothing,
+# lower toward 0.3 if it eats shots it should have seen.
+DODGE_MIN_CONFIDENCE = 0.45
+
+# Dodge even when it means walking out of our own attack range.
+DODGE_BREAKS_SPACING = True
+
+# Keep shooting while evading. Almost always worth it: the attack button and
+# the joystick are separate pointers, so firing costs no movement.
+ATTACK_WHILE_DODGING = True
 
 # Seconds between gadget uses, so a ready gadget is not spammed every frame.
 GADGET_COOLDOWN = 3.0
@@ -56,7 +58,8 @@ REGROUP_TILES = 3.0
 # back toward the teammate, so the bot never drifts off to fight alone. Set
 # REGROUP_PULL to 0 to fight independently, 1 to always walk at the teammate.
 REGROUP_IN_FIGHT_TILES = 6.0
-REGROUP_PULL = 0.45
+# SURVIVAL: no teammates in solo showdown, so nothing pulls the bot toward one.
+REGROUP_PULL = 0.0
 
 # Strafe direction flips on this period, in seconds. Longer reads as
 # deliberate repositioning, shorter as jittering.
@@ -81,10 +84,11 @@ BREAK_OUT_AFTER = 0.7
 # moving a pixel. Sweeping guarantees the whole circle is tried within about
 # twelve seconds.
 #
-# 0.7s per heading was tried and escaped nothing: turning that fast is
-# indistinguishable from spinning on the spot - the game never gets a heading
-# held long enough to accelerate. 1.5s lets the brawler actually walk, and
-# eight headings still cover the circle in 12s.
+# 0.7s per heading was tried and escaped nothing: a session logged 22 and 23
+# second stalls with all eight headings tried and world displacement at 0.00
+# throughout. Turning that fast is indistinguishable from spinning on the spot
+# - the game never gets a heading held long enough to accelerate. 1.5s lets
+# the brawler actually walk, and eight headings still cover the circle in 12s.
 BREAK_OUT_SWEEP = 1.5
 
 # ── Spacing, as fractions of the brawler's own attack range ──────────────
@@ -119,16 +123,30 @@ TANK_CLOSE_TO = 0.70
 # Radius counted as "in this fight", in tiles.
 ENGAGE_RADIUS_TILES = 9.0
 
-# Back off when enemies outnumber the friendly side (bot + nearby teammates)
-# by this much. 1 means "retreat as soon as it is 2v1".
+# SURVIVAL: solo, so there is never a friendly side. Any second enemy nearby is
+# already a losing trade - retreat as soon as it is 2v1 (0 would flee any single
+# enemy, which never lets the bot poke for a charge from range).
 OUTNUMBERED_BY = 1
 
-# Never chase past this fraction of attack range. Beyond it the enemy is
-# leading the bot somewhere, not losing to it.
-NO_CHASE_BEYOND = 1.25
+# SURVIVAL: do not chase at all. Everything past our own range is somewhere the
+# enemy is walking and we are not following.
+NO_CHASE_BEYOND = 1.0
 
-# How hard a retreat pulls compared to normal spacing, 0-1.
-RETREAT_STRENGTH = 0.8
+# SURVIVAL: one inbound shot is enough to break off. Standing to trade is what
+# placement-first play exists to avoid.
+UNDER_FIRE_SHOTS = 1
+
+# How hard a retreat pulls compared to normal spacing, 0-1. Ignores teammates
+# here (solo), so this is only ever "away from the enemy".
+RETREAT_STRENGTH = 1.0
+
+# SURVIVAL: an enemy inside this many tiles is "on top of us" - stop everything
+# else and run directly away while still firing.
+KITE_TILES = 5.0
+
+# SURVIVAL: how far the bot will walk to reach a bush when nothing is pressing
+# it, in tiles. Concealment is the strongest survival tool in the mode.
+SEEK_BUSH_TILES = 8.0
 
 # ── Health ───────────────────────────────────────────────────────────────
 # Read straight off the health bars, so these are real fractions and not
@@ -139,11 +157,12 @@ RETREAT_STRENGTH = 0.8
 # Disengage outright below this. At a third of a bar most exchanges in Brawl
 # Stars are lethal, and a trade the bot "wins" at 20% still ends with it dead
 # to whoever walks past next.
-RETREAT_BELOW_HEALTH = 0.32
+RETREAT_BELOW_HEALTH = 0.50
 
 # Below this, stop closing and hold at range - unless the enemy is visibly
-# worse off, in which case the trade is still good.
-CAUTIOUS_BELOW_HEALTH = 0.55
+# worse off, in which case the trade is still good. SURVIVAL: raised, so the bot
+# stops committing while still near full.
+CAUTIOUS_BELOW_HEALTH = 0.80
 
 # Press a wounded enemy: below this much health they stop being a threat, and
 # letting them walk away means fighting them again at full.
@@ -260,16 +279,19 @@ GAS_MEANS_ENDGAME = True
 # vector for control. Overruled dodges went 0.3% -> 1.3% the same session.
 #
 # Caution should change WHICH fights are taken, not glue the bot in place.
-CAUTION_EARLY_TEAM = 0.85
-CAUTION_EARLY_ALONE = 1.0
-CAUTION_LATE_TEAM = 1.0
-CAUTION_LATE_ALONE = 1.15
-CAUTION_ENDGAME_TEAM = 1.1
-CAUTION_ENDGAME_ALONE = 1.3
+# SURVIVAL: solo showdown has no team, so only the ALONE values ever apply, and
+# they are cranked up. Even early, placement is worth more than a kill on thin
+# odds; late and in the endgame the bot should barely take a fight at all.
+CAUTION_EARLY_TEAM = 1.2
+CAUTION_EARLY_ALONE = 1.3
+CAUTION_LATE_TEAM = 1.4
+CAUTION_LATE_ALONE = 1.5
+CAUTION_ENDGAME_TEAM = 1.6
+CAUTION_ENDGAME_ALONE = 1.7
 
-# Ceiling on the scaled "stop closing" threshold. Without it, caution alone
-# decides the bot is too hurt to approach anything, at any health short of full.
-CAUTIOUS_CEILING = 0.62
+# Ceiling on the scaled "stop closing" threshold. SURVIVAL: raised so the high
+# caution above can actually keep the bot holding at range instead of closing.
+CAUTIOUS_CEILING = 0.85
 
 # Whether an even fight is declined when alone at the end of a match.
 #
@@ -304,6 +326,7 @@ if not brawler_info:
 
 persistent_data.setdefault("time_since_holding_attack", None)
 persistent_data.setdefault("last_gadget_use", 0.0)
+persistent_data.setdefault("dodge_count", 0)
 persistent_data.setdefault("last_activity", 0.0)
 persistent_data.setdefault("idle_anchor", None)
 persistent_data.setdefault("afk_anchor", None)
@@ -681,13 +704,18 @@ def map_center():
     return (width / 2.0, height / 2.0)
 
 
-# Duck into a bush when there is nothing to fight, rather than pacing the open.
-# 0 disables. How far the bot will walk to reach cover, in tiles.
-SEEK_BUSH_TILES = 5.0
-
+# ─────────────────────────────────────────────────────────────────────
+#  BUSH COVER
+#  Concealment the base brain never used. bushes are detected boxes already
+#  in the context; these turn them into "where is cover" and "am I in it".
+# ─────────────────────────────────────────────────────────────────────
 
 def nearest_bush():
-    """Centre of the closest bush within SEEK_BUSH_TILES, or None."""
+    """Centre of the closest bush within SEEK_BUSH_TILES, or None.
+
+    Reachability is not checked here - move_toward bends the path around walls
+    on its own, and a bush the wall model says is unreachable is usually just
+    on the far side of one tile."""
     if SEEK_BUSH_TILES <= 0 or not bushes:
         return None
     best = None
@@ -709,6 +737,17 @@ def in_bush():
         if bush[0] <= px <= bush[2] and bush[1] <= py <= bush[3]:
             return True
     return False
+
+
+def hold_in_bush():
+    """A small oscillation that stays in cover without reading as idle.
+
+    Sitting perfectly still is the strongest hide, but Brawl Stars flags a
+    brawler that never moves as AFK. A third-radius drift that flips every
+    STRAFE_PERIOD keeps the bot inside the bush while still sending input."""
+    side = 1 if int(time.time() / STRAFE_PERIOD) % 2 == 0 else -1
+    step = normalize_move(side, 0, JOYSTICK_RADIUS * 0.35)
+    return first_unblocked([step, normalize_move(0, side, JOYSTICK_RADIUS * 0.35)], (0, 0))
 
 
 # How long to hold a roam heading before re-rolling, in seconds. Long enough
@@ -783,8 +822,8 @@ def update_stagnation(mate_coords, mate_distance=None):
     mate_world = to_world(mate_coords) if mate_coords is not None else None
 
     active = False
-    if enemy_data:
-        # A fight is on.
+    if enemy_data or projectiles:
+        # A fight, or anything shooting at us.
         active = True
     elif mate_coords is not None and mate_distance is not None:
         if mate_distance > TILE_SIZE * REGROUP_TILES:
@@ -1082,31 +1121,22 @@ def avoid_poison_gas():
 # ─────────────────────────────────────────────────────────────────────
 
 def no_enemy_movement():
-    mate_coords, mate_distance = find_closest_teammate(playing_teammates(), player_pos, walls)
+    # SURVIVAL: no teammates. Nothing to regroup on, nobody to follow - the
+    # whole regroup branch of the base brain is gone. With nothing to fight the
+    # right place to be is out of sight.
 
-    # 0. Nothing has happened for a while: stop waiting on the teammate and go
-    #    where the game is. Checked before the regroup branch, because it is
-    #    precisely the regroup branch that gets stuck on an idle ally.
-    if update_stagnation(mate_coords, mate_distance) or center_run_active():
-        return head_to_center()
+    # 1. Already in cover: stay put, drifting just enough not to be flagged idle.
+    if in_bush():
+        return hold_in_bush()
 
-    # 1. Regroup, unless we are already next to them.
-    if mate_coords is not None:
-        if mate_distance is not None and mate_distance > TILE_SIZE * REGROUP_TILES:
-            return move_toward(mate_coords)
-        # Already together: drift instead of standing on their head.
-        return strafe_around(mate_coords)
+    # 2. A bush within reach: go hide in it.
+    cover = nearest_bush()
+    if cover is not None:
+        return move_toward(cover)
 
-    # 2. Alone and nothing in sight. Prefer concealment: duck into a nearby bush
-    #    and travel under cover rather than pacing the open. Falls back to a
-    #    committed roam heading when no bush is close (or cover is disabled).
-    #    Aiming at map_center() did nothing - it is the middle of the SCREEN,
-    #    which the camera keeps the player on, so the bot walked at its own
-    #    position and milled in one place. A roam heading actually travels.
-    if not in_bush():
-        cover = nearest_bush()
-        if cover is not None:
-            return move_toward(cover)
+    # 3. No cover nearby: cross the map on a committed heading to find some,
+    #    rather than milling on the spot (the camera keeps the player centred,
+    #    so there is no on-screen point to walk toward).
     return roam_heading()
 
 
@@ -1284,6 +1314,14 @@ def assess_fight(enemy_distance, enemy_coords):
     if enemies_near > mates_near + OUTNUMBERED_BY and not finishable:
         return "retreat"
 
+    # Too much in the air at once - the solver starts running out of clean
+    # escapes, and each additional shot compounds that.
+    incoming = 0
+    for shot in projectiles:
+        if shot.confidence >= DODGE_MIN_CONFIDENCE:
+            incoming += 1
+    if incoming >= UNDER_FIRE_SHOTS and not finishable:
+        return "retreat"
 
     # Chasing. Past this the bot walks out of its own team's cover and into
     # whatever the enemy is walking toward.
@@ -1378,6 +1416,41 @@ def combat_movement(enemy_coords, enemy_distance):
     return hold_spacing(enemy_coords, enemy_distance, near, HOLD_RANGE_FAR)
 
 
+def survival_combat(enemy_coords, enemy_distance):
+    """Placement-first movement against a visible enemy.
+
+    Never presses. The base brain's assess_fight still runs - its retreat verdict
+    is respected - but a "fight" verdict is downgraded to keeping distance. On top
+    of that, three survival rules the team brain does not have:
+
+      1. An enemy inside KITE_TILES is on top of us: run straight away and keep
+         firing. Shooting is independent of the joystick, so the shots still go
+         out (handled in the main block below).
+      2. Otherwise, break line of sight into a bush if one is near - out of sight
+         is out of the fight.
+      3. Failing that, hold at the far edge of our own range and strafe.
+
+    Teammates are never consulted: retreat is always straight away from the
+    enemy, never toward an "ally" that does not exist in solo showdown.
+    """
+    if enemy_distance <= TILE_SIZE * KITE_TILES:
+        return move_away_from(enemy_coords)
+
+    stance = assess_fight(enemy_distance, enemy_coords)
+    if stance == "retreat":
+        if debug:
+            print("survival: retreating")
+        return move_away_from(enemy_coords)
+
+    # Not pressed and not fleeing: prefer disappearing into cover over trading.
+    if not in_bush():
+        cover = nearest_bush()
+        if cover is not None:
+            return move_toward(cover)
+
+    return hold_spacing(enemy_coords, enemy_distance, HOLD_RANGE_NEAR, HOLD_RANGE_FAR)
+
+
 # ─────────────────────────────────────────────────────────────────────
 #  TACTICAL LAYER
 # ─────────────────────────────────────────────────────────────────────
@@ -1459,26 +1532,11 @@ elif enemy_coords is None:
     movement = no_enemy_movement()
     activity = "regrouping" if persistent_data.get("followed_id") else "moving up"
 else:
-    movement = combat_movement(enemy_coords, enemy_distance)
-    activity = "fighting"
-
-    # Do not fight alone. If a teammate has been left far behind, bias the
-    # combat movement back toward them - previously the bot only regrouped when
-    # no enemy was visible at all, which in practice is almost never, so it
-    # drifted off and fought 1v2.
-    mate_coords, mate_distance = find_closest_teammate(playing_teammates(), player_pos, walls)
-    # A fight is the definition of something happening, so keep the idle clock
-    # fed here too. Without this the timer would run down during a long
-    # engagement and fire the moment the last enemy dropped out of sight.
-    update_stagnation(mate_coords, mate_distance)
-    persistent_data["center_run_until"] = 0.0
-    if mate_coords is not None and mate_distance is not None:
-        if mate_distance > TILE_SIZE * REGROUP_IN_FIGHT_TILES:
-            toward_mate = move_toward(mate_coords)
-            movement = normalize_move(
-                movement[0] * (1.0 - REGROUP_PULL) + toward_mate[0] * REGROUP_PULL,
-                movement[1] * (1.0 - REGROUP_PULL) + toward_mate[1] * REGROUP_PULL,
-            )
+    # SURVIVAL: placement-first movement - kite when cornered, break to cover,
+    # never chase. No teammate bias: there are none in solo showdown, so the
+    # regroup blend the base brain applies here is simply gone.
+    movement = survival_combat(enemy_coords, enemy_distance)
+    activity = "surviving"
 
     if is_blocked(movement):
         if enemy_distance < safe_range:
@@ -1513,6 +1571,50 @@ if enemy_coords is not None:
     try_attack(enemy_coords, enemy_distance, allow_wall_attack=(archetype == "LOBS"))
 
 
+# ─────────────────────────────────────────────────────────────────────
+#  DODGE LAYER
+#
+#  Runs last, so it overrides everything above. The solver already accounts
+#  for walls, for every tracked shot at once, and for the tactical vector we
+#  just computed - it will only pull us off course when standing still or
+#  continuing would actually cost health.
+# ─────────────────────────────────────────────────────────────────────
+
+if dodge_enabled and projectiles:
+    credible = []
+    for shot in projectiles:
+        if shot.confidence >= DODGE_MIN_CONFIDENCE:
+            credible.append(shot)
+
+    if credible:
+        decision = solve_dodge(movement, credible)
+
+        if decision is not None and decision.active and leads_into_gas(decision.vector):
+            # The escape runs into the gas. Refuse it and keep the anti-gas
+            # movement instead: one projectile hit is cheaper than standing in
+            # a damage-over-time cloud, and the shot is still coming either way.
+            decision = None
+            if debug:
+                print("dodge refused: escape led into gas")
+
+        if decision is not None and decision.active:
+            spacing_ok = DODGE_BREAKS_SPACING or decision.critical
+            if spacing_ok:
+                movement = decision.vector
+                # The whole point: break the glide with a hard cut.
+                sharp_movement = True
+                persistent_data["dodge_count"] = persistent_data["dodge_count"] + 1
+
+                if debug:
+                    print(
+                        "dodge", decision.urgency,
+                        "tti", round(decision.time_to_impact or 0, 3),
+                        "shots", len(credible),
+                    )
+
+                # Keep the pressure on while sidestepping.
+                if ATTACK_WHILE_DODGING and enemy_coords is not None:
+                    try_attack(enemy_coords, enemy_distance, allow_wall_attack=(archetype == "LOBS"))
 
 
 # ─────────────────────────────────────────────────────────────────────
