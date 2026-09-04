@@ -20,7 +20,7 @@ const GAMEMODE_LABELS = {
 const AUTH_ERROR_COPY = {
     MISSING_API_KEY: {
         title: "API key required",
-        detail: "Generate one in Discord with /generate_key using PylaBot.",
+        detail: "Generate one in Discord with /generate_key using VvokBot.",
     },
     MISSING_HWID: {
         title: "Device ID missing",
@@ -40,7 +40,7 @@ const AUTH_ERROR_COPY = {
     },
     INVALID_API_KEY: {
         title: "API key not found",
-        detail: "Generate a fresh key with /generate_key using PylaBot, then paste the full key here.",
+        detail: "Generate a fresh key with /generate_key using VvokBot, then paste the full key here.",
     },
     IP_MISMATCH: {
         title: "IP address changed",
@@ -72,7 +72,7 @@ const AUTH_ERROR_COPY = {
     },
     LOGIN_CHECK_FAILED: {
         title: "Saved key check failed",
-        detail: "The saved key could not be checked. Try again or generate a fresh key with /generate_key using PylaBot.",
+        detail: "The saved key could not be checked. Try again or generate a fresh key with /generate_key using VvokBot.",
     },
     LOGIN_FAILED: {
         title: "Login failed locally",
@@ -116,8 +116,8 @@ const SETTINGS_META = {
         { key: "brawl_api_email", label: "Developer Portal Email", type: "text", placeholder: "you@example.com", help: "Every key is tied to one IP address, so this is how trophy sync survives your provider changing it: the bot logs in, reissues the key for the new address and carries on. Without it, sync stops working the next time your address moves." },
         { key: "brawl_api_password", label: "Developer Portal Password", type: "password", help: "The same password you use on developer.brawlstars.com. Stored in cfg/general_config.toml on this machine, never shown back here and never written to logs - but it is a password in a plain file. Leave both fields empty if that bothers you; trophies then stop syncing whenever your address changes, and nothing else breaks." },
         { key: "default_trophy_target", label: "Default Trophy Target", type: "number", help: "Default trophy target used when adding a new brawler to the queue." },
-        { key: "run_for_minutes", label: "Run Time", type: "number", suffix: "min", help: "How long Pyla runs before cooldown logic takes over." },
-        { key: "max_ips", label: "Max IPS", type: "text", help: "Processing cap. Use auto if you want Pyla to manage it." },
+        { key: "run_for_minutes", label: "Run Time", type: "number", suffix: "min", help: "How long VvokAI runs before cooldown logic takes over." },
+        { key: "max_ips", label: "Max IPS", type: "text", help: "Processing cap. Use auto if you want VvokAI to manage it." },
         { key: "used_threads", label: "Threads", type: "text", help: "Worker thread count. Auto keeps the current behavior." },
         { key: "ocr_scale_down_factor", label: "OCR Scale", type: "number", step: "0.1", help: "Scale factor used before OCR work." },
         { key: "trophies_multiplier", label: "Trophies Multiplier", type: "number", help: "Useful for custom arenas or multiplier-based modes." },
@@ -154,12 +154,12 @@ const SETTINGS_META = {
         { key: "hypercharge_pixels_minimum", label: "Hypercharge Pixels", type: "number", help: "Purple pixel threshold for hypercharge readiness." },
     ],
     timers: [
-        { key: "super", label: "Super Delay", min: 0.1, max: 10, step: 0.1, help: "How often Pyla checks if super is available." },
-        { key: "hypercharge", label: "Hypercharge Delay", min: 0.1, max: 10, step: 0.1, help: "How often Pyla checks if hypercharge is available." },
-        { key: "gadget", label: "Gadget Delay", min: 0.1, max: 10, step: 0.1, help: "How often Pyla checks gadgets." },
+        { key: "super", label: "Super Delay", min: 0.1, max: 10, step: 0.1, help: "How often VvokAI checks if super is available." },
+        { key: "hypercharge", label: "Hypercharge Delay", min: 0.1, max: 10, step: 0.1, help: "How often VvokAI checks if hypercharge is available." },
+        { key: "gadget", label: "Gadget Delay", min: 0.1, max: 10, step: 0.1, help: "How often VvokAI checks gadgets." },
         { key: "wall_detection", label: "Wall Detection", min: 0.1, max: 10, step: 0.1, help: "Wall scan cadence." },
         { key: "no_detection_proceed", label: "Proceed Delay", min: 0.1, max: 10, step: 0.1, help: "Delay before pressing proceed when no detections are found." },
-        { key: "state_check", label: "State Check", min: 0.1, max: 10, step: 0.1, help: "How often Pyla checks the game state." },
+        { key: "state_check", label: "State Check", min: 0.1, max: 10, step: 0.1, help: "How often VvokAI checks the game state." },
         { key: "idle", label: "Idle Check", min: 0.1, max: 10, step: 0.1, help: "How often idle detection runs." },
         { key: "check_if_brawl_stars_crashed", label: "Crash Check", min: 0.1, max: 10, step: 0.1, help: "How often crash recovery checks run." },
     ],
@@ -167,7 +167,7 @@ const SETTINGS_META = {
         { key: "discord_id", label: "Discord ID", type: "text", help: "Your discord user ID. Required to use a discord bot or be pinged in webhooks." },
         { key: "webhook_url", label: "Webhook URL", type: "url", help: "Discord webhook endpoint used for notifications." },
         { key: "discord_bot_token", label: "Discord Bot Token", type: "password", help: "Discord bot token used for remote control commands. Requires full restart to apply." },
-        { key: "ping_when_stuck", label: "Ping When Stuck", type: "checkbox", help: "Send a ping when Pyla gets stuck." },
+        { key: "ping_when_stuck", label: "Ping When Stuck", type: "checkbox", help: "Send a ping when VvokAI gets stuck." },
         { key: "ping_when_target_is_reached", label: "Ping On Target", type: "checkbox", help: "Send a ping when a target finishes." },
         { key: "ping_every_x_match", label: "Ping Every X Matches", type: "number", help: "0 disables periodic match pings." },
         { key: "ping_every_x_minutes", label: "Ping Every X Minutes", type: "number", help: "0 disables periodic minute pings." },
@@ -356,7 +356,7 @@ function toggleAuthModal() {
             if (!auth.early_access) {
                 instructions.innerHTML = "<h1> This screen isn't supposed to appear as an api key is included. Check the logs.</h1>";
             } else {
-                instructions.innerHTML = "Use <code>/generate_key</code> if you bought via Patreon, or <code>/refresh_key</code> if you bought a temporary key, with PylaBot in #commands, then paste the key here. Your key is handled by Python only and is not rendered back into the UI.";
+                instructions.innerHTML = "Use <code>/generate_key</code> if you bought via Patreon, or <code>/refresh_key</code> if you bought a temporary key, with VvokBot in #commands, then paste the key here. Your key is handled by Python only and is not rendered back into the UI.";
             }
         }
         renderAuthMessage(auth, auth.code ? "error" : "info");
@@ -524,13 +524,13 @@ function renderDashboard() {
         ? formatAuthToast(auth) || auth.message || "Login required before starting."
         : "";
     const statusCopy = runtime.state === "error"
-        ? (runtime.last_error || "Pyla stopped with an error.")
+        ? (runtime.last_error || "VvokAI stopped with an error.")
         : runtime.state === "pausing"
-            ? "Pause requested. Pyla will stop in the lobby."
+            ? "Pause requested. VvokAI will stop in the lobby."
             : runtime.state === "stopping"
-                ? "Pyla is shutting down. This should only take a few seconds."
+                ? "VvokAI is shutting down. This should only take a few seconds."
                 : isPaused
-                    ? "Pyla is paused in the lobby. Press Start to resume."
+                    ? "VvokAI is paused in the lobby. Press Start to resume."
                     : canStart
                         ? "Queue is ready. Start VvokAI from here."
                         : authBlockCopy
@@ -616,7 +616,6 @@ function renderDashboard() {
                     <div class="spec-list">
                         <div class="spec-row"><span>Dodging</span><span class="spec-value${runtime.state === "running" ? " is-live" : ""}">${runtime.state === "running" ? "RUNNING" : "IDLE"}</span></div>
                         <div class="spec-row"><span>Telegram</span><span class="spec-value"><a href="https://t.me/nyavke" target="_blank" rel="noreferrer">@nyavke</a></span></div>
-                        <div class="spec-row"><span>Upstream</span><span class="spec-value"><a href="https://github.com/PylaAI/PylaAI" target="_blank" rel="noreferrer">PylaAI</a></span></div>
                     </div>
                 </section>
 
@@ -957,7 +956,7 @@ function renderPlaystyles() {
                 </div>
                 <div class="toolbar-actions">
                     <button id="importPlaystyleBtn" class="btn">${iconMarkup("import")} Import</button>
-                    <input id="playstyleFileInput" type="file" accept=".pyla" class="hidden">
+                    <input id="playstyleFileInput" type="file" accept=".vvok,.pyla" class="hidden">
                 </div>
             </section>
 
@@ -2081,7 +2080,7 @@ function bindRuntimeButtons() {
                 state.bootstrap.auth = result.auth;
                 toggleAuthModal();
             }
-            showToast(result.code ? formatAuthToast(result) : (result.message || "Unable to start Pyla."), "error");
+            showToast(result.code ? formatAuthToast(result) : (result.message || "Unable to start VvokAI."), "error");
             return;
         }
 
@@ -2089,7 +2088,7 @@ function bindRuntimeButtons() {
         updateChrome();
         renderDashboard();
         renderQueueDock();
-        showToast("Pyla runtime started.", "success");
+        showToast("VvokAI runtime started.", "success");
     });
 
     document.getElementById("resumeRuntimeBtn")?.addEventListener("click", async () => {
@@ -2099,7 +2098,7 @@ function bindRuntimeButtons() {
                 state.bootstrap.auth = result.auth;
                 toggleAuthModal();
             }
-            showToast(result.code ? formatAuthToast(result) : (result.message || "Unable to resume Pyla."), "error");
+            showToast(result.code ? formatAuthToast(result) : (result.message || "Unable to resume VvokAI."), "error");
             return;
         }
 
@@ -2107,7 +2106,7 @@ function bindRuntimeButtons() {
         updateChrome();
         renderDashboard();
         renderQueueDock();
-        showToast("Pyla runtime resumed.", "success");
+        showToast("VvokAI runtime resumed.", "success");
     });
 
     document.getElementById("pauseRuntimeBtn")?.addEventListener("click", async () => {
@@ -2115,7 +2114,7 @@ function bindRuntimeButtons() {
         if (button?.classList.contains("is-disabled")) return;
         const result = await fetchJSON("/api/runtime/pause", { method: "POST" }, true);
         if (!result.ok) {
-            showToast(result.message || "Unable to pause Pyla.", "error");
+            showToast(result.message || "Unable to pause VvokAI.", "error");
             return;
         }
 
@@ -2129,7 +2128,7 @@ function bindRuntimeButtons() {
     document.getElementById("stopRuntimeBtn")?.addEventListener("click", async () => {
         const result = await fetchJSON("/api/runtime/stop", { method: "POST" }, true);
         if (!result.ok) {
-            showToast(result.message || "Unable to stop Pyla.", "error");
+            showToast(result.message || "Unable to stop VvokAI.", "error");
             return;
         }
 
@@ -2184,7 +2183,7 @@ async function refreshRuntimeState() {
                 renderQueueDock();
             }
             if (result.runtime.state === "error") {
-                showToast(result.runtime.last_error || "Pyla stopped with an error.", "error");
+                showToast(result.runtime.last_error || "VvokAI stopped with an error.", "error");
             }
 
             if (prevState === "running" && !result.runtime.is_running) {
@@ -2439,7 +2438,7 @@ function bindPlaystyleEvents() {
     });
 
     document.getElementById("importPlaystyleBtn")?.addEventListener("click", () => {
-        if (!window.confirm("WARNING: Importing custom playstyles carries security risks.\nPlaystyle files (.pyla) contain Python code that runs directly on your system.\nOnly import playstyles from authors you completely trust.\n\nDo you want to proceed?")) {
+        if (!window.confirm("WARNING: Importing custom playstyles carries security risks.\nPlaystyle files (.vvok) contain Python code that runs directly on your system.\nOnly import playstyles from authors you completely trust.\n\nDo you want to proceed?")) {
             return;
         }
         document.getElementById("playstyleFileInput")?.click();

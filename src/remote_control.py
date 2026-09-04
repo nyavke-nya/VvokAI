@@ -10,7 +10,7 @@ once rather than once per transport.
 Every action returns a Reply: text, and for a screenshot the PNG bytes. What
 to do with that - embed it, chunk it, mark it up - is the transport's problem.
 
-This is also the object handed to pyla_main, because it is the one thing both
+This is also the object handed to vvok_main, because it is the one thing both
 bots can see: the run puts its WindowController here when it starts and clears
 it when it stops, and a screenshot asked for from either side finds it.
 """
@@ -74,7 +74,7 @@ class RemoteControl:
         self.data_service = data_service
         self.window_controller = None
 
-    # pyla_main calls this when a run starts, and again with None when it ends.
+    # vvok_main calls this when a run starts, and again with None when it ends.
     def set_window_controller(self, window_controller):
         self.window_controller = window_controller
 

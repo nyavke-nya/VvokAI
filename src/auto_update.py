@@ -1,6 +1,6 @@
 """Pick up updates while the bot is running, without losing a match.
 
-The updater has always run once, at startup, from start_pyla.bat or the exe.
+The updater has always run once, at startup, from start_vvok.bat or the exe.
 That is fine for somebody who restarts often and no use at all to somebody
 pushing trophies for two days straight - which is what the bot is for.
 
@@ -18,7 +18,7 @@ this reuses it instead of inventing a second kind of stop.
 
 It restarts through the launcher. A Python process cannot reload the modules
 it is already running, so the update is picked up by exiting with the code
-start_pyla.bat and launcher.py already understand as "start me again".
+start_vvok.bat and launcher.py already understand as "start me again".
 
 And it puts the bot back to work. There is no auto-start in this project - the
 panel waits for somebody to press Start - so an update that restarted the

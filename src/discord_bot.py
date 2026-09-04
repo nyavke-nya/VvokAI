@@ -84,7 +84,7 @@ class DiscordBot:
 
         if interaction.user.id != authorized_user_id:
             await interaction.response.send_message(
-                "You are not authorized to control this Pyla instance.",
+                "You are not authorized to control this VvokAI instance.",
                 ephemeral=True
             )
             return False
@@ -92,7 +92,7 @@ class DiscordBot:
         configured_guild_id = self.get_configured_guild_id()
         if configured_guild_id and interaction.guild_id and interaction.guild_id != configured_guild_id:
             await interaction.response.send_message(
-                "This Pyla instance is not configured for this Discord server.",
+                "This VvokAI instance is not configured for this Discord server.",
                 ephemeral=True
             )
             return False

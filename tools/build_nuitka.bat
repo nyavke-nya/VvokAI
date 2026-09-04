@@ -1,16 +1,16 @@
 @echo off
-title PylaAI Builder (Nuitka)
+title VvokAI Builder (Nuitka)
 color 0B
 
 echo ========================================================
-echo               PylaAI Nuitka Compiler
+echo               VvokAI Nuitka Compiler
 echo ========================================================
 echo.
 
 :: Check if Virtual Environment exists
 if not exist "venv\Scripts\activate.bat" (
     echo [ERROR] Virtual environment not found. 
-    echo Please run start_pyla.bat first to set up the environment and install dependencies.
+    echo Please run start_vvok.bat first to set up the environment and install dependencies.
     pause
     exit /b
 )

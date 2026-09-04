@@ -70,10 +70,10 @@ def serve(port):
     Bound to 127.0.0.1 rather than 0.0.0.0: in a desktop application there is
     nobody else who should be reaching this, and the panel has no login.
     """
-    from main import pyla_main
+    from main import vvok_main
     from webui import create_app
 
-    app = create_app(pyla_main, start_discord_bot=True)
+    app = create_app(vvok_main, start_discord_bot=True)
 
     def run():
         app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False,

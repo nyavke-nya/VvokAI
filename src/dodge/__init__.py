@@ -1,4 +1,4 @@
-"""Projectile tracking and dodge solving for PylaAI.
+"""Projectile tracking and dodge solving for VvokAI.
 
 The package is deliberately split so that vision and tactics never mix:
 

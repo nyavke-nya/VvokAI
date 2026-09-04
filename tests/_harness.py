@@ -1,6 +1,6 @@
 """Shared bits for the test suite.
 
-The playstyle is not importable - it is a .pyla script that runs inside a
+The playstyle is not importable - it is a .vvok script that runs inside a
 sandbox with no builtins and a context the engine injects. So instead of
 importing it, the tests lift individual functions out of its AST and run them
 against a stub context. That keeps the tests honest: they exercise the code
@@ -45,7 +45,7 @@ def read_source(name):
     raise FileNotFoundError(f"no source file named {name} under {REPO}")
 
 
-PLAYSTYLE = os.path.join(REPO, "playstyles", "unified_dodge.pyla")
+PLAYSTYLE = os.path.join(REPO, "playstyles", "unified_dodge.vvok")
 
 # Every playstyle shipped with the fork. The name and signature checks run
 # against all of them: a context key renamed in play.py breaks each one the
@@ -58,7 +58,7 @@ PLAYSTYLE = os.path.join(REPO, "playstyles", "unified_dodge.pyla")
 PLAYSTYLES = sorted(
     os.path.join(REPO, "playstyles", name)
     for name in os.listdir(os.path.join(REPO, "playstyles"))
-    if name.endswith(".pyla")
+    if name.endswith(".vvok")
 )
 
 
@@ -142,7 +142,7 @@ def lift(names, constants, context):
         raise AssertionError(f"playstyle no longer defines: {sorted(missing)}")
 
     module = ast.Module(body=body, type_ignores=[])
-    exec(compile(ast.fix_missing_locations(module), "<pyla>", "exec"), context)
+    exec(compile(ast.fix_missing_locations(module), "<vvok>", "exec"), context)
     return context
 
 

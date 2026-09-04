@@ -99,7 +99,7 @@ def write_choice(provider, fp16):
 
 def main():
     if not MODEL.exists():
-        say(f"{MODEL} is missing - run start_pyla.bat once first.")
+        say(f"{MODEL} is missing - run start_vvok.bat once first.")
         return 1
 
     ort = load_runtime()

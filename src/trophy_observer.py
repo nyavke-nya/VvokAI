@@ -1,7 +1,7 @@
 import csv
 import os
 import requests
-from utils import load_toml_as_dict, save_dict_as_toml, api_base_url, hash_playstyle, PYLA_VERSION, resolve_project_path
+from utils import load_toml_as_dict, save_dict_as_toml, api_base_url, hash_playstyle, VVOK_VERSION, resolve_project_path
 from enum import Enum
 from dataclasses import dataclass
 from typing import Optional
@@ -22,7 +22,7 @@ class MatchResult(Enum):
 HISTORY_COLUMNS = [
     "date_time", "brawler_name", "result", "current_trophies", "trophy_delta",
     "new_winstreak", "playstyle_hash", "playstyle_name", "playstyle_gamemodes",
-    "playstyle_brawlers", "pyla_version", "power_level",
+    "playstyle_brawlers", "vvok_version", "power_level",
 ]
 
 
@@ -107,7 +107,13 @@ class TrophyObserver:
 
         try:
             with open(self.history_file, "r", encoding="utf-8-sig", newline="") as handle:
-                return [dict(row) for row in csv.DictReader(handle)]
+                rows = [dict(row) for row in csv.DictReader(handle)]
+            # The version column used to be "pyla_version". Carry an older file's
+            # values across the rename so save_history does not blank them.
+            for row in rows:
+                if "vvok_version" not in row and "pyla_version" in row:
+                    row["vvok_version"] = row.pop("pyla_version")
+            return rows
         except OSError as error:
             print(f"Could not read match history: {error}")
             return []
@@ -215,7 +221,7 @@ class TrophyObserver:
             self.win_streak, hash_playstyle(playstyle_info),
             playstyle_info["name"],
             "|".join(playstyle_info["gamemodes"]),
-            "|".join(playstyle_info["brawlers"]), PYLA_VERSION,
+            "|".join(playstyle_info["brawlers"]), VVOK_VERSION,
             (power_level if power_level is not None else -1),
         ])))
         self.match_counter += 1

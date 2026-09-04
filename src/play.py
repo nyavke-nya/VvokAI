@@ -20,7 +20,7 @@ except ImportError:
     def add_advanced_visuals(a, b):
         return None
 from state_finder import get_state
-from utils import load_toml_as_dict, count_hsv_pixels, load_brawlers_info, interpret_pyla_code, \
+from utils import load_toml_as_dict, count_hsv_pixels, load_brawlers_info, interpret_vvok_code, \
     count_mask_pixels, JOYSTICK_RADIUS, clamp, config_bool, is_safe_ast
 
 
@@ -40,7 +40,7 @@ ENEMY_EXPOSURE_RADIUS = 40
 # Every attack_range in cfg/brawlers_info.json is multiplied by this before the
 # playstyle sees it.
 #
-# Those numbers are inherited from PylaAI and they are all short. Measured on a
+# Those numbers are inherited from earlier versions and they are all short. Measured on a
 # captured frame: the map border fence draws one post per tile and the posts sit
 # 98 px apart, and the ring under the player - which the game draws at about one
 # tile across - is 115 px wide. So a tile is roughly 98 px on screen, while the
@@ -95,7 +95,7 @@ PLAYER_COLLISION_RADIUS = 24
 class Play:
 
     def __init__(self, main_info_model, tile_detector_model, close_tile_detector_model, window_controller,
-                 pyla_code, playstyle_info=None):
+                 vvok_code, playstyle_info=None):
         # A playstyle can opt out of the whole projectile stack by putting
         # "dodge": false in its metadata header. That is not the same as simply
         # never calling solve_dodge(): the tracker runs on its own thread at
@@ -226,15 +226,15 @@ class Play:
         self.entity_detection_confidence = bot_config["entity_detection_confidence"]
         self.seconds_to_hold_attack_after_reaching_max = load_toml_as_dict("cfg/bot_config.toml")["seconds_to_hold_attack_after_reaching_max"]
         self.persistent_data = {"time_since_holding_attack": None}
-        if isinstance(pyla_code, str):
-            is_safe, error_msg = is_safe_ast(pyla_code)
+        if isinstance(vvok_code, str):
+            is_safe, error_msg = is_safe_ast(vvok_code)
             if not is_safe:
                 print(f"Security/Syntax Validation Failed for playstyle: {error_msg}")
-                self.pyla_code = compile("", "<string>", "exec")
+                self.vvok_code = compile("", "<string>", "exec")
             else:
-                self.pyla_code = compile(pyla_code, "<pyla_script>", "exec")
+                self.vvok_code = compile(vvok_code, "<vvok_script>", "exec")
         else:
-            self.pyla_code = pyla_code
+            self.vvok_code = vvok_code
         self.context = None
         self.frame = None
 
@@ -251,7 +251,7 @@ class Play:
         self.dodge_config = None
         self.dodge_solver = None
         self.movement_shaper = None
-        self.last_pyla_globals = {}
+        self.last_vvok_globals = {}
         self.last_player_box = None
         self.last_dodge_decision = None
         self.last_aim_solution = None
@@ -550,7 +550,7 @@ class Play:
             self.window_controller.click(button_x, button_y)
 
         self._emote_thread = threading.Thread(target=_send, daemon=True,
-                                              name="pyla-emote")
+                                              name="vvok-emote")
         self._emote_thread.start()
 
     def camera_odometer(self):
@@ -1236,8 +1236,8 @@ class Play:
             }
         inner = self.stage("| context", inner)
         movement = self.get_movement()
-        inner = self.stage("| pyla", inner)
-        sharp = bool(self.last_pyla_globals.get('sharp_movement'))
+        inner = self.stage("| vvok", inner)
+        sharp = bool(self.last_vvok_globals.get('sharp_movement'))
         current_time = time.time()
         vector = self.movement_to_vector(movement)
 
@@ -1385,13 +1385,13 @@ class Play:
         return walls, bushes
 
     def get_movement(self):
-        movement, updated_globals = interpret_pyla_code(self.pyla_code, self.context)
+        movement, updated_globals = interpret_vvok_code(self.vvok_code, self.context)
         # The playstyle communicates more than a vector now: `sharp_movement`
         # tells the shaper whether to snap or glide.
-        self.last_pyla_globals = updated_globals or {}
+        self.last_vvok_globals = updated_globals or {}
         control = getattr(self, "runtime_control", None)
         if control is not None and hasattr(control, "note_activity"):
-            control.note_activity(self.last_pyla_globals.get("activity"))
+            control.note_activity(self.last_vvok_globals.get("activity"))
         return movement
 
     def build_advanced_visuals(self, debug_data):
@@ -1517,7 +1517,7 @@ class Play:
 
             # A crashing playstyle freezes the bot silently - no movement, no
             # attacks, just a brawler standing still. Put it on the screen.
-            playstyle_error = getattr(interpret_pyla_code, "last_error", None)
+            playstyle_error = getattr(interpret_vvok_code, "last_error", None)
             if playstyle_error:
                 debug_data["playstyle_error"] = playstyle_error
 

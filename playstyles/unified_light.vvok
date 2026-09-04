@@ -1,45 +1,43 @@
-{"name": "Unified + Aggressive", "description": "The unified brain tuned to press rather than trade. Takes fights the cautious style declines, chases further, and holds ground while outnumbered - with dodging still on, because that is what keeps an aggressive bot alive.", "brawlers": ["all"], "gamemodes": ["all"], "author": "vvok", "date": "2026-08-20"}
+{"name": "Unified Light", "description": "Same tactics as Unified + Dodge - archetype spacing, regrouping, health awareness, smooth movement - with the projectile stack removed. The tracker thread never starts, so it costs no CPU.", "brawlers": ["all"], "gamemodes": ["all"], "author": "vvok", "date": "2026-08-14", "dodge": false}
 
 # ═══════════════════════════════════════════════════════════════════════
-#  UNIFIED + AGGRESSIVE
+#  UNIFIED LIGHT
 #
-#  The same brain as unified_dodge.pyla - same archetypes, same dodging, same
-#  anti-stagnation - with the fight rules retuned to press instead of trade.
+#  Everything Unified + Dodge does, minus the projectile evasion: the combat
+#  tree, regrouping with teammates, rotation to the centre, fleeing the gas,
+#  archetype-driven spacing, health awareness and target selection are all
+#  identical. Keep changes in step with unified_dodge.vvok - the two are meant
+#  to differ in exactly one thing.
 #
-#  This exists because of a specific complaint: the bot "keeps running away".
-#  It was not a bug. The cautious tuning breaks off a chase at 1.25x its own
-#  range, leaves a 2v1, disengages under two inbound shots and declines an even
-#  fight when it is last alive. Every one of those is correct for pushing
-#  trophies, and every one of them reads as cowardice to somebody who wants
-#  the bot to fight.
+#  The metadata header carries "dodge": false, and that is not decoration. The
+#  projectile tracker runs on its own thread at capture rate whether or not
+#  anything reads it, so a playstyle that merely never calls solve_dodge()
+#  still pays for tracking it ignores. That flag stops the tracker and the aim
+#  solver from starting at all.
 #
-#  So nothing here is new behaviour. It is the same decisions with the dials
-#  moved, and the differences are listed on each constant below rather than
-#  buried: chase to 2x range, leave at 3v1 not 2v1, tolerate four shots in the
-#  air, fight down to a fifth of a health bar, and never decline an even fight.
+#  Two consequences worth knowing:
 #
-#  Dodging stays ON, and that is not a compromise. An aggressive bot spends far
-#  more time inside enemy range than a careful one, so it is hit far more often
-#  - dodging is what makes the aggression affordable rather than suicidal. Use
-#  unified_light.pyla if the machine cannot afford the tracker.
+#    - Aimed shots are off. Leading a target needs the tracker's camera-pan
+#      estimate to tell a moving enemy from a moving camera; without it the
+#      game's own auto-aim is the better choice.
 #
-#  What it is NOT good at: holding a lead. If the goal is to bank a placement
-#  in showdown, the cautious style will do better, because most of what is
-#  turned off here exists precisely to protect a position already won.
+#    - `is_stuck`, `stuck_for` and `map_boundary` are all measured from the
+#      camera, so here they never fire. The break-out block and
+#      escape_boundary() below are therefore inert, and getting unwedged falls
+#      to the engine's timer-based rotation (unstuck_movement_delay in
+#      cfg/bot_config.toml) - which is what every official playstyle used.
+#      They are left in place rather than deleted so the two files stay
+#      line-for-line comparable.
+#
+#  Health reading and movement smoothing do not depend on the tracker, so the
+#  bot still disengages when hurt and still glides rather than flicking
+#  between compass directions.
+# ═══════════════════════════════════════════════════════════════════════
+
+
 # ─────────────────────────────────────────────────────────────────────
 #  TUNING
 # ─────────────────────────────────────────────────────────────────────
-
-# Ignore shaky tracks. Raise toward 0.7 if the bot twitches at nothing,
-# lower toward 0.3 if it eats shots it should have seen.
-DODGE_MIN_CONFIDENCE = 0.45
-
-# Dodge even when it means walking out of our own attack range.
-DODGE_BREAKS_SPACING = True
-
-# Keep shooting while evading. Almost always worth it: the attack button and
-# the joystick are separate pointers, so firing costs no movement.
-ATTACK_WHILE_DODGING = True
 
 # Seconds between gadget uses, so a ready gadget is not spammed every frame.
 GADGET_COOLDOWN = 3.0
@@ -58,9 +56,7 @@ REGROUP_TILES = 3.0
 # back toward the teammate, so the bot never drifts off to fight alone. Set
 # REGROUP_PULL to 0 to fight independently, 1 to always walk at the teammate.
 REGROUP_IN_FIGHT_TILES = 6.0
-# AGGRESSIVE: Barely tethered to teammates. Pressure is applied by being where the
-# enemy is, and a bot that keeps drifting back to its team is not there.
-REGROUP_PULL = 0.2
+REGROUP_PULL = 0.45
 
 # Strafe direction flips on this period, in seconds. Longer reads as
 # deliberate repositioning, shorter as jittering.
@@ -85,11 +81,10 @@ BREAK_OUT_AFTER = 0.7
 # moving a pixel. Sweeping guarantees the whole circle is tried within about
 # twelve seconds.
 #
-# 0.7s per heading was tried and escaped nothing: a session logged 22 and 23
-# second stalls with all eight headings tried and world displacement at 0.00
-# throughout. Turning that fast is indistinguishable from spinning on the spot
-# - the game never gets a heading held long enough to accelerate. 1.5s lets
-# the brawler actually walk, and eight headings still cover the circle in 12s.
+# 0.7s per heading was tried and escaped nothing: turning that fast is
+# indistinguishable from spinning on the spot - the game never gets a heading
+# held long enough to accelerate. 1.5s lets the brawler actually walk, and
+# eight headings still cover the circle in 12s.
 BREAK_OUT_SWEEP = 1.5
 
 # ── Spacing, as fractions of the brawler's own attack range ──────────────
@@ -114,10 +109,8 @@ LOBS_HOLD_FAR = 0.85
 # nose to nose having eaten the whole approach. It was 0.40 here and 0.28 on
 # the aggressive style: less than half a tile of standoff for a brawler whose
 # whole range is three, so the bot closed until it was standing inside them.
-# AGGRESSIVE: Still settles closer than the careful styles, which is the point -
-# it just does it inside its own reach now instead of past it.
-ASSASSIN_CLOSE_TO = 0.75
-TANK_CLOSE_TO = 0.55
+ASSASSIN_CLOSE_TO = 0.85
+TANK_CLOSE_TO = 0.70
 
 # ── Self-preservation ────────────────────────────────────────────────────
 # The bot used to close on anything it could see and died to fights it was
@@ -128,28 +121,14 @@ ENGAGE_RADIUS_TILES = 9.0
 
 # Back off when enemies outnumber the friendly side (bot + nearby teammates)
 # by this much. 1 means "retreat as soon as it is 2v1".
-# AGGRESSIVE: Leaves at 3v1 rather than 2v1. Being outnumbered by one is a fight an
-# aggressive style is supposed to take and often win, because the enemy
-# pair is rarely both healthy and both looking the same way.
-OUTNUMBERED_BY = 2
+OUTNUMBERED_BY = 1
 
 # Never chase past this fraction of attack range. Beyond it the enemy is
 # leading the bot somewhere, not losing to it.
-# AGGRESSIVE: Chases to twice its own range. This is the single biggest difference in
-# feel: the cautious style breaks off the moment an enemy backs away,
-# which is exactly what somebody meant by "it keeps running away".
-NO_CHASE_BEYOND = 2.0
-
-# Retreat while this many tracked shots are inbound at once. Under that much
-# fire the dodge solver runs out of clean directions, so leaving is better
-# than out-manoeuvring.
-# AGGRESSIVE: Two shots in the air is a normal exchange, not a reason to leave one.
-UNDER_FIRE_SHOTS = 4
+NO_CHASE_BEYOND = 1.25
 
 # How hard a retreat pulls compared to normal spacing, 0-1.
-# AGGRESSIVE: When it does back off, it backs off less far, so the pressure resumes
-# sooner rather than ceding the ground entirely.
-RETREAT_STRENGTH = 0.55
+RETREAT_STRENGTH = 0.8
 
 # ── Health ───────────────────────────────────────────────────────────────
 # Read straight off the health bars, so these are real fractions and not
@@ -160,23 +139,19 @@ RETREAT_STRENGTH = 0.55
 # Disengage outright below this. At a third of a bar most exchanges in Brawl
 # Stars are lethal, and a trade the bot "wins" at 20% still ends with it dead
 # to whoever walks past next.
-# AGGRESSIVE: Fights down to a fifth of a bar. Lower than this is not aggression, it
-# is feeding: below a fifth almost nothing in the game is survivable.
-RETREAT_BELOW_HEALTH = 0.2
+RETREAT_BELOW_HEALTH = 0.32
 
 # Below this, stop closing and hold at range - unless the enemy is visibly
 # worse off, in which case the trade is still good.
-CAUTIOUS_BELOW_HEALTH = 0.35
+CAUTIOUS_BELOW_HEALTH = 0.55
 
 # Press a wounded enemy: below this much health they stop being a threat, and
 # letting them walk away means fighting them again at full.
-# AGGRESSIVE: Half a bar already counts as finishable, so wounded enemies get chased
-# down instead of being allowed to heal and come back.
-FINISH_BELOW_HEALTH = 0.5
+FINISH_BELOW_HEALTH = 0.35
 
 # ...but only with this much of a health lead. Charging a dying enemy while
 # dying yourself is a trade, not a kill.
-FINISH_HEALTH_LEAD = 0.1
+FINISH_HEALTH_LEAD = 0.25
 
 # Prefer shooting whoever is closest to death over whoever is closest, as long
 # as they are within this fraction of attack range. Set to 0 to always shoot
@@ -285,19 +260,16 @@ GAS_MEANS_ENDGAME = True
 # vector for control. Overruled dodges went 0.3% -> 1.3% the same session.
 #
 # Caution should change WHICH fights are taken, not glue the bot in place.
-CAUTION_EARLY_TEAM = 0.7
-CAUTION_EARLY_ALONE = 0.8
-CAUTION_LATE_TEAM = 0.8
-CAUTION_LATE_ALONE = 0.95
-CAUTION_ENDGAME_TEAM = 0.85
-# AGGRESSIVE: Still the most careful of the six, because being last with no team is
-# genuinely the worst moment to lose a coin-flip - but it no longer
-# refuses the fight outright, see DECLINE_EVEN_FIGHTS.
-CAUTION_ENDGAME_ALONE = 1.0
+CAUTION_EARLY_TEAM = 0.85
+CAUTION_EARLY_ALONE = 1.0
+CAUTION_LATE_TEAM = 1.0
+CAUTION_LATE_ALONE = 1.15
+CAUTION_ENDGAME_TEAM = 1.1
+CAUTION_ENDGAME_ALONE = 1.3
 
 # Ceiling on the scaled "stop closing" threshold. Without it, caution alone
 # decides the bot is too hurt to approach anything, at any health short of full.
-CAUTIOUS_CEILING = 0.45
+CAUTIOUS_CEILING = 0.62
 
 # Whether an even fight is declined when alone at the end of a match.
 #
@@ -305,10 +277,7 @@ CAUTIOUS_CEILING = 0.45
 # caution against itself, which meant it could not be turned off without
 # breaking the caution scale it rode on. A style that wants to press every
 # fight has to be able to say so.
-# AGGRESSIVE: The one rule this style exists to switch off. The cautious style stands
-# off an even fight when alone at the end and takes the placement; this
-# one takes the fight.
-DECLINE_EVEN_FIGHTS = False
+DECLINE_EVEN_FIGHTS = True
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -335,7 +304,6 @@ if not brawler_info:
 
 persistent_data.setdefault("time_since_holding_attack", None)
 persistent_data.setdefault("last_gadget_use", 0.0)
-persistent_data.setdefault("dodge_count", 0)
 persistent_data.setdefault("last_activity", 0.0)
 persistent_data.setdefault("idle_anchor", None)
 persistent_data.setdefault("afk_anchor", None)
@@ -785,8 +753,8 @@ def update_stagnation(mate_coords, mate_distance=None):
     mate_world = to_world(mate_coords) if mate_coords is not None else None
 
     active = False
-    if enemy_data or projectiles:
-        # A fight, or anything shooting at us.
+    if enemy_data:
+        # A fight is on.
         active = True
     elif mate_coords is not None and mate_distance is not None:
         if mate_distance > TILE_SIZE * REGROUP_TILES:
@@ -1280,14 +1248,6 @@ def assess_fight(enemy_distance, enemy_coords):
     if enemies_near > mates_near + OUTNUMBERED_BY and not finishable:
         return "retreat"
 
-    # Too much in the air at once - the solver starts running out of clean
-    # escapes, and each additional shot compounds that.
-    incoming = 0
-    for shot in projectiles:
-        if shot.confidence >= DODGE_MIN_CONFIDENCE:
-            incoming += 1
-    if incoming >= UNDER_FIRE_SHOTS and not finishable:
-        return "retreat"
 
     # Chasing. Past this the bot walks out of its own team's cover and into
     # whatever the enemy is walking toward.
@@ -1517,50 +1477,6 @@ if enemy_coords is not None:
     try_attack(enemy_coords, enemy_distance, allow_wall_attack=(archetype == "LOBS"))
 
 
-# ─────────────────────────────────────────────────────────────────────
-#  DODGE LAYER
-#
-#  Runs last, so it overrides everything above. The solver already accounts
-#  for walls, for every tracked shot at once, and for the tactical vector we
-#  just computed - it will only pull us off course when standing still or
-#  continuing would actually cost health.
-# ─────────────────────────────────────────────────────────────────────
-
-if dodge_enabled and projectiles:
-    credible = []
-    for shot in projectiles:
-        if shot.confidence >= DODGE_MIN_CONFIDENCE:
-            credible.append(shot)
-
-    if credible:
-        decision = solve_dodge(movement, credible)
-
-        if decision is not None and decision.active and leads_into_gas(decision.vector):
-            # The escape runs into the gas. Refuse it and keep the anti-gas
-            # movement instead: one projectile hit is cheaper than standing in
-            # a damage-over-time cloud, and the shot is still coming either way.
-            decision = None
-            if debug:
-                print("dodge refused: escape led into gas")
-
-        if decision is not None and decision.active:
-            spacing_ok = DODGE_BREAKS_SPACING or decision.critical
-            if spacing_ok:
-                movement = decision.vector
-                # The whole point: break the glide with a hard cut.
-                sharp_movement = True
-                persistent_data["dodge_count"] = persistent_data["dodge_count"] + 1
-
-                if debug:
-                    print(
-                        "dodge", decision.urgency,
-                        "tti", round(decision.time_to_impact or 0, 3),
-                        "shots", len(credible),
-                    )
-
-                # Keep the pressure on while sidestepping.
-                if ATTACK_WHILE_DODGING and enemy_coords is not None:
-                    try_attack(enemy_coords, enemy_distance, allow_wall_attack=(archetype == "LOBS"))
 
 
 # ─────────────────────────────────────────────────────────────────────

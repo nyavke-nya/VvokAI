@@ -468,12 +468,12 @@ report.check("a nonsense value in the config cannot disarm the bot",
 
 
 report.section("PowerShell needs the leading .\ and the README says so")
-# "start_pyla.bat is not recognized as the name of a cmdlet" - PowerShell does
+# "start_vvok.bat is not recognized as the name of a cmdlet" - PowerShell does
 # not look in the current directory, so the plain name fails there while it
 # works in cmd.exe. People hit this the first time they try to start the bot.
 _readme = open("README.md", encoding="utf-8").read()
 report.check("the launch line is shown the way PowerShell wants it",
-             ".\start_pyla.bat" in _readme, True)
+             ".\start_vvok.bat" in _readme, True)
 report.check("and the error people actually see is named",
              "не распознано как имя командлета" in _readme, True)
 

@@ -207,16 +207,22 @@ if _probe.returncode:
 
 report.check("the entry points stayed in the root, where the launchers look",
              all((REPO / name).exists()
-                 for name in ("main.py", "desktop.py", "launcher.py", "start_pyla.bat")), True)
+                 for name in ("main.py", "desktop.py", "launcher.py", "start_vvok.bat")), True)
 report.check("and the launcher still recognises a project by them",
              (REPO / "main.py").exists() and (REPO / "tools" / "installer.py").exists(), True)
 
 report.section("every retired path is one we actually moved")
 _shipped = {path.name for path in REPO.rglob("*")
             if path.is_file() and ".git" not in path.parts and "venv" not in path.parts}
+# A retired file usually moved to another folder under the same name (play.py
+# -> src/play.py), so its basename turns up again. A rename that only changed
+# the extension (the playstyles going .pyla -> .vvok) keeps the stem instead,
+# so a stem match counts as "turned up somewhere else" too.
+_shipped_stems = {Path(name).stem for name in _shipped}
 _unexplained = [rule for rule in updater.RETIRED
                 if not rule.endswith("/")
-                and Path(rule).name not in _shipped]
+                and Path(rule).name not in _shipped
+                and Path(rule).stem not in _shipped_stems]
 report.check("nothing is retired that did not turn up somewhere else",
              _unexplained, [])
 # __pycache__ is retired to clear bytecode compiled from the old root modules,

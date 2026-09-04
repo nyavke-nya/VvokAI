@@ -99,7 +99,7 @@ class DodgeService:
         if self._thread and self._thread.is_alive():
             return
         self._stop_event.clear()
-        self._thread = threading.Thread(target=self._run, daemon=True, name="pyla-dodge")
+        self._thread = threading.Thread(target=self._run, daemon=True, name="vvok-dodge")
         self._thread.start()
         print("Dodge tracker started (threaded).")
 

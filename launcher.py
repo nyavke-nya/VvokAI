@@ -6,7 +6,7 @@ the detection models are three gigabytes between them, and a three gigabyte
 executable that unpacks itself into the temp folder on every launch is both
 slow and the exact shape antivirus software treats as suspicious.
 
-Instead this is the thing start_pyla.bat used to be, compiled:
+Instead this is the thing start_vvok.bat used to be, compiled:
 
   1. Check whether a newer VvokAI.exe has been published, and replace itself
      with it if so.
@@ -296,7 +296,7 @@ def python_version(candidate):
 
 
 def find_python():
-    """The same search start_pyla.bat does, in a language that can express it.
+    """The same search start_vvok.bat does, in a language that can express it.
 
     Preferred versions first, so a machine with several gets the one the
     dependencies are actually built for.

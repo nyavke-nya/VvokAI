@@ -37,7 +37,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-from utils import (PYLA_VERSION, config_bool, load_toml_as_dict,
+from utils import (VVOK_VERSION, config_bool, load_toml_as_dict,
                    resolve_project_path)
 
 # Where reports go. Empty means telemetry is off no matter what else is set -
@@ -200,7 +200,7 @@ def collect(profile=None, provider="", version="", ips=None, build=""):
         # so the one column the whole point rests on - which version is this -
         # could not be grouped at all. A caller may still override it, but it
         # no longer has to, and by default cannot get it wrong.
-        "version": version or PYLA_VERSION,
+        "version": version or VVOK_VERSION,
         # And the exact build alongside it, because a release number cannot
         # tell two commits apart and that is what a bug report needs. Blank
         # for an install the updater has never touched.

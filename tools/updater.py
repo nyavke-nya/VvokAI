@@ -127,6 +127,15 @@ RETIRED = (
     "setup.py",
     "DODGE.md",
 
+    # The shipped playstyles gained the .vvok extension. The .vvok copies arrive
+    # through apply(); these old .pyla ones would otherwise linger and show up
+    # twice in the list. A config still naming the .pyla file is fine - the
+    # loader falls back to the .vvok one, and re-activating rewrites the config.
+    # A playstyle somebody wrote themselves is not listed, so it survives.
+    "playstyles/unified_dodge.pyla",
+    "playstyles/unified_aggro.pyla",
+    "playstyles/unified_light.pyla",
+
 )
 
 # Config files are protected as whole files, because they hold API tokens, the

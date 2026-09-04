@@ -96,7 +96,7 @@ def _start_discord_bot_thread(app: Flask):
         discord_thread = threading.Thread(
             target=discord_bot.run_bot,
             daemon=True,
-            name="pyla-discord-bot",
+            name="vvok-discord-bot",
         )
         app.config["discord_bot_thread"] = discord_thread
         discord_thread.start()
@@ -110,13 +110,13 @@ def _start_telegram_bot_thread(app: Flask):
     thread = threading.Thread(
         target=telegram_bot.run_bot,
         daemon=True,
-        name="pyla-telegram-bot",
+        name="vvok-telegram-bot",
     )
     app.config["telegram_bot_thread"] = thread
     thread.start()
 
 
-def create_app(pyla_main, start_discord_bot=False):
+def create_app(vvok_main, start_discord_bot=False):
     app = Flask(
         __name__,
         # The URL stays /static/... - only the folder behind it moved.
@@ -124,7 +124,7 @@ def create_app(pyla_main, start_discord_bot=False):
         static_folder=str(resolve_project_path("assets", "static")),
     )
 
-    runtime_manager = RuntimeManager(pyla_main)
+    runtime_manager = RuntimeManager(vvok_main)
     data_service = WebDataService(runtime_manager)
     # One object behind both transports, so a command means the same thing
     # wherever it came from - and so the run's WindowController has one home.

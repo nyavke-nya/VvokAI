@@ -20,11 +20,11 @@ from utils import (
     get_playstyles_list,
     load_brawlers_info,
     load_brawler_data,
-    load_pyla_script,
+    load_vvok_script,
     load_toml_as_dict,
     normalize_brawler_filename,
     resolve_project_path,
-    save_dict_as_toml, PYLA_VERSION, api_update_brawler_data, clear_brawler_data, save_brawler_data,
+    save_dict_as_toml, VVOK_VERSION, api_update_brawler_data, clear_brawler_data, save_brawler_data,
 )
 
 try:
@@ -76,8 +76,20 @@ def check_if_exists(username):
         return False
 
 
-PATREON_LINK = "https://www.patreon.com/pyla/membership"
-PATREON_LABEL = "www.patreon.com/c/pyla"
+PATREON_LINK = "https://www.patreon.com/nyavke/membership"
+PATREON_LABEL = "www.patreon.com/c/nyavke"
+
+
+def _same_playstyle(a: str, b: str) -> bool:
+    """Whether two playstyle filenames name the same playstyle, ignoring the
+    .pyla/.vvok extension so a config saved before the rename still lines up
+    with the renamed file."""
+    def stem(name: str) -> str:
+        for ext in (".vvok", ".pyla"):
+            if name.endswith(ext):
+                return name[: -len(ext)]
+        return name
+    return a == b or stem(a) == stem(b)
 INVALID_PLAYER_TAG_MESSAGE = "Player tag is incorrect. Use your Brawl Stars player tag, not your Supercell ID."
 logger = logging.getLogger(__name__)
 
@@ -372,7 +384,7 @@ class WebDataService:
             }
 
     def get_current_version(self) -> str:
-        return PYLA_VERSION
+        return VVOK_VERSION
 
     def get_latest_version_safe(self) -> str | None:
         if api_base_url == "localhost":
@@ -640,20 +652,20 @@ class WebDataService:
 
     def get_playstyles_payload(self) -> dict[str, Any]:
         bot_config = self._load_config("cfg/bot_config.toml")
-        current_playstyle = bot_config.get("current_playstyle", "unified_dodge.pyla")
+        current_playstyle = bot_config.get("current_playstyle", "unified_dodge.vvok")
         playstyles = []
         for item in get_playstyles_list():
             metadata = item.get("metadata") or {}
             filename = item.get("filename")
             playstyles.append({
                 "filename": filename,
-                "name": metadata.get("name") or filename.replace(".pyla", ""),
+                "name": metadata.get("name") or filename.rsplit(".", 1)[0],
                 "description": metadata.get("description") or "No description provided.",
                 "author": metadata.get("author") or "Unknown",
                 "date": metadata.get("date") or "",
                 "brawlers": metadata.get("brawlers") or [],
                 "gamemodes": metadata.get("gamemodes") or [],
-                "is_active": filename == current_playstyle,
+                "is_active": _same_playstyle(filename, current_playstyle),
             })
 
         playstyles.sort(key=lambda playstyle: playstyle["name"].lower())
@@ -665,7 +677,7 @@ class WebDataService:
         if not target_path.exists():
             raise FileNotFoundError(f"Playstyle '{filename}' was not found.")
 
-        metadata, script = load_pyla_script(filename)
+        metadata, script = load_vvok_script(filename)
         if not script.strip():
             raise ValueError("Playstyle file is empty or invalid.")
 
@@ -676,7 +688,7 @@ class WebDataService:
 
     def delete_playstyle(self, filename: str) -> dict[str, Any]:
         safe_filename = secure_filename(filename)
-        if safe_filename != filename or not safe_filename.endswith(".pyla"):
+        if safe_filename != filename or not safe_filename.endswith((".vvok", ".pyla")):
             raise ValueError("Invalid playstyle filename.")
 
         filename = safe_filename
@@ -697,7 +709,7 @@ class WebDataService:
 
         original_name = secure_filename(file_storage.filename)
         base_name = Path(original_name).stem or "imported_playstyle"
-        filename = f"{base_name}.pyla"
+        filename = f"{base_name}.vvok"
         target_path = resolve_project_path("playstyles", filename)
 
         temp_path = resolve_project_path("playstyles", f".__upload__{filename}")
@@ -719,9 +731,9 @@ class WebDataService:
 
             if target_path.exists():
                 suffix = 2
-                while resolve_project_path("playstyles", f"{base_name}_{suffix}.pyla").exists():
+                while resolve_project_path("playstyles", f"{base_name}_{suffix}.vvok").exists():
                     suffix += 1
-                target_path = resolve_project_path("playstyles", f"{base_name}_{suffix}.pyla")
+                target_path = resolve_project_path("playstyles", f"{base_name}_{suffix}.vvok")
 
             shutil.move(str(temp_path), str(target_path))
         finally:
@@ -743,7 +755,7 @@ class WebDataService:
             return payload
         if section == "bot":
             payload = self._select_fields(self._load_config("cfg/bot_config.toml"), self.BOT_FIELDS)
-            payload["current_playstyle"] = self._load_config("cfg/bot_config.toml").get("current_playstyle", "unified_dodge.pyla")
+            payload["current_playstyle"] = self._load_config("cfg/bot_config.toml").get("current_playstyle", "unified_dodge.vvok")
             return payload
         if section == "timers":
             return self._select_fields(self._load_config("cfg/time_tresholds.toml"), self.TIMER_FIELDS)
@@ -954,7 +966,7 @@ class WebDataService:
                     "playstyle_gamemodes": [
                         value for value in str(row.get("playstyle_gamemodes", "") or "").split("|") if value
                     ],
-                    "pyla_version": str(row.get("pyla_version", "") or "").strip(),
+                    "vvok_version": str(row.get("vvok_version", "") or row.get("pyla_version", "") or "").strip(),
                     "power_level": power_level,
                 })
 

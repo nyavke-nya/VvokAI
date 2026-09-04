@@ -11,8 +11,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from main import pyla_main
+from main import vvok_main
 from webui import create_app
 
-app = create_app(pyla_main, start_discord_bot=False)
+app = create_app(vvok_main, start_discord_bot=False)
 app.run(host="127.0.0.1", port=5051, debug=False, use_reloader=False, threaded=True)

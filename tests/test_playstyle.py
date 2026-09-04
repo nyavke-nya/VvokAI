@@ -1,6 +1,6 @@
 """The playstyle's tactical decisions, and that it can run at all.
 
-The .pyla sandbox has no builtins and no imports: every name the script uses
+The .vvok sandbox has no builtins and no imports: every name the script uses
 has to come from the context play.py builds. A name that stops being provided
 is not a startup error, it is a NameError in the middle of a match with the bot
 standing still - so the first test here simply resolves every name.
@@ -21,7 +21,7 @@ from utils import SAFE_GLOBALS, is_safe_ast
 
 
 def check_names(report, path=None):
-    label = os.path.basename(path) if path else "unified_dodge.pyla"
+    label = os.path.basename(path) if path else "unified_dodge.vvok"
     report.section(f"{label}: the sandbox must be able to run it")
     source = playstyle_source(path)
 
@@ -967,16 +967,16 @@ def main():
         raise AssertionError(f"{name} is missing from playstyles/")
 
     report.section("the light variant must actually switch the tracker off")
-    meta = playstyle_meta(style("unified_light.pyla"))
+    meta = playstyle_meta(style("unified_light.vvok"))
     report.check("unified_light declares dodge off", meta.get("dodge"), False)
     report.check("unified_dodge does not",
-                 playstyle_meta(style("unified_dodge.pyla")).get("dodge"), None)
+                 playstyle_meta(style("unified_dodge.vvok")).get("dodge"), None)
     report.check("unified_aggro keeps dodging on",
-                 playstyle_meta(style("unified_aggro.pyla")).get("dodge"), None)
+                 playstyle_meta(style("unified_aggro.vvok")).get("dodge"), None)
     # Checked over the AST, not the raw text: the file's header comment
     # explains what was removed and why, and naming a thing in prose is not
     # the same as still calling it.
-    light = ast.parse(playstyle_source(style("unified_light.pyla")))
+    light = ast.parse(playstyle_source(style("unified_light.vvok")))
     banned = {"projectiles", "solve_dodge", "dodge_enabled", "UNDER_FIRE_SHOTS",
               "DODGE_MIN_CONFIDENCE", "DODGE_BREAKS_SPACING", "ATTACK_WHILE_DODGING"}
     leftovers = sorted({n.id for n in ast.walk(light)
@@ -985,8 +985,8 @@ def main():
 
     report.section("the aggressive variant presses where the careful one folds")
     import re as _re
-    aggro = playstyle_source(style("unified_aggro.pyla"))
-    careful = playstyle_source(style("unified_dodge.pyla"))
+    aggro = playstyle_source(style("unified_aggro.vvok"))
+    careful = playstyle_source(style("unified_dodge.vvok"))
 
     def value(text, name):
         found = _re.search(rf"^{name} = (.+)$", text, _re.M)
@@ -1021,7 +1021,7 @@ def main():
     # The attack fires at 1.0 of attack_range. Every step taken below that is
     # walking further into the enemy after the shots are landing - which is how
     # a Mortis arrives nose to nose having absorbed the entire approach.
-    for name in ("unified_dodge.pyla", "unified_light.pyla", "unified_aggro.pyla"):
+    for name in ("unified_dodge.vvok", "unified_light.vvok", "unified_aggro.vvok"):
         text = playstyle_source(style(name))
         close = float(value(text, "ASSASSIN_CLOSE_TO"))
         tank = float(value(text, "TANK_CLOSE_TO"))

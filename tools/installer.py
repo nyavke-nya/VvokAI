@@ -1,6 +1,6 @@
 """Environment setup for VvokAI: inspect, install, verify, explain.
 
-start_pyla.bat finds a usable Python and then hands over to this. Batch can
+start_vvok.bat finds a usable Python and then hands over to this. Batch can
 start a program and check an exit code; it cannot retry a flaky download,
 recognise why a build failed, or say anything useful about it - and almost
 every install problem this project has produced came down to that last part.
@@ -89,7 +89,7 @@ REQUIRED_FILES = [
     "models/closeTileDetector.onnx",
     "models/easyocr/craft_mlt_25k.pth",
     "cfg/bot_config.toml",
-    "playstyles/unified_dodge.pyla",
+    "playstyles/unified_dodge.vvok",
 ]
 
 # Failure signatures, most specific first. Each maps raw pip noise onto a
@@ -487,7 +487,7 @@ def ensure_configs():
             history_file.write_text(
                 "date_time,brawler_name,result,current_trophies,trophy_delta,"
                 "new_winstreak,playstyle_hash,playstyle_name,playstyle_gamemodes,"
-                "playstyle_brawlers,pyla_version,power_level\n",
+                "playstyle_brawlers,vvok_version,power_level\n",
                 encoding="utf-8"
             )
         except OSError:

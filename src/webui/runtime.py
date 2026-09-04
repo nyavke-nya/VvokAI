@@ -94,8 +94,8 @@ class RuntimeControl:
 
 
 class RuntimeManager:
-    def __init__(self, pyla_main):
-        self.pyla_main = pyla_main
+    def __init__(self, vvok_main):
+        self.vvok_main = vvok_main
         self._resume_thread = None
         self._thread: threading.Thread | None = None
         self.rt_control: RuntimeControl | None = None
@@ -141,8 +141,8 @@ class RuntimeManager:
                     self.rt_control.resume()
                     self._state = "running"
                     self._last_error = ""
-                    return {"ok": True, "message": "Pyla resumed."}
-                return {"ok": False, "message": f"Pyla cannot start while state is {self._state}."}
+                    return {"ok": True, "message": "VvokAI resumed."}
+                return {"ok": False, "message": f"VvokAI cannot start while state is {self._state}."}
 
             # Read at start, so editing the times in Settings takes effect on
             # the next run rather than needing the whole app restarted.
@@ -160,11 +160,11 @@ class RuntimeManager:
                 target=self._run_worker,
                 args=(queue_data, self.rt_control, discord_bot),
                 daemon=True,
-                name="pyla-runtime",
+                name="vvok-runtime",
             )
             self._thread.start()
             self._watch_for_resume(discord_bot)
-            return {"ok": True, "message": "Pyla started."}
+            return {"ok": True, "message": "VvokAI started."}
 
     def _watch_for_resume(self, discord_bot):
         """Start the run again when the quiet window ends.
@@ -205,7 +205,7 @@ class RuntimeManager:
                 return
 
         self._resume_thread = threading.Thread(
-            target=wait_out_the_night, daemon=True, name="pyla-schedule-resume")
+            target=wait_out_the_night, daemon=True, name="vvok-schedule-resume")
         self._resume_thread.start()
 
     def start_current_queue(self, discord_bot) -> dict[str, Any]:
@@ -234,7 +234,7 @@ class RuntimeManager:
 
     def _run_worker(self, queue_data: list[dict[str, Any]], control: RuntimeControl, discord_bot):
         try:
-            self.pyla_main(discord_bot, queue_data, runtime_control=control)
+            self.vvok_main(discord_bot, queue_data, runtime_control=control)
             with self._lock:
                 if self._state != "error":
                     self._state = "idle"
@@ -246,7 +246,7 @@ class RuntimeManager:
                     self._last_error = ""
                 else:
                     self._state = "error"
-                    self._last_error = f"Pyla exited with code {code}."
+                    self._last_error = f"VvokAI exited with code {code}."
         except Exception as exc:
             with self._lock:
                 self._state = "error"
@@ -262,24 +262,24 @@ class RuntimeManager:
         with self._lock:
             thread_alive = self._thread.is_alive() if self._thread else False
             if not thread_alive or not self.rt_control:
-                return {"ok": False, "message": "Pyla is not running."}
+                return {"ok": False, "message": "VvokAI is not running."}
 
             if self._state == "running":
                 self.rt_control.request_pause()
                 self._state = "pausing"
-                return {"ok": True, "message": "Pause requested. Pyla will pause in the lobby."}
+                return {"ok": True, "message": "Pause requested. VvokAI will pause in the lobby."}
 
             if self._state in {"pausing", "paused"}:
                 return {"ok": True, "message": "Pause already requested."}
 
-            return {"ok": False, "message": f"Pyla cannot pause while state is {self._state}."}
+            return {"ok": False, "message": f"VvokAI cannot pause while state is {self._state}."}
 
     def stop(self) -> dict[str, Any]:
         with self._lock:
             thread_alive = self._thread.is_alive() if self._thread else False
             if not thread_alive or not self.rt_control:
                 self._state = "idle"
-                return {"ok": True, "message": "Pyla is already stopped."}
+                return {"ok": True, "message": "VvokAI is already stopped."}
 
             thread = self._thread
             was_paused = self._state == "paused"
@@ -297,7 +297,7 @@ class RuntimeManager:
                         self._state = "idle"
                         stopped_state = "idle"
                 if stopped_state == "error":
-                    return {"ok": False, "message": self._last_error or "Pyla stopped with an error."}
-                return {"ok": True, "message": "Pyla stopped."}
+                    return {"ok": False, "message": self._last_error or "VvokAI stopped with an error."}
+                return {"ok": True, "message": "VvokAI stopped."}
 
-        return {"ok": True, "message": "Stop requested. Pyla is shutting down."}
+        return {"ok": True, "message": "Stop requested. VvokAI is shutting down."}

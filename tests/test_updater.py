@@ -22,7 +22,7 @@ SHIPPED = """perceived_tile_size = 35
 wall_detection_confidence = 0.7
 poison_gas_fraction = 0.078
 play_again_on_win = "no"
-current_playstyle = "unified_dodge.pyla"
+current_playstyle = "unified_dodge.vvok"
 """
 
 
@@ -35,7 +35,7 @@ report.section("calibration arrives, personal choices do not move")
 theirs = """perceived_tile_size = 54
 wall_detection_confidence = 0.85
 play_again_on_win = "yes"
-current_playstyle = "my_own_style.pyla"
+current_playstyle = "my_own_style.vvok"
 """
 out = merged(theirs)
 report.check("the tuned tile size arrives",
@@ -43,7 +43,7 @@ report.check("the tuned tile size arrives",
 report.check("so does the wall confidence",
              "wall_detection_confidence = 0.7" in out, True)
 report.check("their playstyle is untouched",
-             'current_playstyle = "my_own_style.pyla"' in out, True)
+             'current_playstyle = "my_own_style.vvok"' in out, True)
 report.check("and so is their play-again choice",
              'play_again_on_win = "yes"' in out, True)
 
@@ -77,7 +77,7 @@ commented = """# how big a tile looks
 perceived_tile_size = 54
 
 # do not touch
-current_playstyle = "mine.pyla"
+current_playstyle = "mine.vvok"
 """
 out = merged(commented)
 report.check("the comment is still there",
@@ -333,8 +333,8 @@ report.check("the updater can be asked without being allowed to write",
 report.check("and says so with the same code the launchers watch for",
              _au.RESTART_CODE, 10)
 
-_bat = read_source("start_pyla.bat")
-report.check("start_pyla.bat comes back after an update", ":RUN_VVOK" in _bat, True)
+_bat = read_source("start_vvok.bat")
+report.check("start_vvok.bat comes back after an update", ":RUN_VVOK" in _bat, True)
 report.check("on that code and no other", '"%RUN_CODE%"=="10"' in _bat, True)
 
 _launcher = read_source("launcher.py")

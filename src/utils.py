@@ -442,7 +442,7 @@ def save_brawler_icon(brawler_name):
     print(f"Icon not found for brawler '{brawler_name}'")
 
 
-PYLA_VERSION = "0.8.14"
+VVOK_VERSION = "0.8.14"
 
 
 def get_latest_version():
@@ -459,8 +459,8 @@ def check_version():
     if api_base_url != "localhost":
         latest_version = get_latest_version()
         if latest_version:
-            if version.parse(PYLA_VERSION) < version.parse(latest_version):
-                print(f"Warning: (ignore if you're using early access) You are not using the latest public version of Pyla. \nCheck the discord for the latest download link.")
+            if version.parse(VVOK_VERSION) < version.parse(latest_version):
+                print(f"Warning: (ignore if you're using early access) You are not using the latest public version of VvokAI. \nCheck the discord for the latest download link.")
         else:
             print("Error, couldn't get the version, please check your internet connection or go ask for help in the discord.")
 
@@ -502,17 +502,17 @@ def notify_user(message_type, screenshot, stage_manager) -> None:
         return
 
     if message_type == "completed":
-        status_line = f"Pyla has completed all its targets!"
+        status_line = f"VvokAI has completed all its targets!"
     elif message_type == "bot_is_stuck":
         status_line = f"Your bot is currently stuck, attempted to restart brawl stars !"
     elif message_type == "brawler_goal":
         current_brawler = stage_manager.brawlers_pick_data[0]["brawler"]
-        status_line = f"Pyla completed brawler goal for {current_brawler}!"
+        status_line = f"VvokAI completed brawler goal for {current_brawler}!"
     elif message_type in ["regular_minutes_ping", "regular_matches_ping"]:
-        status_line = "Pyla is still running."
+        status_line = "VvokAI is still running."
     elif message_type == "bot_failed_brawler_selection":
         current_brawler = stage_manager.brawlers_pick_data[0]["brawler"]
-        status_line = f"Pyla failed to select the brawler {current_brawler} after multiple attempts, try changing the OCR Scale Down setting or select it manually and restart. Putting it at the end of the queue and skipping it..."
+        status_line = f"VvokAI failed to select the brawler {current_brawler} after multiple attempts, try changing the OCR Scale Down setting or select it manually and restart. Putting it at the end of the queue and skipping it..."
     else:
         status_line = "Notification"
 
@@ -547,7 +547,7 @@ def notify_user(message_type, screenshot, stage_manager) -> None:
 
         payload = {
             "content": ping,
-            "username": "Pyla notifier",
+            "username": "VvokAI notifier",
             "embeds": [embed],
         }
 
@@ -775,13 +775,13 @@ def is_safe_ast(code_str):
 _compiled_playstyles = {}
 
 
-def interpret_pyla_code(pyla_code, context):
+def interpret_vvok_code(vvok_code, context):
     safe_globals = SAFE_GLOBALS.copy()
     safe_globals.update(context)
     safe_globals['__builtins__'] = {}
 
     try:
-        if isinstance(pyla_code, str):
+        if isinstance(vvok_code, str):
             # Compile once, then reuse.
             #
             # This used to run is_safe_ast() - a full ast.parse plus a walk of
@@ -795,21 +795,21 @@ def interpret_pyla_code(pyla_code, context):
             #
             # Keyed by the source text, so editing a playstyle and reloading it
             # still re-validates and recompiles.
-            cached = _compiled_playstyles.get(pyla_code)
+            cached = _compiled_playstyles.get(vvok_code)
             if cached is None:
-                is_safe, error_msg = is_safe_ast(pyla_code)
+                is_safe, error_msg = is_safe_ast(vvok_code)
                 if not is_safe:
                     print(f"Security/Syntax Validation Failed for playstyle: {error_msg}")
                     return None, safe_globals
-                cached = compile(pyla_code, '<string>', 'exec')
+                cached = compile(vvok_code, '<string>', 'exec')
                 # One entry is the normal case; the cap only matters if a UI
                 # edits a playstyle repeatedly within one run.
                 if len(_compiled_playstyles) > 8:
                     _compiled_playstyles.clear()
-                _compiled_playstyles[pyla_code] = cached
+                _compiled_playstyles[vvok_code] = cached
             compiled_code = cached
         else:
-            compiled_code = pyla_code
+            compiled_code = vvok_code
 
         if compiled_code is not None:
             exec(compiled_code, safe_globals)
@@ -828,39 +828,67 @@ def interpret_pyla_code(pyla_code, context):
         frames = traceback.extract_tb(e.__traceback__)
         where = ""
         for frame in frames:
-            # play.py compiles the script as "<pyla_script>" up front; this
+            # play.py compiles the script as "<vvok_script>" up front; this
             # module compiles it as "<string>" when handed raw source. Match
             # both, or the line number silently disappears depending on which
             # path loaded the playstyle.
-            if frame.filename in ("<string>", "<pyla_script>"):
+            if frame.filename in ("<string>", "<vvok_script>"):
                 where = f" at playstyle line {frame.lineno}"
-        interpret_pyla_code.last_error = f"{type(e).__name__}: {e}{where}"
-        interpret_pyla_code.error_count = getattr(interpret_pyla_code, "error_count", 0) + 1
-        print(f"Error executing .pyla code{where}")
+        interpret_vvok_code.last_error = f"{type(e).__name__}: {e}{where}"
+        interpret_vvok_code.error_count = getattr(interpret_vvok_code, "error_count", 0) + 1
+        print(f"Error executing .vvok code{where}")
         traceback.print_exc()
         return None, safe_globals
 
-    interpret_pyla_code.last_error = None
+    interpret_vvok_code.last_error = None
     return safe_globals.get('movement', None), safe_globals
 
 
-interpret_pyla_code.last_error = None
-interpret_pyla_code.error_count = 0
+interpret_vvok_code.last_error = None
+interpret_vvok_code.error_count = 0
 
 
-def load_pyla_script(filename):
-    script_path = resolve_project_path("playstyles", filename)
+# Playstyle files used to carry the .pyla extension. They ship as .vvok now,
+# but a config saved before the rename still names a .pyla file, and somebody
+# may have written their own playstyle under the old extension. Both are still
+# accepted so an update never orphans a working setup.
+PLAYSTYLE_EXTS = (".vvok", ".pyla")
+
+
+def _resolve_playstyle_path(filename):
+    """The playstyle file, trying the other extension if the named one is gone.
+
+    A current_playstyle of "unified_dodge.pyla" finds "unified_dodge.vvok"
+    after the rename, and vice versa, so neither a stale config nor an old
+    shortcut breaks."""
+    path = resolve_project_path("playstyles", filename)
+    if path.exists():
+        return path
+    for ext in PLAYSTYLE_EXTS:
+        if filename.endswith(ext):
+            for other in PLAYSTYLE_EXTS:
+                if other == ext:
+                    continue
+                alt = resolve_project_path("playstyles", filename[: -len(ext)] + other)
+                if alt.exists():
+                    return alt
+            break
+    return path
+
+
+def load_vvok_script(filename):
+    script_path = _resolve_playstyle_path(filename)
     try:
         with open(script_path, 'r', encoding='utf-8') as file:
             metadata_header = file.readline().strip()
             metadata = json.loads(metadata_header) if metadata_header else {}
-            pyla_script = file.read()
-        return metadata, pyla_script
+            vvok_script = file.read()
+        return metadata, vvok_script
     except FileNotFoundError:
         print(f"Error: The file {script_path} was not found.")
         return "", ""
     except Exception as e:
-        print(f"An error occurred while loading the .pyla script: {e}")
+        print(f"An error occurred while loading the .vvok script: {e}")
         traceback.print_exc()
         return "", ""
 
@@ -870,8 +898,8 @@ def get_playstyles_list():
     playstyles = []
     if playstyles_dir.exists():
         for filename in os.listdir(playstyles_dir):
-            if filename.endswith(".pyla"):
-                metadata, _ = load_pyla_script(filename)
+            if filename.endswith(PLAYSTYLE_EXTS):
+                metadata, _ = load_vvok_script(filename)
                 playstyles.append({
                     "filename": filename,
                     "metadata": metadata
@@ -879,10 +907,10 @@ def get_playstyles_list():
     return playstyles
 
 
-def load_default_pyla_script():
+def load_default_vvok_script():
     config = load_toml_as_dict("cfg/bot_config.toml")
-    current_playstyle = config.get("current_playstyle", "unified_dodge.pyla")
-    return load_pyla_script(current_playstyle)
+    current_playstyle = config.get("current_playstyle", "unified_dodge.vvok")
+    return load_vvok_script(current_playstyle)
 
 
 def hash_playstyle(playstyle_info):

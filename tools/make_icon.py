@@ -5,8 +5,8 @@
 The mark in the corner of the panel has never been a picture - it is a styled
 letter, .brand-mark in static/css/vvok.css, drawn by the browser. That is fine
 inside the panel and no use at all to Windows, which wants an .ico for the
-executable, the taskbar and the window corner. images/logo.png is the upstream
-PylaAI "P", which is somebody else's mark.
+executable, the taskbar and the window corner. images/logo.png is an old "P"
+mark left over from before the rebrand.
 
 So this redraws the same thing Pillow can hand to Windows, from the same
 numbers the stylesheet uses: the gradient, the corner radius and the colours

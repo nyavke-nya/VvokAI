@@ -162,10 +162,10 @@ report.section("one version field, meaning one thing")
 # commit like "8cda3f6c7d40". The one column the whole exercise depends on -
 # which version is this - could not be grouped, and nobody would notice until
 # they tried to read the data.
-from utils import PYLA_VERSION  # noqa: E402
+from utils import VVOK_VERSION  # noqa: E402
 
 report.check("the release number is what lands in version",
-             telemetry.collect(PROFILE)["version"], PYLA_VERSION)
+             telemetry.collect(PROFILE)["version"], VVOK_VERSION)
 report.check("neither caller names a version any more",
              "version=self.stats_version()" in _main_src, False)
 report.check("nor the panel", "version=version)" in _main_src, False)
@@ -188,7 +188,7 @@ try:
     report.check("and an install with no stamp reports no build",
                  telemetry.collect(PROFILE)["build"], "")
     report.check("but still reports its version",
-                 telemetry.collect(PROFILE)["version"], PYLA_VERSION)
+                 telemetry.collect(PROFILE)["version"], VVOK_VERSION)
 finally:
     telemetry.resolve_project_path = _stamp
 

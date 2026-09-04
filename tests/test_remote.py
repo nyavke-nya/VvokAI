@@ -40,7 +40,7 @@ class _Runtime:
 
 
 class _Data:
-    def __init__(self, queue=None, playstyle="unified_dodge.pyla",
+    def __init__(self, queue=None, playstyle="unified_dodge.vvok",
                  history=None, settings=None):
         self._queue = queue if queue is not None else []
         self._playstyle = playstyle
@@ -138,7 +138,7 @@ report.check("start is not gated on the bot already running",
              remote.start().text, "Success! Started.")
 handed = runtime.calls[0][1]
 report.check("what start_current_queue got is the remote itself", handed is remote, True)
-report.check("and pyla_main can put the window controller on it",
+report.check("and vvok_main can put the window controller on it",
              hasattr(handed, "set_window_controller"), True)
 
 report.section("screenshot")
@@ -177,9 +177,9 @@ report.section("status")
 # from their phone: what is it on, and how far along is it.
 report.check("not running says so",
              "not running" in control(_Runtime(is_running=False)).status().text, True)
-text = control(_Runtime(state="paused"), _Data(playstyle="unified_aggro.pyla")).status().text
+text = control(_Runtime(state="paused"), _Data(playstyle="unified_aggro.vvok")).status().text
 report.check("the state is named", "Paused" in text, True)
-report.check("so is the playstyle", "unified_aggro.pyla" in text, True)
+report.check("so is the playstyle", "unified_aggro.vvok" in text, True)
 report.check("a playstyle payload with nothing in it does not crash",
              isinstance(control(data=_Data(playstyle=None)).status().text, str), True)
 
@@ -272,7 +272,7 @@ report.check("a single over-long line is cut rather than lost",
 report.section("Telegram command parsing")
 parse = TelegramBot._command_in
 report.check("plain", parse("/status"), "status")
-report.check("with the bot suffix groups add", parse("/status@my_pyla_bot"), "status")
+report.check("with the bot suffix groups add", parse("/status@my_vvok_bot"), "status")
 report.check("with arguments after it", parse("/queue now please"), "queue")
 report.check("capitals", parse("/STATUS"), "status")
 report.check("an alias people will guess", parse("/restart"), "restart_game")

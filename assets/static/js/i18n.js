@@ -24,7 +24,7 @@
     // Left in English on purpose: names, placeholders, units, fragments that
     // are only half a sentence in the markup.
     const KEEP = new Set([
-        "VvokAI", "Brawl Stars", "Pyla", "PylaAI", "Discord", "Telegram",
+        "VvokAI", "Brawl Stars", "Discord", "Telegram",
         "#PLAYER", "eyJ0eXAiOiJKV1Qi...", "you@example.com", "min",
         "Win%", "Loss%", "OCR", "ADB", "IP", "FPS", "MP4", "API",
     ]);
@@ -55,14 +55,14 @@
         "Resolve runtime state before starting.": "Сначала разберись с состоянием запуска.",
         "Add at least one brawler to the queue before starting.":
             "Добавь в очередь хотя бы одного бойца.",
-        "Pyla is paused in the lobby. Press Start to resume.":
+        "VvokAI is paused in the lobby. Press Start to resume.":
             "Бот на паузе в лобби. Нажми «Старт», чтобы продолжить.",
-        "Pyla is shutting down. This should only take a few seconds.":
+        "VvokAI is shutting down. This should only take a few seconds.":
             "Бот завершает работу, это займёт пару секунд.",
-        "Pause requested. Pyla will stop in the lobby.":
+        "Pause requested. VvokAI will stop in the lobby.":
             "Пауза запрошена, бот остановится в лобби.",
-        "Pyla runtime started.": "Бот запущен.",
-        "Pyla runtime resumed.": "Бот продолжил работу.",
+        "VvokAI runtime started.": "Бот запущен.",
+        "VvokAI runtime resumed.": "Бот продолжил работу.",
 
         // ---- playstyles
         "Active Playstyle": "Активный стиль", "Browse": "Выбрать",
@@ -128,10 +128,10 @@
         "Default trophy target used when adding a new brawler to the queue.":
             "Какая цель по кубкам ставится новому бойцу в очереди.",
         "Run Time": "Время работы",
-        "How long Pyla runs before cooldown logic takes over.":
+        "How long VvokAI runs before cooldown logic takes over.":
             "Сколько бот работает, прежде чем уйти на перерыв.",
         "Max IPS": "Предел IPS",
-        "Processing cap. Use auto if you want Pyla to manage it.":
+        "Processing cap. Use auto if you want VvokAI to manage it.":
             "Ограничение обработки. auto — пусть бот решает сам.",
         "Threads": "Потоки",
         "Worker thread count. Auto keeps the current behavior.":
@@ -167,7 +167,7 @@
         "Active playstyle": "Активный стиль",
         "No playstyles found": "Стилей не найдено",
 
-        // The descriptions come from the JSON header of each .pyla file. They
+        // The descriptions come from the JSON header of each .vvok file. They
         // are translated here rather than in the files so the files stay
         // readable to everyone who is not Russian - the playstyle format is
         // shared with upstream.
@@ -269,13 +269,13 @@
 
         // ---- timers
         "Gadget Delay": "Проверка гаджета",
-        "How often Pyla checks gadgets.": "Как часто проверять гаджет.",
+        "How often VvokAI checks gadgets.": "Как часто проверять гаджет.",
         "Hypercharge Delay": "Проверка гиперзаряда",
-        "How often Pyla checks if hypercharge is available.": "Как часто проверять гиперзаряд.",
+        "How often VvokAI checks if hypercharge is available.": "Как часто проверять гиперзаряд.",
         "Super Delay": "Проверка супера",
-        "How often Pyla checks if super is available.": "Как часто проверять супер.",
+        "How often VvokAI checks if super is available.": "Как часто проверять супер.",
         "State Check": "Проверка состояния",
-        "How often Pyla checks the game state.": "Как часто определять, что на экране.",
+        "How often VvokAI checks the game state.": "Как часто определять, что на экране.",
         "Idle Check": "Проверка простоя",
         "How often idle detection runs.": "Как часто проверять простой.",
         "Wall Detection": "Поиск стен",
@@ -293,7 +293,7 @@
         "Your discord user ID. Required to use a discord bot or be pinged in webhooks.":
             "Твой ID пользователя Discord. Нужен для бота и упоминаний в вебхуках.",
         "Ping When Stuck": "Пинг при застревании",
-        "Send a ping when Pyla gets stuck.": "Слать уведомление, если бот застрял.",
+        "Send a ping when VvokAI gets stuck.": "Слать уведомление, если бот застрял.",
         "Ping On Target": "Пинг при достижении цели",
         "Send a ping when a target finishes.": "Слать уведомление, когда цель достигнута.",
         "Ping Every X Matches": "Пинг каждые N матчей",
@@ -406,12 +406,12 @@
         "Schedule could not be saved.": "Не удалось сохранить расписание.",
         "Times are 24 hour. The window may cross midnight, so 23:30 to 08:00 works. It finishes the current match and pauses - the queue is kept. Leave everything empty to run until stopped.":
             "Время в 24-часовом формате. Окно может переходить через полночь, поэтому 23:30 — 08:00 работает. Бот доигрывает текущий матч и встаёт на паузу, очередь сохраняется. Оставь всё пустым, чтобы работал до остановки.",
-        "Enter your Pyla API key": "Введи ключ Pyla API",
-        "Generate one in Discord with /generate_key using PylaBot.":
-            "Сгенерируй его в Discord командой /generate_key у PylaBot.",
-        "Generate a fresh key with /generate_key using PylaBot, then paste the full key here.":
-            "Сгенерируй новый ключ командой /generate_key у PylaBot и вставь его целиком.",
-        "The saved key could not be checked. Try again or generate a fresh key with /generate_key using PylaBot.":
+        "Enter your VvokAI API key": "Введи ключ VvokAI API",
+        "Generate one in Discord with /generate_key using VvokBot.":
+            "Сгенерируй его в Discord командой /generate_key у VvokBot.",
+        "Generate a fresh key with /generate_key using VvokBot, then paste the full key here.":
+            "Сгенерируй новый ключ командой /generate_key у VvokBot и вставь его целиком.",
+        "The saved key could not be checked. Try again or generate a fresh key with /generate_key using VvokBot.":
             "Сохранённый ключ проверить не удалось. Попробуй снова или сгенерируй новый через /generate_key.",
         "The browser could not reach the local VvokAI web UI login endpoint.":
             "Браузер не достучался до локальной точки входа VvokAI.",

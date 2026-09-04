@@ -14,7 +14,7 @@ Deliberately stdlib only. build_exe.bat falls back to whatever Python is on
 PATH, because launcher.py needs nothing else, and a build step that suddenly
 wanted Pillow would break that.
 
-The numbers come from PYLA_VERSION in src/utils.py, read rather than imported
+The numbers come from VVOK_VERSION in src/utils.py, read rather than imported
 - importing it would pull in requests, torch and the rest of a bot that has no
 business being loaded to build a launcher.
 """
@@ -27,19 +27,19 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
 def project_version():
-    """PYLA_VERSION from src/utils.py, as a four-part tuple.
+    """VVOK_VERSION from src/utils.py, as a four-part tuple.
 
     Falls back to 0.0.0 rather than failing the build. A missing version
     string is worth a warning; it is not worth an exe that does not exist.
     """
     try:
         text = (ROOT / "src" / "utils.py").read_text(encoding="utf-8")
-        found = re.search(r"^PYLA_VERSION\s*=\s*[\"']([0-9.]+)[\"']",
+        found = re.search(r"^VVOK_VERSION\s*=\s*[\"']([0-9.]+)[\"']",
                           text, re.MULTILINE)
     except OSError:
         found = None
     if not found:
-        print("[WARN] PYLA_VERSION not found in src/utils.py; using 0.0.0")
+        print("[WARN] VVOK_VERSION not found in src/utils.py; using 0.0.0")
         return (0, 0, 0, 0)
     parts = [int(piece) for piece in found.group(1).split(".")[:4]]
     while len(parts) < 4:
@@ -66,7 +66,7 @@ TEMPLATE = """VSVersionInfo(
          StringStruct('FileDescription', 'VvokAI setup and launcher for Brawl Stars'),
          StringStruct('FileVersion', '{dotted}'),
          StringStruct('InternalName', 'VvokAI'),
-         StringStruct('LegalCopyright', 'CC BY-NC 4.0. See LICENSE.'),
+         StringStruct('LegalCopyright', '(c) nyavke. All rights reserved.'),
          StringStruct('OriginalFilename', 'VvokAI.exe'),
          StringStruct('ProductName', 'VvokAI'),
          StringStruct('ProductVersion', '{dotted}')])

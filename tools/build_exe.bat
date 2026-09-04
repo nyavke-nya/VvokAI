@@ -10,7 +10,7 @@ color 0B
 :: an executable that size would unpack itself into the temp folder on every
 :: launch, take a minute to start, and be exactly the shape antivirus software
 :: treats as suspicious. The exe fetches those on first run instead, the same
-:: way start_pyla.bat always has.
+:: way start_vvok.bat always has.
 ::
 :: This script is the whole build. Anybody can run it, read launcher.py, and
 :: see that the two match - which is worth more against "is this a virus" than
@@ -48,7 +48,7 @@ if not defined BUILD_PY (
 
 if not defined BUILD_PY (
     echo [ERROR] No Python found to build with.
-    echo         Run start_pyla.bat once, or install Python 3.11 from
+    echo         Run start_vvok.bat once, or install Python 3.11 from
     echo         https://www.python.org/downloads/release/python-3119/
     echo.
     pause
