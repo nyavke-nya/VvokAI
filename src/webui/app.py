@@ -11,6 +11,7 @@ from discord_bot import DiscordBot
 from remote_control import RemoteControl
 from telegram_bot import TelegramBot
 from utils import get_brawler_icon_path, resolve_project_path
+from .instances import InstanceManager
 from .runtime import RuntimeManager
 from .services import WebDataService
 
@@ -126,6 +127,7 @@ def create_app(vvok_main, start_discord_bot=False):
 
     runtime_manager = RuntimeManager(vvok_main)
     data_service = WebDataService(runtime_manager)
+    instance_manager = InstanceManager()
     # One object behind both transports, so a command means the same thing
     # wherever it came from - and so the run's WindowController has one home.
     remote = RemoteControl(runtime_manager, data_service)
@@ -134,6 +136,7 @@ def create_app(vvok_main, start_discord_bot=False):
     runtime_manager.configure_start_gate(data_service.get_queue_data, data_service.get_auth_state)
     app.config["runtime_manager"] = runtime_manager
     app.config["data_service"] = data_service
+    app.config["instance_manager"] = instance_manager
     app.config["remote_control"] = remote
     app.config["discord_bot"] = discord_bot
     app.config["discord_bot_thread"] = None
@@ -281,6 +284,34 @@ def create_app(vvok_main, start_discord_bot=False):
         result = runtime_manager.stop()
         status_code = 200 if result.get("ok") else 409
         return jsonify({**result, "runtime": runtime_manager.get_status()}), status_code
+
+    @app.get("/api/instances")
+    def get_instances():
+        return jsonify(instance_manager.list_payload())
+
+    @app.post("/api/instances")
+    def add_instance():
+        payload = request.get_json(silent=True) or {}
+        return jsonify(instance_manager.add(
+            payload.get("name", ""), payload.get("adb_serial", ""), payload.get("port")))
+
+    @app.put("/api/instances/<name>")
+    def update_instance(name: str):
+        payload = request.get_json(silent=True) or {}
+        return jsonify(instance_manager.update(
+            name, payload.get("adb_serial"), payload.get("port")))
+
+    @app.delete("/api/instances/<name>")
+    def delete_instance(name: str):
+        return jsonify(instance_manager.remove(name))
+
+    @app.post("/api/instances/<name>/start")
+    def start_instance(name: str):
+        return jsonify(instance_manager.start(name))
+
+    @app.post("/api/instances/<name>/stop")
+    def stop_instance(name: str):
+        return jsonify(instance_manager.stop(name))
 
     @app.get("/api/history")
     def history():

@@ -39,6 +39,21 @@
         "Preparing local session...": "Подготовка локального сеанса...",
         "Support the project": "Поддержать проект",
 
+        // ---- accounts (multi-instance)
+        "Accounts": "Аккаунты",
+        "Add account": "Добавить аккаунт",
+        "Open panel": "Открыть панель",
+        "Remove": "Удалить",
+        "Start": "Старт",
+        "Stop": "Стоп",
+        "Running": "Работает",
+        "Stopped": "Остановлен",
+        "ADB serial": "ADB-серийник",
+        "Panel port": "Порт панели",
+        "Each account runs as its own process on its own emulator window - resources are not shared. Add one per MuMu window, press Start, then open its panel to set that account's token, brawlers and playstyle.":
+            "Каждый аккаунт — отдельный процесс на своём окне эмулятора, ресурсы не делятся. Добавь по одному на окно MuMu, нажми «Старт» и открой его панель, чтобы задать токен, бойцов и стиль этого аккаунта.",
+        "Accounts are managed from the main panel.": "Аккаунтами управляют из главной панели.",
+
         // ---- status pills
         "Idle": "Простой", "Running": "Работает", "Paused": "Пауза",
         "Stopping": "Остановка", "Pausing": "Встаёт на паузу",

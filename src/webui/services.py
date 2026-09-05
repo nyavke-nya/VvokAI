@@ -26,6 +26,7 @@ from utils import (
     resolve_project_path,
     save_dict_as_toml, VVOK_VERSION, api_update_brawler_data, clear_brawler_data, save_brawler_data,
 )
+from .instances import is_supervisor
 
 try:
     from early_access.early_access import (
@@ -1112,6 +1113,10 @@ class WebDataService:
                 "version": self.get_current_version(),
                 "latest_version": self.get_latest_version_safe(),
                 "warnings": self.get_warnings(),
+                # Only the root panel supervises accounts; a spawned account
+                # panel (VVOK_CFG_DIR set) hides the Accounts page so it cannot
+                # spawn panels of its own.
+                "is_supervisor": is_supervisor(),
             },
             "auth": auth_payload,
             "runtime": self.runtime_manager.get_status(),

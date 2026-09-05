@@ -5,6 +5,7 @@ const NAV_ITEMS = {
     history: { label: "History", icon: "history" },
     profile: { label: "Profile", icon: "history" },
     logs: { label: "Logs", icon: "settings" },
+    instances: { label: "Accounts", icon: "queue", supervisorOnly: true },
     settings: { label: "Settings", icon: "settings" },
 };
 
@@ -192,7 +193,10 @@ function renderNav() {
     const nav = document.querySelector(".nav-menu");
     if (!nav) return;
 
-    nav.innerHTML = Object.entries(NAV_ITEMS).map(([view, item]) => `
+    const supervisor = state.bootstrap?.app?.is_supervisor;
+    nav.innerHTML = Object.entries(NAV_ITEMS)
+        .filter(([, item]) => !item.supervisorOnly || supervisor)
+        .map(([view, item]) => `
         <button class="nav-item ${view === state.currentView ? "active" : ""}" data-view="${view}">
             <span class="nav-icon">${iconMarkup(item.icon)}</span>
             <span>${escapeHtml(item.label)}</span>
@@ -212,6 +216,15 @@ function bindShellEvents() {
             event.preventDefault();
             event.stopPropagation();
             goToApiTokenSetting();
+        }
+
+        const startInst = event.target.closest("[data-instance-start]");
+        if (startInst) instanceAction("start", startInst.dataset.instanceStart);
+        const stopInst = event.target.closest("[data-instance-stop]");
+        if (stopInst) instanceAction("stop", stopInst.dataset.instanceStop);
+        const removeInst = event.target.closest("[data-instance-remove]");
+        if (removeInst && window.confirm(`Remove account "${removeInst.dataset.instanceRemove}"? Its config folder is left on disk.`)) {
+            instanceAction("remove", removeInst.dataset.instanceRemove);
         }
     });
 
@@ -266,10 +279,15 @@ async function bootstrap() {
                 code: playerInfo?.code || "INVALID_PLAYER_TAG" };
     }
 
+    if (payload.app?.is_supervisor) {
+        state.instances = await fetchJSON("/api/instances", {}, true);
+    }
+
     updateChrome();
     renderAll();
     toggleAuthModal();
     startRuntimePolling();
+    startInstancePolling();
 }
 
 // The parts that change while nothing else does: the rate, the pill, the
@@ -443,6 +461,7 @@ function renderAll() {
     renderHistory();
     renderProfile();
     renderLogs();
+    renderInstances();
     renderSettings();
     setView(state.currentView);
 }
@@ -1786,6 +1805,131 @@ function formatResultLabel(value) {
 // The five groups, in the order they are shown. Data rather than markup: the
 // navigation, the pane and the reset button all read from the same row, so a
 // section cannot end up in the list without a page or the other way round.
+// ── Accounts (multi-instance) ──────────────────────────────────────────
+// Each account is a separate VvokAI process on its own MuMu window, its own
+// config and its own panel. This page is the supervisor: it lists them, starts
+// and stops the processes, and links out to each account's own panel where that
+// account's brawlers, playstyle and token are set.
+
+function instanceEmptyMessage() {
+    return `<div class="empty-state wide-empty">No accounts yet. Add one below - one per MuMu window.</div>`;
+}
+
+function renderInstanceRow(item) {
+    const running = item.running;
+    const dot = `<span class="status-indicator ${running ? "is-running" : "is-idle"}"></span>`;
+    const state_ = running ? "Running" : "Stopped";
+    const toggle = running
+        ? `<button class="btn" data-instance-stop="${escapeHtml(item.name)}">Stop</button>`
+        : `<button class="btn btn-primary" data-instance-start="${escapeHtml(item.name)}">Start</button>`;
+    const open = (running && item.url)
+        ? `<a class="btn" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">Open panel</a>`
+        : "";
+    const where = escapeHtml(item.adb_serial) + (item.port ? ` &middot; :${item.port}` : "");
+    return `
+        <div class="spec-row" style="align-items:center;gap:12px;padding:10px 0">
+            <div>
+                <div>${dot} <strong>${escapeHtml(item.name)}</strong> <span style="opacity:.6">${state_}</span></div>
+                <div style="opacity:.6;font-size:12px">${where}</div>
+            </div>
+            <div class="toolbar-actions">${toggle} ${open}
+                <button class="btn" data-instance-remove="${escapeHtml(item.name)}">Remove</button>
+            </div>
+        </div>`;
+}
+
+function renderInstances() {
+    const view = document.getElementById("view-instances");
+    if (!view) return;
+    const data = state.instances || { is_supervisor: false, items: [] };
+    if (!data.is_supervisor) {
+        view.innerHTML = `<div class="empty-state wide-empty">Accounts are managed from the main panel.</div>`;
+        return;
+    }
+    const rows = (data.items || []).map(renderInstanceRow).join("") || instanceEmptyMessage();
+    view.innerHTML = `
+        <div class="ps-page">
+            <section class="panel">
+                <p class="eyebrow">Accounts</p>
+                <p style="opacity:.7;margin:.3rem 0 1rem">Each account runs as its own process on its own emulator window - resources are not shared. Add one per MuMu window, press Start, then open its panel to set that account's token, brawlers and playstyle.</p>
+                <div id="instanceList">${rows}</div>
+            </section>
+            <section class="panel">
+                <p class="eyebrow">Add account</p>
+                <form id="instanceAddForm" class="modal-form">
+                    <label class="input-group"><span>Name</span><input id="instName" type="text" placeholder="acc1" autocomplete="off"></label>
+                    <label class="input-group"><span>ADB serial</span><input id="instSerial" type="text" placeholder="127.0.0.1:16384" autocomplete="off"></label>
+                    <label class="input-group"><span>Panel port</span><input id="instPort" type="number" placeholder="5001" autocomplete="off"></label>
+                    <button class="btn btn-primary" type="submit">Add account</button>
+                </form>
+            </section>
+        </div>`;
+    document.getElementById("instanceAddForm")?.addEventListener("submit", handleInstanceAdd);
+}
+
+async function updateInstanceList() {
+    const data = await fetchJSON("/api/instances", {}, true);
+    if (!data) return;
+    state.instances = data;
+    const list = document.getElementById("instanceList");
+    if (list && data.is_supervisor) {
+        list.innerHTML = (data.items || []).map(renderInstanceRow).join("") || instanceEmptyMessage();
+    }
+}
+
+async function refreshInstances() {
+    const data = await fetchJSON("/api/instances", {}, true);
+    if (data) state.instances = data;
+    renderInstances();
+}
+
+async function handleInstanceAdd(event) {
+    event.preventDefault();
+    const name = document.getElementById("instName").value.trim();
+    const adb_serial = document.getElementById("instSerial").value.trim();
+    const port = document.getElementById("instPort").value.trim();
+    try {
+        await fetchJSON("/api/instances", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, adb_serial, port: port || null }),
+        });
+        showToast(`Account "${name}" added.`, "success");
+        await refreshInstances();
+    } catch (error) {
+        showToast(error.message || "Could not add the account.", "error");
+    }
+}
+
+async function instanceAction(action, name) {
+    const isRemove = action === "remove";
+    const url = isRemove
+        ? `/api/instances/${encodeURIComponent(name)}`
+        : `/api/instances/${encodeURIComponent(name)}/${action}`;
+    try {
+        const result = await fetchJSON(url, { method: isRemove ? "DELETE" : "POST" }, true);
+        if (result && result.ok === false) {
+            showToast(result.message || `Could not ${action} ${name}.`, "error");
+        } else if (result && result.message) {
+            showToast(result.message, "success");
+        }
+    } catch (error) {
+        showToast(error.message || `Could not ${action} ${name}.`, "error");
+    }
+    if (isRemove) await refreshInstances();
+    else await updateInstanceList();
+}
+
+function startInstancePolling() {
+    // Refresh only the status list (never the whole view, so a half-typed Add
+    // form is not wiped), and only while the Accounts page is open.
+    setInterval(() => {
+        if (state.currentView === "instances" && state.instances?.is_supervisor) {
+            updateInstanceList();
+        }
+    }, 4000);
+}
+
 const SETTINGS_TABS = [
     { id: "general", label: "General", blurb: "Runtime and environment" },
     { id: "bot", label: "Behavior", blurb: "Combat and recovery" },
