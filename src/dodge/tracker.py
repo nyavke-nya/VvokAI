@@ -1200,8 +1200,22 @@ class ProjectileTracker:
 
         for track in self._tracks:
             if track.hits < config.min_confirm_hits:
-                rejects["few_hits"] += 1
-                continue
+                # Two samples is the least that can carry a velocity, and a
+                # track that plainly came off an enemy and would LAND before a
+                # third sample arrives has to be taken now or not at all - that
+                # is the whole point of urgent_confirm below.
+                #
+                # This filter used to drop every short track outright, which
+                # made that path unreachable: by the time a track got here it
+                # already had min_confirm_hits, so the urgent branch (which
+                # only runs when a track is SHORT of the hits it needs) could
+                # never be entered for an enemy-origin shot. The feature has
+                # been dead code, and fast shots cost a full extra frame of
+                # reaction. Short tracks still have to clear every other check
+                # plus the origin and "waiting is fatal" gates to survive.
+                if track.hits < 2:
+                    rejects["few_hits"] += 1
+                    continue
 
             # Already fitted during association, for every track that moved.
             velocity = track.velocity
@@ -1252,8 +1266,14 @@ class ProjectileTracker:
                 # being handed phantom threats. Dodging fell 90.6% -> 87.7%,
                 # impossible situations rose 7.9% -> 10.1%, and the bot spent
                 # 26% of its movement samples stuck against 15% before.
+                # `hits >= 2`, not `>= min_confirm_hits`. Requiring the full
+                # count here contradicted the branch this sits in, which only
+                # runs when the track is SHORT of the hits it needs - so the
+                # confirmation below could never happen. Two samples is what a
+                # velocity needs; the origin and "waiting is fatal" gates either
+                # side of it are what keep this honest.
                 if not (track.origin_reason == "enemy"
-                        and track.hits >= config.min_confirm_hits
+                        and track.hits >= 2
                         and self._waiting_is_fatal(track, velocity, speed, context, stamp)):
                     rejects["origin"] += 1
                     continue

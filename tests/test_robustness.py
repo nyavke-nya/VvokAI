@@ -565,4 +565,36 @@ report.check("and the panel refuses to navigate away from itself",
              "acceptNavigationRequest" in _desktop_src, True)
 
 
+report.section("a stale movement value cannot take the game loop down")
+# play.py used to reset last_movement to '' - an empty STRING left over from
+# the WASD days - and hand it straight back to the shaper while the movement
+# rate limiter was cooling down. float(target[0]) on '' raised IndexError and
+# killed the whole match loop.
+from dodge.smoothing import MovementShaper as _Shaper
+from dodge.config import DodgeConfig as _DodgeConfig
+
+_shaper_cfg = _DodgeConfig({})
+_shaper = _Shaper(_shaper_cfg)
+_crashed = None
+try:
+    _shaper.shape("", now=1.0)
+    _shaper.shape((), now=1.1)
+except Exception as _exc:          # noqa: BLE001 - the point is that none escape
+    _crashed = repr(_exc)
+report.check("an empty movement is coasted, not crashed on", _crashed, None)
+report.check("and play.py no longer parks an empty string in last_movement",
+             "self.last_movement = ''" in read_source("play.py"), False)
+
+report.section("urgent dodge confirmation is reachable at all")
+# The branch only runs when a track is SHORT of the hits it needs, yet it also
+# demanded the full min_confirm_hits - a condition that can never hold at the
+# same time, so `urgent_confirm = True` was dead code and fast shots always
+# cost an extra frame of reaction.
+_tracker_src = read_source("dodge/tracker.py")
+report.check("it no longer demands the very hit count it is bypassing",
+             "and track.hits >= config.min_confirm_hits\n" in _tracker_src, False)
+report.check("and short tracks are no longer dropped before it can run",
+             "if track.hits < 2:" in _tracker_src, True)
+
+
 sys.exit(report.finish())

@@ -50,7 +50,20 @@ class MovementShaper:
             dt = max(now - self._last_update, 0.0)
             self._last_update = now
 
-        goal = (0.0, 0.0) if target is None else (float(target[0]), float(target[1]))
+        # Anything that is not a usable pair is treated as "no target" rather
+        # than trusted. play.py used to reset last_movement to '' (an empty
+        # STRING, left over from the days of WASD commands) and could hand that
+        # straight back here: float(target[0]) on '' raised IndexError and took
+        # the whole game loop down. It resets to None now, and this refuses to
+        # be the crash site again.
+        if target is None:
+            goal = (0.0, 0.0)
+        else:
+            try:
+                goal = (float(target[0]), float(target[1]))
+            except (TypeError, ValueError, IndexError, KeyError):
+                goal = (0.0, 0.0)
+                target = None
 
         if sharp and config.sharp_on_dodge:
             self._current = goal

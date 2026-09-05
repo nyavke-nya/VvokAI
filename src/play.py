@@ -215,7 +215,7 @@ class Play:
         }
         self.time_since_last_proceeding = time.time()
 
-        self.last_movement = ''
+        self.last_movement = None
         self.last_movement_change_time = time.time()
         self.minimum_movement_delay = bot_config["minimum_movement_delay"]
         self.no_detection_proceed_delay = time_config["no_detection_proceed"]
@@ -1255,7 +1255,7 @@ class Play:
             coasting = self.movement_shaper.shape(None, now=current_time) if self.movement_shaper else None
             if coasting is None:
                 self.window_controller.release_movement()
-                self.last_movement = ''
+                self.last_movement = None
                 return None
             return coasting
 
@@ -1274,7 +1274,12 @@ class Play:
                 if current_time - self.last_movement_change_time >= self.minimum_movement_delay:
                     self.last_movement = movement
                     self.last_movement_change_time = current_time
-                else:
+                elif self.last_movement:
+                    # Only hold the PREVIOUS vector while the rate limiter is
+                    # cooling down. After a stop there is no previous vector -
+                    # holding "nothing" used to mean handing an empty string
+                    # down the chain, which crashed the shaper. The new vector
+                    # is the right thing to send on the first frame back.
                     movement = self.last_movement
             else:
                 self.last_movement_change_time = current_time
@@ -1285,7 +1290,7 @@ class Play:
             movement = self.movement_shaper.shape(movement, sharp=sharp, now=current_time)
             if movement is None:
                 self.window_controller.release_movement()
-                self.last_movement = ''
+                self.last_movement = None
                 self.stage("| shape", inner)
                 return None
         self.stage("| shape", inner)
