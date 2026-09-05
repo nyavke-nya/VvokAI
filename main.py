@@ -375,8 +375,31 @@ def vvok_main(remote, queue_data, stop_event=None, runtime_control=None):
             if self.state_checker_thread and self.state_checker_thread.is_alive():
                 self.state_checker_thread.join(timeout=1.0)
 
+        # How many readings in a row have to agree that a match is over before
+        # the rest of the bot is told so.
+        #
+        # A single misread was enough to stop the bot mid-match: the brawler
+        # list's icons matching the shop template, a HUD element clearing a menu
+        # template for one frame. do_state() then acted on that menu - and the
+        # play loop, seeing a state that is not "match", stopped moving and
+        # shooting and stood there. That is the "just stands AFK, only attacks"
+        # report.
+        #
+        # A real match end lasts for many frames, so waiting for a few costs
+        # about a tenth of a second and nothing else. Only match -> not-match is
+        # held back; entering a match, and every change outside one, is instant.
+        MATCH_EXIT_CONFIRM = 3
+
         def set_latest_state(self, state):
             with self.state_lock:
+                if self.state == "match" and state != "match" and state is not None:
+                    self._match_exit_votes = getattr(self, "_match_exit_votes", 0) + 1
+                    if self._match_exit_votes < self.MATCH_EXIT_CONFIRM:
+                        # Not convinced yet - keep telling everyone the match is
+                        # still on, so the bot keeps playing.
+                        return
+                else:
+                    self._match_exit_votes = 0
                 self.state = state
 
         def get_latest_state(self):

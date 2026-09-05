@@ -639,4 +639,27 @@ except Exception:
 report.check("and it is still valid TOML", _parsed is not None, True)
 
 
+report.section("the bot is not allowed to stop playing mid-match")
+# One misread frame used to be enough to end a match as far as the bot was
+# concerned: the brawler list's icons matching the shop template, or a HUD
+# element clearing a menu template for a single frame. The state was published
+# straight away, do_state() acted on that menu, and the play loop - seeing a
+# state that is not "match" - stopped moving and shooting and just stood there.
+import pathlib as _plib
+_main_text = open(_plib.Path(REPO) / "main.py", encoding="utf-8").read()
+
+report.check("leaving a match has to be confirmed over several readings",
+             "MATCH_EXIT_CONFIRM" in _main_text, True)
+report.check("and the guard sits in the one place state is published",
+             'if self.state == "match" and state != "match"' in _main_text, True)
+import re as _re_confirm
+_votes = _re_confirm.search(r"MATCH_EXIT_CONFIRM\s*=\s*(\d+)", _main_text)
+report.at_least("more than one reading is required",
+                int(_votes.group(1)) if _votes else 0, 2)
+# Entering a match, and anything happening outside one, must stay instant -
+# holding those back would make the bot slow to react in the menus.
+report.check("the counter resets whenever the reading is not a match exit",
+             "self._match_exit_votes = 0" in _main_text, True)
+
+
 sys.exit(report.finish())
