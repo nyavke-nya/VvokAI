@@ -129,7 +129,21 @@ def get_in_game_state(image):
         if should_print_debug_info: print("Checking for brawler selection...")
         if is_in_brawler_selection(image): return "brawler_selection"
         if should_print_debug_info: print("Checking for shop")
-        if is_in_shop(image): return "shop"
+        if is_in_shop(image):
+            # The brawler list's own top filter icons sit where the shop
+            # template is looked for, so an open list can read as "shop" - and
+            # the stage manager then "closes the shop", throwing the list away
+            # mid-selection, while the selection flow aborts because the state
+            # is not "brawler_selection". That is the "it found the brawler but
+            # never selected it" loop.
+            #
+            # The tolerant list check is consulted ONLY here, where the shop
+            # template has already matched. That cannot bring back the mid-match
+            # false positive it was made strict for, because the shop template
+            # does not match a match frame at all.
+            if is_in_brawler_selection(image, strict=False):
+                return "brawler_selection"
+            return "shop"
         if should_print_debug_info: print("Checking for offer popup...")
         if is_in_offer_popup(image): return "popup"
         if should_print_debug_info: print("Checking for brawl pass or star road (shop state)...")

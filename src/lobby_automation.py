@@ -763,7 +763,17 @@ class LobbyAutomation:
                     print("WARNING: The bot has been waiting for the lobby screen to update for a long time. It's possible that the game is stuck or the OCR is having trouble reading the screen. The bot will continue without changing the currently selected brawler.")
                     return "stuck"
                 continue
-            elif current_state != "brawler_selection":
+            elif current_state != "brawler_selection" and not self._list_is_open():
+                # The published state alone is not enough to abort on. The
+                # brawler list is NOT the lobby, and the state checker does not
+                # always name it "brawler_selection" - on this screen it has
+                # been seen publishing "shop", because the list's own top filter
+                # icons sit where the shop template is looked for. Aborting on
+                # that read the search box, typed the name, saw "not
+                # brawler_selection" and gave up with the matching card sitting
+                # right there: "it found the brawler but never selected it",
+                # looping until the whole attempt timed out. So confirm against
+                # the actual frame before giving up.
                 print("Latest screenshot is no longer of the lobby, aborting brawler selection...")
                 return "stuck"
 

@@ -798,4 +798,45 @@ report.check("the size sweep spans at least below and above 1.0",
              min(_scales) < 0.8 and max(_scales) > 1.3, True)
 
 
+report.section("an open brawler list is never mistaken for the shop")
+# What happened: the list's own top filter icons sit where the shop template is
+# looked for, so an open list published "shop". The stage manager then closed
+# "the shop" - throwing the list away mid-selection - and the selection flow
+# aborted with "no longer of the lobby" while the matching card sat on screen.
+# That is the "it found the brawler but never selected it" loop people hit.
+import state_finder as _sf_mod
+
+_stubbed = ("is_in_end_of_a_match", "is_in_lobby", "is_in_match_making",
+            "is_in_shop", "is_in_offer_popup", "is_in_brawl_pass",
+            "is_in_star_road", "is_in_prestige_milestone", "is_in_nano_noodles",
+            "is_at_buffie_machine", "is_in_daily_wins", "is_in_star_drop",
+            "is_in_trophy_reward", "is_in_brawler_selection")
+_saved = {name: getattr(_sf_mod, name) for name in _stubbed}
+try:
+    for name in _stubbed:
+        setattr(_sf_mod, name, lambda *a, **k: False)
+    # The shop template matches, as it does on the real list screen.
+    _sf_mod.is_in_shop = lambda image: True
+
+    # With the list genuinely open, the state must say so rather than "shop".
+    _sf_mod.is_in_brawler_selection = lambda image, strict=True: not strict
+    report.check("a list that reads as the shop is still the list",
+                 _sf_mod.get_in_game_state(None), "brawler_selection")
+
+    # And a real shop screen still reads as the shop.
+    _sf_mod.is_in_brawler_selection = lambda image, strict=True: False
+    report.check("but a real shop screen is still the shop",
+                 _sf_mod.get_in_game_state(None), "shop")
+finally:
+    for name, original in _saved.items():
+        setattr(_sf_mod, name, original)
+
+# And the selection flow must confirm against the frame before giving up, not
+# trust a published state that can be wrong on this very screen.
+_lob_src = read_source("lobby_automation.py")
+report.check("aborting selection is confirmed against the frame",
+             'current_state != "brawler_selection" and not self._list_is_open()' in _lob_src,
+             True)
+
+
 sys.exit(report.finish())
