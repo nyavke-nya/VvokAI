@@ -118,6 +118,36 @@ def own_device_screenshot():
     return _adb_screenshot(os.environ.get("VVOK_ADB_SERIAL", ""))
 
 
+def _process_name(pid: int) -> str:
+    """The executable name behind a PID, lowercased, or "" if it cannot be read."""
+    try:
+        if os.name == "nt":
+            out = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {int(pid)}", "/NH", "/FO", "CSV"],
+                capture_output=True, text=True, timeout=5).stdout.strip()
+            if out.startswith('"'):
+                return out.split('","')[0].strip('"').lower()
+        else:
+            return subprocess.run(["ps", "-p", str(int(pid)), "-o", "comm="],
+                                  capture_output=True, text=True,
+                                  timeout=5).stdout.strip().lower()
+    except Exception:
+        pass
+    return ""
+
+
+# Only these are ever killed by port. An account panel is this interpreter or
+# the packaged build; anything else listening on that port is somebody else's
+# program and must not be touched - the port could have been recycled, and
+# "taskkill whatever owns it" is how a stop button ends up killing svchost.
+_OUR_PROCESS_NAMES = ("python.exe", "pythonw.exe", "vvokai.exe", "python", "python3")
+
+
+def _is_our_process(pid: int) -> bool:
+    name = _process_name(pid)
+    return bool(name) and name in _OUR_PROCESS_NAMES
+
+
 def _kill_tree(pid: int) -> None:
     """Kill a process and its children. When the bot dies its scrcpy socket
     closes and the emulator releases any held touch, so the character stops."""
@@ -321,8 +351,20 @@ class InstanceManager:
         # "Stop all" left an account merrily playing on.
         if port is not None:
             pid = _listening_pids().get(port)
-            if pid:
-                _kill_tree(pid)
+            if pid and (proc is None or pid != proc.pid):
+                # Verified before killing, not killed blindly: the point is to
+                # stop an account this supervisor is not tracking (started in an
+                # earlier session, or whose handle was lost), which is the case
+                # where "Stop" used to leave a bot happily playing on. Refusing
+                # outright brings that bug back; killing whatever owns the port
+                # could take out an unrelated program. So: kill it only if it
+                # looks like one of ours.
+                if _is_our_process(pid):
+                    _kill_tree(pid)
+                else:
+                    return {"ok": False,
+                            "message": "That port is held by another program, "
+                                       "so it was left alone. Close it yourself."}
         return {"ok": True, "message": f"{name} stopped."}
 
     def stop_all(self) -> None:

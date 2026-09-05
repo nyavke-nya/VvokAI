@@ -86,6 +86,7 @@ def vvok_main(remote, queue_data, stop_event=None, runtime_control=None):
             self.playstyle_info, vvok_code = load_vvok_script(current_playstyle)
             self.Play = Play(*self.load_models(), self.window_controller, vvok_code,
                              playstyle_info=self.playstyle_info)
+            self.Play.runtime_control = runtime_control
             self.Time_management = TimeManagement()
             self.lobby_automator = LobbyAutomation(self.window_controller)
             self.runtime_control = runtime_control
@@ -692,8 +693,29 @@ def vvok_main(remote, queue_data, stop_event=None, runtime_control=None):
                         time.sleep(target_period - work_time)
 
     os.makedirs("debug_frames", exist_ok=True)
-    main = Main()
-    main.main()
+    main = Main.__new__(Main)
+    try:
+        main.__init__()
+        main.main()
+    finally:
+        # Construction can fail after capture has started. Clean up every
+        # resource independently, including on SystemExit from a finished queue.
+        for name in ("state_checker_stop_event", "crash_check_stop_event"):
+            event = getattr(main, name, None)
+            if event is not None:
+                event.set()
+        play = getattr(main, "Play", None)
+        dodge = getattr(play, "dodge_service", None)
+        controller = getattr(main, "window_controller", None)
+        actions = [lambda: dodge.stop()] if dodge is not None else []
+        if controller is not None:
+            actions += [lambda: controller.release_movement(priority=True), controller.close]
+        for action in actions:
+            try:
+                action()
+            except Exception as error:
+                print(f"Session cleanup: {error}")
+        remote.set_window_controller(None)
 
 
 all_brawlers = get_brawler_list()

@@ -1,0 +1,120 @@
+VvokAI audit, 2026-09-05
+Initial HEAD: 1cdd605
+Final verification HEAD: 517f498 plus concurrent working-tree edits
+Python: 3.11.9, Windows
+
+Original suite completed before concurrent edits to instances.py / main.py / test_robustness.py:
+remote control: 85 passed, 0 failed
+tracker association: 38 passed, 0 failed
+health reader: 24 passed, 0 failed
+dodge solver: 23 passed, 0 failed
+ground hazards: 14 passed, 0 failed
+aim: 14 passed, 0 failed
+playstyle: 158 passed, 0 failed
+brawl stars api: 14 passed, 0 failed
+updater settings merge: 79 passed, 0 failed
+trophy resync: 18 passed, 0 failed
+profile and schedule: 214 passed, 0 failed
+history totals agree: 33 passed, 0 failed
+robustness: 105 passed, 0 failed
+team invite: 32 passed, 0 failed
+settings translations: 7 passed, 0 failed
+trophies and the paywall: 57 passed, 0 failed
+layout migration: 41 passed, 0 failed
+activity watchdog: 32 passed, 0 failed
+telemetry: 41 passed, 0 failed
+live view: 20 passed, 0 failed
+dataset capture: 12 passed, 0 failed
+player identity and interface: 14 passed, 0 failed
+
+Total original suite checks: 1075 passed, 0 failed (22 suites)
+
+Isolated audit probes (fake network/devices/process termination):
+REPRODUCED config_scope: cfg uses account=True; ./cfg uses root=True
+REPRODUCED repeated_emergency: two emergency requests produced 1 joystick command
+REPRODUCED reset_keeps_context: player=(2, 3); intent=(100, 0); emergency=(1.0, 0.0)
+REPRODUCED camera_shift_race: published fresh context cleared pan, old frame restored (7, 0)
+REPRODUCED schedule_overrides_paused: resume calls=1, replacement watcher=False
+REPRODUCED schedule_overrides_idle: resume calls=1, replacement watcher=False
+REPRODUCED schedule_not_rearmed: auto-resume tried to arm next watcher while current watcher was still alive
+REPRODUCED api_resync_wrong_brawler: response for A overwrote B's 800 with 123
+REPRODUCED sandbox_private_read: AST accepted=True; private global read=True
+REPRODUCED sandbox_unbounded_loop: infinite loop accepted; deliberately NOT executed
+REPRODUCED metadata_breaks_listing: file persisted=True; listing error=AttributeError
+REPRODUCED kill_unverified_port_owner: untracked PID=999999; no real process killed
+REPRODUCED floor_delta_disagrees: actual=0, recorded=-5
+REPRODUCED end_screen_counted_twice: one unchanged end screen recorded 2 times
+REPRODUCED target_victory_waits_for_unrequested_rematch: already in lobby, target complete, yet restart called=True
+REPRODUCED config_tmp_collision: first request ends in FileNotFoundError
+REPRODUCED telemetry_inflight_unbounded: 10 workers for 10 calls; no requests sent
+REPRODUCED target_completion_systemexit: StageManager exited directly; vvok_main has no finally to stop its watchers
+REPRODUCED activity_control_not_wired: Play.__init__ and Main never assign Play.runtime_control
+REPRODUCED panel_accepts_foreign_origin_host: form POST status=200; fake runtime only, browser policy not simulated
+REPRODUCED update_partial_no_rollback: exit=0, installed file contents=['new', 'old']
+REPRODUCED token_refresh_revokes_other_install: revoked ['install_A', 'install_B']; mocked portal only
+REPRODUCED disabled_telemetry_still_builds_profile: full history/profile requested=True
+REPRODUCED reward_double_scaling: 960px frame x=[480.0, 562.5, 397.5], expected=[480.0, 645.0, 315.0]
+REPRODUCED invalid_numeric_settings_accepted: max_ips=-1 and wall_detection=NaN accepted; no files written
+
+25 probes reproduced; no product fixes applied.
+
+Syntax: 88 original Python files and 4 vvok scripts parsed; no syntax failures.
+JavaScript: node --check passed for app.js, i18n.js, vvok-fx.js.
+ONNX: three models loaded and ran with CPUExecutionProvider.
+Each: input [1,3,640,640], output [1,7,8400], finite values on zero input.
+This is not a gameplay accuracy benchmark.
+
+pip check: easyocr 1.7.2 requires opencv-python-headless, which is not installed.
+Installer intentionally substitutes GUI OpenCV; no OCR failure inferred from this alone.
+
+Source SHA256 at final report verification:
+src/activity_watchdog.py a895500ad87c2053faf63c764692158a1b31ca27d587d8d0af243797d5d681da
+src/api.py a9af0ac236c3e46beebe42ccff49d75b7e4649df38c5ef8721c9730b79b5c8ec
+src/auto_update.py 01b3901a392778f228ff602a989190024ae425383764576b2397f2419e733c0c
+src/brawl_api.py 9b5830b850777756572fe18eb46f2b6c3e025d0fc7922f686fc21686f7ee6f39
+src/brawl_token.py 7a1ea1e81a0da3c6a589bc016a2c0b8a973845db9b09073737015f7a097bbb6c
+src/dataset_capture.py bc37474385c2b5763d3d978fd74789501d33cee05238d83248dab5d4fa177975
+src/debug_view.py f96081c872fe0057cfd9100c406d0a1e155878a274799926f80f462796a8d5fc
+src/detect.py 98fcd722c15c2159c0f21206ab37e6b8f16d57ddaba76948b09c715b627f1358
+src/discord_bot.py 03173c43d98e3adfd5cde19bab3eb96540b803d1af59d2070a26e5a30afa3f8c
+src/dodge/__init__.py 34432c33929602c2f5cb012cf8db3deca227b034b0fc08e46356f78a2148f660
+src/dodge/aim.py d08bb78efb1fcbb74169b4090cad562811d366f5cd8b086df3b23bb68656ca16
+src/dodge/config.py 6ad5e707d4e200fd265c4007892dfd5a8fee7d1cc664ce088b58807d04722a0a
+src/dodge/logbook.py e9366f8f8562af5fe075bce137fc2464818bf604340980339d0455910704fa29
+src/dodge/motion.py fcb248ba0b49dd5b499823480166c2c2b6668253d22de090f5969c8d7ea549bd
+src/dodge/palette.py 90b6544cc1a97e589b01dc9b78ef9fd8094bcfe3cbb65da8e8d8f0f9c2521e6f
+src/dodge/service.py fdf1580fcfff71b16595f5767116d07fc54124489c36c6372583ee43ba1292f5
+src/dodge/smoothing.py f4e6bf9c45fbb2909e5256416655a86f12b9c539a65d31f75c14151323fa6e27
+src/dodge/solver.py cbfa14acaaa9eeea08336d56e978c7db02158380061c537d47d360fa64f4bb7c
+src/dodge/tracker.py 1f4e46fc797310e32a0d9d3cfd45e079eead94066d5a2f679f665cbf14ffcbe9
+src/dodge/vitals.py 6701a62cb82f6cefeabd6dc57db5cd9a8a09fcfdc65f8cb3a133a92f36de65f6
+src/live_view.py f9c7415103095d36b9757990da4b4aeb19b88013b2c7fd729e41c48434b773a6
+src/lobby_automation.py a4d8c8a1dcd6d7d4aff8328fc2864caf1927608c244d28c64767864d0e0902ac
+src/logging_tee.py 33c0f443002baf16ffffbba25be84a3384f19e3149f58be80d5aa60247d40c92
+src/play.py 4a3f8204fa9ddd4bc5e14911c083fe6ce66c21fa7e120059df5a0769d4534466
+src/profile_stats.py 9fbaffd0ef86c76ed03af4276c773a5d7c17e80d891d987440e01f2bb6be647b
+src/remote_control.py d8b417d36fe43c1b717c2ecffe1d1db7de26a19a859185a4412ea1ff81a33eee
+src/schedule_control.py fb14cd2f812d4dc77467f89c01cc4c32da9f85b88eed230e53717d7ad20cac81
+src/scrcpy/__init__.py 09447ef852468497a0ee9de01c06be11e1765f33aa37ad14ba421fc5e4ed16fc
+src/scrcpy/const.py ff9536ac8281ff2ccf33e0bc9f0c4b73df829da7e2b622a8ef9a029b05e3fed6
+src/scrcpy/control.py 2eb6e109d9d91dda48dd6c4c3daaf576143ab4bd28cc2ddb9eb045e040d454f8
+src/scrcpy/core.py 059208a874b0d7712c150f28a2029ed6433d5645f0dd8ddc783d5dcdd57f6f8b
+src/stage_manager.py 7971fae2496f99132a336a5966c0bd5629c7b825774a4378553c4cd3a3eb1e4b
+src/state_finder.py 9916d268534f0eb2829cd08e198a14da71625fedba7fc61ff8b57b3a14fd4706
+src/telegram_bot.py be4a3b639f4195ec2286e5936cfe21206d4128ad1dda7111894cb4140f510e8b
+src/telemetry.py 5a5ddc3569717d85860a7d16b4417947c7ce5d5002971ee6c457e07a7a128f58
+src/time_management.py 0c288cbddb092902bea360672e27ffe22aa80afb927801349c1116e1957b8202
+src/trophy_observer.py 38bae715e66d1456cc78ac9db0ff7f15da6e75c8c708d658d060c4cd33fe9eaf
+src/utils.py 1c395c15b7bdb72df3336b0fd095a52c8b5cfe93cb0b1c2c94ad9eedaec7546e
+src/webui/__init__.py 7fca498015f241591ba0ca6913ae769e881681c99982d2c8c8ebed878c4ab56d
+src/webui/app.py 87ebd82d80e4c8a1a56fe23ab3da928822ed8a113721f4af7269f5d7ad1e6a15
+src/webui/instances.py 96ebc288653dd79abbd00a4ee87727c86127b95411bb29a96e14b02bd1e7c062
+src/webui/runtime.py 92a65f847bc7c88cf4ab2fed0dd9350f5ea886dc01203be019e0a6986d0a1659
+src/webui/services.py 245f1c3e28c384f2bad1186dac0ab6e4cbbcee32995819202567bb289e858123
+src/window_controller.py 3facc5bd4deed57e78e5e964da089b0f635baead05e31cd88c1812e8019333fd
+main.py c0480101f371c4e240e434a91dd7b818dcd2e65f9f4b5be3cffb954c48cff641
+requirements.txt 6dd5ca3c0ded355a2577cebe9ac9e449d4558dc81dbf77f12b7ac44db6794ffa
+tools/updater.py 23f0b3472f862eb40e6492ac6791998088625dcb0a314f696ec05c1243381666
+tools/installer.py 854bf43f7681177bf9e70cd8e810bcd16b20c86b55c3024d00f1d065774aa795
+tests/test_robustness.py dd762ccebe694bc72a1d38141b8e015a9e647077a7b7e322d4032019eb9386ea
+docs/audit/reproduce.py b9b5b306f99d80f1074989430e9512f469970c53e927ab768a2cfdc2c3f1f2a1

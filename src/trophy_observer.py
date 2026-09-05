@@ -210,6 +210,8 @@ class TrophyObserver:
         else:
             self.current_trophies += trophy_delta
 
+        trophy_delta = self.current_trophies - old_trophies
+
         print(f"Trophies: {old_trophies} -> {self.current_trophies}")
         print(f"Win Streak: {old_win_streak} -> {self.win_streak}")
         if self.current_wins:

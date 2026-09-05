@@ -402,12 +402,13 @@ class DodgeService:
         if length > 1e-6 and self._last_emergency is not None:
             previous = self._last_emergency
             alignment = (vector[0] * previous[0] + vector[1] * previous[1]) / length
-            if alignment > 0.97:
+            if alignment > 0.97 and time.monotonic() < getattr(self, "_emergency_until", 0.0):
                 return
 
         self._last_emergency = (vector[0] / length, vector[1] / length) if length > 1e-6 else None
         try:
             mover(vector[0], vector[1], hold=hold or self._emergency_hold)
+            self._emergency_until = time.monotonic() + (hold or self._emergency_hold)
         except Exception as exc:
             print(f"Dodge emergency move failed: {exc}")
 

@@ -18,6 +18,7 @@ from PIL import Image
 import cv2
 from packaging import version
 import traceback
+import tempfile
 
 try:
     from early_access.early_access import get_brawler_stats, get_player_info
@@ -102,7 +103,7 @@ def _get_project_root():
     from pathlib import Path
     if getattr(sys, 'frozen', False):
         return Path(sys.executable).parent.parent
-    return Path.cwd().resolve()
+    return Path(__file__).resolve().parent.parent
 
 
 PROJECT_ROOT = _get_project_root()
@@ -124,7 +125,7 @@ _CFG_DIR_ENV = os.environ.get("VVOK_CFG_DIR")
 # shared file at the root - which is why a target set on one account came back
 # changed. Only redirected when an instance scope is active; a single install
 # keeps them at the root exactly as before.
-_INSTANCE_ROOT_FILES = {"latest_brawler_data.json"}
+_INSTANCE_ROOT_FILES = {"latest_brawler_data.json", "vvokai_log.txt"}
 
 
 def _cfg_root() -> Path:
@@ -146,7 +147,9 @@ def resolve_project_path(*parts) -> Path:
 
 def _config_full_path(file_path) -> Path:
     """Absolute path for a cfg-relative file, honouring the per-instance dir."""
-    rel = str(file_path).replace('\\', '/').lstrip('/')
+    if Path(file_path).is_absolute():
+        return Path(file_path)
+    rel = os.path.normpath(str(file_path)).replace('\\', '/')
     return resolve_project_path(*rel.split('/'))
 
 cached_toml = {}
@@ -186,7 +189,9 @@ def save_dict_as_toml(data, file_path):
     # a killed process during the dump left a zero-byte config behind - and the
     # bot then would not start at all. os.replace is atomic on Windows and
     # POSIX alike, so the file on disk is always either the old one or the new.
-    temp_path = full_path.with_name(full_path.name + ".tmp")
+    fd, name = tempfile.mkstemp(prefix=full_path.name + ".", suffix=".tmp", dir=full_path.parent)
+    os.close(fd)
+    temp_path = Path(name)
     try:
         with open(temp_path, 'w', encoding='utf-8') as f:
             toml.dump(data, f)

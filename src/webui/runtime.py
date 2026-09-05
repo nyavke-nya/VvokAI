@@ -97,6 +97,7 @@ class RuntimeManager:
     def __init__(self, vvok_main):
         self.vvok_main = vvok_main
         self._resume_thread = None
+        self._resume_pending = False
         self._thread: threading.Thread | None = None
         self.rt_control: RuntimeControl | None = None
         self._lock = threading.Lock()
@@ -134,6 +135,7 @@ class RuntimeManager:
 
     def start(self, queue_data: list[dict[str, Any]], discord_bot) -> dict[str, Any]:
         with self._lock:
+            self._resume_pending = False
             thread_alive = self._thread.is_alive() if self._thread else False
 
             if thread_alive:
@@ -195,6 +197,8 @@ class RuntimeManager:
                     return
                 if self.get_status()["state"] in {"running", "pausing"}:
                     continue
+                if not self._resume_pending:
+                    continue
                 if schedule.in_quiet_hours(datetime.now()):
                     continue
 
@@ -202,7 +206,7 @@ class RuntimeManager:
                 result = self.start_current_queue(discord_bot)
                 if not result.get("ok"):
                     print(f"Schedule could not start the run: {result.get('message')}")
-                return
+                # Keep this watcher for the next day's scheduled stop.
 
         self._resume_thread = threading.Thread(
             target=wait_out_the_night, daemon=True, name="vvok-schedule-resume")
@@ -255,6 +259,7 @@ class RuntimeManager:
                 traceback.print_exc()
         finally:
             with self._lock:
+                self._resume_pending = bool(control.schedule_hold_reason() and not control._stop_event.is_set())
                 self._thread = None
                 self.rt_control = None
 
@@ -276,6 +281,7 @@ class RuntimeManager:
 
     def stop(self) -> dict[str, Any]:
         with self._lock:
+            self._resume_pending = False
             thread_alive = self._thread.is_alive() if self._thread else False
             if not thread_alive or not self.rt_control:
                 self._state = "idle"

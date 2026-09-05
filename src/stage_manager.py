@@ -177,7 +177,8 @@ class StageManager:
             ).start()
             return
 
-        current_brawler = self.brawlers_pick_data[0]['brawler']
+        requested_entry = self.brawlers_pick_data[0]
+        current_brawler = requested_entry['brawler']
 
         # The bot's own cache would happily answer with the figure from before
         # the match that just finished, which is precisely the number being
@@ -194,6 +195,9 @@ class StageManager:
             return
 
         trophies, win_streak = get_brawler_stats(player_info, current_brawler)
+
+        if not self.brawlers_pick_data or self.brawlers_pick_data[0] is not requested_entry:
+            return  # The response belongs to a brawler we have already left.
 
         # Supercell publishes the new total a moment after a match ends, so an
         # answer asked for immediately afterwards is often still the old one.
@@ -266,6 +270,8 @@ class StageManager:
                 screenshot = self.window_controller.screenshot()
                 notify_user("completed", screenshot, self)
                 print("Bot stopping: all targets completed with no more brawlers.")
+                if self.runtime_control:
+                    self.runtime_control.request_stop()
                 self.window_controller.release_movement(priority=True)
                 # Nothing left to push, so nothing left to stay online for.
                 # Same switch the scheduled pause uses - and read here with
@@ -421,7 +427,7 @@ class StageManager:
 
     def click_nano_noodles(self):
         noodle_x, noodle_y = 960, 740
-        offset_x = 330 * self.window_controller.width_ratio
+        offset_x = 330
         self.window_controller.click(
             noodle_x,
             noodle_y,
@@ -574,6 +580,7 @@ class StageManager:
         # outside is a bot that carries on after you have told it to stop.
         if (self.play_again_on_win and parsed_result
                 and parsed_result.result == MatchResult.VICTORY
+                and not self._target_reached()
                 and not self._should_pause() and not self._should_stop()):
             print("Waiting for match to start...")
             start_wait_time = time.time()

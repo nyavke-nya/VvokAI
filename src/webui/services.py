@@ -5,6 +5,7 @@ from datetime import datetime
 import json
 import logging
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
 import requests
@@ -674,6 +675,8 @@ class WebDataService:
         return {"current": current, "items": playstyles}
 
     def activate_playstyle(self, filename: str) -> dict[str, Any]:
+        if secure_filename(filename) != filename or not filename.endswith((".vvok", ".pyla")):
+            raise ValueError("Invalid playstyle filename.")
         target_path = resolve_project_path("playstyles", filename)
         if not target_path.exists():
             raise FileNotFoundError(f"Playstyle '{filename}' was not found.")
@@ -713,7 +716,10 @@ class WebDataService:
         filename = f"{base_name}.vvok"
         target_path = resolve_project_path("playstyles", filename)
 
-        temp_path = resolve_project_path("playstyles", f".__upload__{filename}")
+        upload_dir = resolve_project_path("playstyles")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=upload_dir, prefix=".__upload__", delete=False) as upload:
+            temp_path = Path(upload.name)
         file_storage.save(temp_path)
 
         try:
@@ -721,7 +727,17 @@ class WebDataService:
                 metadata_line = handle.readline().strip()
                 if not metadata_line:
                     raise ValueError("Missing playstyle metadata header.")
-                json.loads(metadata_line)
+                metadata = json.loads(metadata_line)
+                if not isinstance(metadata, dict) or not isinstance(metadata.get("name"), str) or not metadata["name"].strip():
+                    raise ValueError("Playstyle metadata must contain a non-empty name.")
+                for key in ("brawlers", "gamemodes"):
+                    if not isinstance(metadata.get(key), list) or not all(isinstance(v, str) for v in metadata[key]):
+                        raise ValueError(f"Playstyle metadata requires a {key} list.")
+                from utils import is_safe_ast
+                body = handle.read()
+                valid, error = is_safe_ast(body)
+                if not body.strip() or not valid:
+                    raise ValueError(error or "Playstyle body is empty.")
 
             uploaded_content = temp_path.read_text(encoding="utf-8")
 
