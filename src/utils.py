@@ -181,8 +181,25 @@ def invalidate_toml_cache(file_path):
 def save_dict_as_toml(data, file_path):
     full_path = _config_full_path(file_path)
     full_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(full_path, 'w', encoding='utf-8') as f:
-        toml.dump(data, f)
+    # Written beside the target and swapped in, rather than opened for writing
+    # in place. open(..., 'w') truncates immediately, so a crash, a power cut or
+    # a killed process during the dump left a zero-byte config behind - and the
+    # bot then would not start at all. os.replace is atomic on Windows and
+    # POSIX alike, so the file on disk is always either the old one or the new.
+    temp_path = full_path.with_name(full_path.name + ".tmp")
+    try:
+        with open(temp_path, 'w', encoding='utf-8') as f:
+            toml.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, full_path)
+    except Exception:
+        try:
+            if temp_path.exists():
+                temp_path.unlink()
+        except OSError:
+            pass
+        raise
     cached_toml[str(full_path)] = data
 
 

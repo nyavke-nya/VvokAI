@@ -556,6 +556,12 @@ class WindowController:
         # `radius` arrives already scaled to this screen by DodgeConfig.
         target_x = center_x + dx / length * radius
         target_y = center_y + dy / length * radius
+        # Kept on screen. The attack button sits near the right edge, so a full
+        # swipe radius aimed right lands past the last pixel - and a touch
+        # outside the display is either dropped or read as a system edge
+        # gesture, so the shot silently fell back to auto-aim.
+        target_x = max(0.0, min(float(self.width - 1), target_x))
+        target_y = max(0.0, min(float(self.height - 1), target_y))
 
         self.touch_down(center_x, center_y, pointer_id=self.PID_ATTACK)
         # One intermediate point: releasing straight after touch_down is

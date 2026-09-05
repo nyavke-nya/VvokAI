@@ -54,6 +54,9 @@ class StageManager:
         self.brawlers_pick_data = brawlers_data
         self.Trophy_observer = TrophyObserver()
         self.time_since_last_stat_change = time.time()
+        # When a match result was last written. One end screen is recorded once
+        # without needing a long gap between matches - see end_game.
+        self._last_result_recorded_at = 0.0
         self.play_again_on_win = load_toml_as_dict("./cfg/bot_config.toml")["play_again_on_win"] == "yes"
         self.window_controller = window_controller
         self.states = {
@@ -454,6 +457,26 @@ class StageManager:
             print(f"Could not read the power level for {brawler} ({exc}).")
             return None
 
+    def _target_reached(self):
+        """Has the brawler at the front of the queue met its goal?
+
+        The same comparison start_game() rotates the queue on. end_game() has to
+        be able to ask it too, because a rematch never reaches start_game().
+        Anything unreadable answers "no": pushing a little too long is a much
+        smaller mistake than stopping a queue that was still running.
+        """
+        try:
+            entry = self.brawlers_pick_data[0]
+            value = {
+                "trophies": self.Trophy_observer.current_trophies,
+                "wins": self.Trophy_observer.current_wins,
+            }[entry["type"]]
+            if value is None:
+                return False
+            return value >= entry["push_until"]
+        except (IndexError, KeyError, TypeError):
+            return False
+
     def end_game(self):
         screenshot = self.window_controller.screenshot()
 
@@ -462,7 +485,17 @@ class StageManager:
         parsed_result = None
         while current_state.startswith("end") and time.time() - end_screen_time < 35:
 
-            if time.time() - self.time_since_last_stat_change > 25 and parsed_result is None :
+            # Recorded once per end screen. `parsed_result` already guarantees
+            # that within this call, and the short window below covers the rare
+            # case where the loop times out with the screen still up and the
+            # function is entered again on the same one.
+            #
+            # This used to require 25 seconds since the last stat change, which
+            # is a gap BETWEEN matches, not within one. A quick death in
+            # showdown or a fast knockout round finished inside that window, so
+            # the whole block was skipped and the match was never recorded at
+            # all - no trophies, no win, no history row.
+            if parsed_result is None and time.time() - self._last_result_recorded_at > 5:
                 raw_found_result = '_'.join(current_state.split("_")[1:])
                 parsed_result = self.Trophy_observer.parse_game_result(raw_found_result)
 
@@ -477,6 +510,7 @@ class StageManager:
                 self.Trophy_observer.add_trophies(parsed_result, current_brawler, self.playstyle_info, power_level)
                 self.Trophy_observer.add_win(parsed_result)
                 self.time_since_last_stat_change = time.time()
+                self._last_result_recorded_at = time.time()
                 values = {
                     "trophies": self.Trophy_observer.current_trophies,
                     "wins": self.Trophy_observer.current_wins
@@ -497,6 +531,14 @@ class StageManager:
 
             wants_rematch = (self.play_again_on_win and parsed_result
                              and parsed_result.result == MatchResult.VICTORY
+                             # A rematch goes straight into the next game and
+                             # never passes through start_game(), which is the
+                             # only place the queue rotates when a brawler meets
+                             # its goal. Without this the bot kept winning on a
+                             # brawler that was already finished and pushed it
+                             # hundreds of trophies past the target, while the
+                             # panel and Telegram both said the goal was met.
+                             and not self._target_reached()
                              and not self._should_pause() and not self._should_stop())
 
             if wants_rematch:

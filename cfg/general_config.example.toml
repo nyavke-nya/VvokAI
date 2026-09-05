@@ -84,3 +84,11 @@ brawl_api_token = ""
 brawl_api_email = ""
 brawl_api_password = ""
 auto_update = true
+
+# Serve the panel to the whole local network instead of this machine only.
+# Off by default: the panel has no login and can import a playstyle, which is a
+# Python file the bot then runs - so anyone on the network could execute code
+# here. Turn on only if you want to open the panel from your phone. Discord and
+# Telegram already control the bot remotely without this.
+panel_allow_lan = false
+

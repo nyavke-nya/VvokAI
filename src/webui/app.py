@@ -394,8 +394,16 @@ def create_app(vvok_main, start_discord_bot=False):
 
     @app.get("/api/assets/support/<path:filename>")
     def support_asset(filename: str):
-        target = resolve_project_path("assets", "images", filename)
-        if not target.exists():
+        # Resolved and then checked to be INSIDE the images folder. The route
+        # takes a <path:...>, so without this a name walking up with ../ would
+        # be served straight off the disk - configs with API tokens included.
+        root = resolve_project_path("assets", "images").resolve()
+        try:
+            target = (root / filename).resolve()
+            target.relative_to(root)
+        except (ValueError, OSError):
+            return ("", 404)
+        if not target.is_file():
             return ("", 404)
         return send_file(target)
 

@@ -409,10 +409,16 @@ class Play:
     @staticmethod
     def can_attack_through_walls(brawler, skill_type, brawlers_info=None):
         if not brawlers_info: brawlers_info = load_brawlers_info()
+        # A brawler released after the stats file was last updated is missing
+        # from it, and indexing it directly raised KeyError right inside the
+        # playstyle - which stops the script for the rest of the match, so the
+        # bot neither moves nor shoots. Not knowing means "cannot shoot through
+        # walls", which is the safe answer.
+        entry = brawlers_info.get(brawler) or {}
         if skill_type == "attack":
-            return brawlers_info[brawler]['ignore_walls_for_attacks']
+            return bool(entry.get('ignore_walls_for_attacks', False))
         elif skill_type == "super":
-            return brawlers_info[brawler]['ignore_walls_for_supers']
+            return bool(entry.get('ignore_walls_for_supers', False))
         raise ValueError("skill_type must be either 'attack' or 'super'")
 
     @staticmethod
@@ -432,7 +438,13 @@ class Play:
     @staticmethod
     def must_brawler_hold_attack(brawler, brawlers_info=None):
         if not brawlers_info: brawlers_info = load_brawlers_info()
-        return brawlers_info[brawler]['hold_attack'] > 0
+        # Same as can_attack_through_walls: an unknown brawler must not raise
+        # KeyError out of the playstyle. Not knowing means "does not hold".
+        entry = brawlers_info.get(brawler) or {}
+        try:
+            return float(entry.get('hold_attack', 0) or 0) > 0
+        except (TypeError, ValueError):
+            return False
 
     @staticmethod
     def walls_block_line_of_sight(p1, p2, walls):
@@ -795,7 +807,14 @@ class Play:
 
         # Movement uses the collision radius, not the projectile hitbox: the
         # latter is nearly a tile wide and made two-tile gaps look impassable.
-        radius = self.collision_radius
+        #
+        # Scaled to the capture, like every other measurement here - the hit
+        # circle above already is. It is configured for 1080p, so on a smaller
+        # emulator window the raw value is proportionally far too big: the
+        # walls and the player shrink with the resolution and the radius did
+        # not, which made single-tile gaps read as solid and walked the bot
+        # into walls on anything but 1080p.
+        radius = self.collision_radius * (self.window_controller.scale_factor or 1)
         new_pos = (hit_circle_center[0] + dx, hit_circle_center[1] + dy)
         return self.walls_block_swept_circle(hit_circle_center, new_pos, radius, walls)
 
@@ -1676,8 +1695,14 @@ class Play:
                     state = current_state
                     self.time_since_last_proceeding = current_time
                 else:
-                    print("haven't detected the player in a while proceeding")
-                    self.window_controller.press("proceed")
+                    # In a match there is no dialog to confirm, and "proceed"
+                    # [1660, 980] sits on top of the gadget button [1640, 990].
+                    # So this fired the GADGET every no_detection_proceed_delay
+                    # seconds the player was hidden - in a bush, in smoke, under
+                    # a super - burning every charge for nothing. The timer is
+                    # still reset so this does not spin.
+                    print("haven't detected the player in a while, waiting "
+                          "(no menu to confirm during a match)")
                     self.time_since_last_proceeding = time.time()
             self.publish_debug_view(frame, data, state)
             return

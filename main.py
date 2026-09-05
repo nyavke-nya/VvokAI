@@ -44,7 +44,7 @@ from state_finder import get_state
 from time_management import TimeManagement
 from utils import load_toml_as_dict, current_wall_model_is_latest, api_base_url, load_vvok_script, save_brawler_data, \
     clean_queue, get_discord_link
-from utils import get_brawler_list, update_missing_brawlers_info, check_version, notify_user, update_wall_model_classes, get_latest_wall_model_file, cprint
+from utils import get_brawler_list, update_missing_brawlers_info, check_version, notify_user, update_wall_model_classes, get_latest_wall_model_file, cprint, config_bool
 from utils import resolve_project_path
 from window_controller import WindowController
 from webui import create_app
@@ -783,5 +783,13 @@ if __name__ == "__main__":
     # holds long-lived connections: a live-view stream never returns while
     # somebody is watching, and on a single-threaded server that one request
     # would block every other one and freeze the whole panel.
-    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False,
-            threaded=True)
+    # Local only unless asked otherwise. The panel has no login, and it can
+    # import a playstyle - a Python file the bot then executes - so reachable
+    # from the whole network meant anyone on it could run code on this machine.
+    # Set panel_allow_lan = true in cfg/general_config.toml to open it up (for
+    # reaching the panel from a phone); Discord and Telegram already work
+    # remotely without exposing it.
+    allow_lan = config_bool(
+        load_toml_as_dict("cfg/general_config.toml").get("panel_allow_lan"), False)
+    app.run(host=("0.0.0.0" if allow_lan else "127.0.0.1"),
+            port=port, debug=False, use_reloader=False, threaded=True)
