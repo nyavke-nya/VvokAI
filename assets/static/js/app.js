@@ -226,6 +226,11 @@ function bindShellEvents() {
         if (removeInst && window.confirm(`Remove account "${removeInst.dataset.instanceRemove}"? Its config folder is left on disk.`)) {
             instanceAction("remove", removeInst.dataset.instanceRemove);
         }
+
+        const openInst = event.target.closest("[data-instance-open]");
+        if (openInst) { state.instanceViewing = openInst.dataset.instanceOpen; renderInstances(); }
+        const backInst = event.target.closest("[data-instance-back]");
+        if (backInst) { state.instanceViewing = null; renderInstances(); }
     });
 
     document.getElementById("authForm")?.addEventListener("submit", handleLogin);
@@ -1823,7 +1828,7 @@ function renderInstanceRow(item) {
         ? `<button class="btn" data-instance-stop="${escapeHtml(item.name)}">Stop</button>`
         : `<button class="btn btn-primary" data-instance-start="${escapeHtml(item.name)}">Start</button>`;
     const open = (running && item.url)
-        ? `<a class="btn" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">Open panel</a>`
+        ? `<button class="btn" data-instance-open="${escapeHtml(item.name)}">Configure</button>`
         : "";
     const where = escapeHtml(item.adb_serial) + (item.port ? ` &middot; :${item.port}` : "");
     return `
@@ -1846,6 +1851,27 @@ function renderInstances() {
         view.innerHTML = `<div class="empty-state wide-empty">Accounts are managed from the main panel.</div>`;
         return;
     }
+
+    // Configuring one account: its whole panel, embedded here, so setting up
+    // another is just Back and pick the next - never a separate browser tab.
+    if (state.instanceViewing) {
+        const item = (data.items || []).find((i) => i.name === state.instanceViewing);
+        if (item && item.running && item.url) {
+            view.innerHTML = `
+                <div class="ps-page">
+                    <section class="panel">
+                        <div class="toolbar-actions" style="margin-bottom:12px;align-items:center">
+                            <button class="btn" data-instance-back="1">&larr; Back to accounts</button>
+                            <span style="opacity:.7">Configuring <strong>${escapeHtml(item.name)}</strong> &middot; ${escapeHtml(item.adb_serial)}</span>
+                        </div>
+                        <iframe src="${escapeHtml(item.url)}" title="${escapeHtml(item.name)}" style="width:100%;height:74vh;border:0;border-radius:14px;background:#0b0b0f"></iframe>
+                    </section>
+                </div>`;
+            return;
+        }
+        state.instanceViewing = null;
+    }
+
     const rows = (data.items || []).map(renderInstanceRow).join("") || instanceEmptyMessage();
     view.innerHTML = `
         <div class="ps-page">

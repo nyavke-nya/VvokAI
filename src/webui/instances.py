@@ -204,13 +204,53 @@ class InstanceManager:
 
     # ---- discovery --------------------------------------------------------
 
-    def _scan_serials(self) -> list[str]:
-        """Connect to every common emulator ADB port, return what came online.
+    @staticmethod
+    def _port_of(serial: str):
+        if ":" in serial:
+            try:
+                return int(serial.rsplit(":", 1)[-1])
+            except ValueError:
+                return None
+        return None
 
-        The connect attempts run in parallel because a port with nothing behind
-        it takes a moment to fail; sequentially that would be a minute of
-        waiting. adb is a shared server, so this only ever ADDS devices to it -
-        it never restarts it, which would knock running accounts off."""
+    @classmethod
+    def _serial_rank(cls, serial: str):
+        """Lower is better when several ADB endpoints are the SAME emulator.
+
+        Prefer a MuMu window port (16384, 16416, ... every 32), then any other
+        host:port, and last an emulator-NNNN console serial - those are flaky to
+        drive. Ties break on the lower port number."""
+        port = cls._port_of(serial)
+        if port is None:
+            return (2, 0)
+        if port >= 16384 and (port - 16384) % 32 == 0:
+            return (0, port)
+        return (1, port)
+
+    @staticmethod
+    def _fingerprint(device) -> str:
+        """A value that is the SAME across every ADB endpoint of one emulator
+        and different between emulators, so mirror ports collapse to one entry.
+
+        android_id is per-instance and identical on all of a window's ports.
+        Falls back to the serial (no dedupe) if it cannot be read."""
+        try:
+            value = device.shell("settings get secure android_id", timeout=3).strip()
+            if value and value.lower() != "null":
+                return "aid:" + value
+        except Exception:
+            pass
+        return "serial:" + device.serial
+
+    def _scan_serials(self) -> list[str]:
+        """Find running emulators, one serial per physical window.
+
+        Connect attempts run in parallel because a dead port takes a moment to
+        fail. adb is shared, so this only ADDS to it, never restarts it (which
+        would drop running accounts). Each emulator answers on several ports -
+        its own plus legacy mirrors like 5555 and emulator-5554 - so devices are
+        grouped by a per-instance fingerprint and only the best serial per group
+        is kept. Without that, two MuMu windows showed up as six accounts."""
         def _try(port):
             try:
                 adb.connect(f"127.0.0.1:{port}")
@@ -220,15 +260,18 @@ class InstanceManager:
         with ThreadPoolExecutor(max_workers=32) as pool:
             pool.map(_try, _SCAN_PORTS)
 
-        serials = []
+        groups: dict[str, list[str]] = {}
         for device in adb.device_list():
             try:
                 state = device.get_state() if hasattr(device, "get_state") else "device"
             except Exception:
-                state = "device"
-            if state == "device":
-                serials.append(device.serial)
-        return sorted(set(serials))
+                continue
+            if state != "device":
+                continue
+            groups.setdefault(self._fingerprint(device), []).append(device.serial)
+
+        chosen = [min(serials, key=self._serial_rank) for serials in groups.values()]
+        return sorted(set(chosen))
 
     def scan_and_add(self) -> dict:
         """Find running emulators and add any new one to the list for the user.

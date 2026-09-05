@@ -44,6 +44,8 @@
         "Detect emulators": "Найти эмуляторы",
         "Scanning...": "Поиск...",
         "Add account": "Добавить аккаунт",
+        "Configure": "Настроить",
+        "Back to accounts": "Назад к аккаунтам",
         "Open panel": "Открыть панель",
         "Remove": "Удалить",
         "Start": "Старт",
