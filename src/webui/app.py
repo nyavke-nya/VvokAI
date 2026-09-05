@@ -289,6 +289,10 @@ def create_app(vvok_main, start_discord_bot=False):
     def get_instances():
         return jsonify(instance_manager.list_payload())
 
+    @app.post("/api/instances/scan")
+    def scan_instances():
+        return jsonify(instance_manager.scan_and_add())
+
     @app.post("/api/instances")
     def add_instance():
         payload = request.get_json(silent=True) or {}

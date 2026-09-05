@@ -1851,7 +1851,10 @@ function renderInstances() {
         <div class="ps-page">
             <section class="panel">
                 <p class="eyebrow">Accounts</p>
-                <p style="opacity:.7;margin:.3rem 0 1rem">Each account runs as its own process on its own emulator window - resources are not shared. Add one per MuMu window, press Start, then open its panel to set that account's token, brawlers and playstyle.</p>
+                <p style="opacity:.7;margin:.3rem 0 1rem">Each account runs as its own process on its own emulator window - resources are not shared. Press Detect to find running emulators automatically, or add one by hand below. Then Start it and open its panel to set that account's token, brawlers and playstyle.</p>
+                <div class="toolbar-actions" style="margin-bottom:12px">
+                    <button id="instanceScanBtn" class="btn btn-primary">Detect emulators</button>
+                </div>
                 <div id="instanceList">${rows}</div>
             </section>
             <section class="panel">
@@ -1865,6 +1868,30 @@ function renderInstances() {
             </section>
         </div>`;
     document.getElementById("instanceAddForm")?.addEventListener("submit", handleInstanceAdd);
+    document.getElementById("instanceScanBtn")?.addEventListener("click", handleInstanceScan);
+}
+
+async function handleInstanceScan(event) {
+    const btn = event.currentTarget;
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Scanning...";
+    try {
+        const result = await fetchJSON("/api/instances/scan", { method: "POST" }, true);
+        if (result && result.ok === false) {
+            showToast(result.message || "Scan failed.", "error");
+        } else if (result && result.added && result.added.length) {
+            showToast(`Added ${result.added.length} emulator(s): ${result.added.join(", ")}.`, "success");
+        } else {
+            showToast(`Found ${result?.found ?? 0} emulator(s), all already in the list.`, "success");
+        }
+    } catch (error) {
+        showToast(error.message || "Scan failed.", "error");
+    } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+    }
+    await refreshInstances();
 }
 
 async function updateInstanceList() {

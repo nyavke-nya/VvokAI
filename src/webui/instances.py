@@ -25,11 +25,29 @@ import shutil
 import subprocess
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
+
+from adbutils import adb
 
 from utils import (PROJECT_ROOT, load_toml_as_dict, resolve_project_path,
                    save_dict_as_toml, invalidate_toml_cache)
 
 INSTANCES_FILE = "cfg/instances.toml"
+
+# Ports the common emulators expose ADB on, so "Detect" can find windows the
+# user never has to look up. MuMu Player numbers its windows 16384, 16416, and
+# up in steps of 32; the rest are the usual LDPlayer / Nox / MemU / generic
+# defaults. Connecting to one that is not there fails fast and harmlessly.
+_SCAN_PORTS = sorted(set(
+    [16384 + 32 * i for i in range(16)]          # MuMu windows
+    + list(range(5554, 5586))                    # LDPlayer / generic adb
+    + [7555, 7556, 7565, 5137, 5635]             # MuMu 12 / misc
+    + [62001, 62025, 62026]                      # Nox
+    + [21503, 21513, 21523]                      # MemU
+))
+
+# Panel ports for auto-added accounts start here and count up past taken ones.
+_AUTO_PORT_BASE = 5001
 
 # Not copied when seeding a fresh account: history is per-account and starts
 # empty, the templates only belong in the shared cfg/, and the instance list is
@@ -183,6 +201,70 @@ class InstanceManager:
             entries = [e for e in self._read() if e["name"] != name]
             self._write(entries)
         return {"ok": True}
+
+    # ---- discovery --------------------------------------------------------
+
+    def _scan_serials(self) -> list[str]:
+        """Connect to every common emulator ADB port, return what came online.
+
+        The connect attempts run in parallel because a port with nothing behind
+        it takes a moment to fail; sequentially that would be a minute of
+        waiting. adb is a shared server, so this only ever ADDS devices to it -
+        it never restarts it, which would knock running accounts off."""
+        def _try(port):
+            try:
+                adb.connect(f"127.0.0.1:{port}")
+            except Exception:
+                pass
+
+        with ThreadPoolExecutor(max_workers=32) as pool:
+            pool.map(_try, _SCAN_PORTS)
+
+        serials = []
+        for device in adb.device_list():
+            try:
+                state = device.get_state() if hasattr(device, "get_state") else "device"
+            except Exception:
+                state = "device"
+            if state == "device":
+                serials.append(device.serial)
+        return sorted(set(serials))
+
+    def scan_and_add(self) -> dict:
+        """Find running emulators and add any new one to the list for the user.
+
+        People do not know their emulator's ADB serial, and should not have to.
+        This finds the windows that are actually running and adds each new one
+        with a name and a panel port picked automatically - all that is left to
+        do is press Start."""
+        if not is_supervisor():
+            raise ValueError("Accounts can only be managed from the main panel.")
+        serials = self._scan_serials()
+        with self._lock:
+            entries = self._read()
+            have = {e.get("adb_serial") for e in entries}
+            names = {e.get("name") for e in entries}
+            ports = {int(e["port"]) for e in entries if e.get("port")}
+            added = []
+            next_port = _AUTO_PORT_BASE
+            for serial in serials:
+                if serial in have:
+                    continue
+                suffix = serial.rsplit(":", 1)[-1] if ":" in serial else serial
+                base = _safe_name(f"acc-{suffix}")
+                name, n = base, 2
+                while name in names:
+                    name, n = f"{base}-{n}", n + 1
+                while next_port in ports:
+                    next_port += 1
+                entries.append({"name": name, "adb_serial": serial, "port": next_port})
+                names.add(name)
+                ports.add(next_port)
+                added.append(name)
+                next_port += 1
+            if added:
+                self._write(entries)
+        return {"ok": True, "found": len(serials), "added": added}
 
     # ---- status -----------------------------------------------------------
 

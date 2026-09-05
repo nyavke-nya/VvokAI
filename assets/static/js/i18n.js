@@ -41,6 +41,8 @@
 
         // ---- accounts (multi-instance)
         "Accounts": "Аккаунты",
+        "Detect emulators": "Найти эмуляторы",
+        "Scanning...": "Поиск...",
         "Add account": "Добавить аккаунт",
         "Open panel": "Открыть панель",
         "Remove": "Удалить",
