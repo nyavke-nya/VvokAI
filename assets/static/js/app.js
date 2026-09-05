@@ -1857,15 +1857,15 @@ function renderInstances() {
     if (state.instanceViewing) {
         const item = (data.items || []).find((i) => i.name === state.instanceViewing);
         if (item && item.running && item.url) {
+            // Full app window, not a cramped panel inside the content column -
+            // the embedded panel needs all the room it can get.
             view.innerHTML = `
-                <div class="ps-page">
-                    <section class="panel">
-                        <div class="toolbar-actions" style="margin-bottom:12px;align-items:center">
-                            <button class="btn" data-instance-back="1">&larr; Back to accounts</button>
-                            <span style="opacity:.7">Configuring <strong>${escapeHtml(item.name)}</strong> &middot; ${escapeHtml(item.adb_serial)}</span>
-                        </div>
-                        <iframe src="${escapeHtml(item.url)}" title="${escapeHtml(item.name)}" style="width:100%;height:74vh;border:0;border-radius:14px;background:#0b0b0f"></iframe>
-                    </section>
+                <div style="position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;background:#0b0b0f">
+                    <div style="display:flex;align-items:center;gap:14px;padding:10px 16px;background:rgba(0,0,0,.55);border-bottom:1px solid rgba(255,255,255,.08)">
+                        <button class="btn btn-primary" data-instance-back="1">&larr; Back to accounts</button>
+                        <span style="opacity:.85">Configuring <strong>${escapeHtml(item.name)}</strong> &middot; ${escapeHtml(item.adb_serial)}</span>
+                    </div>
+                    <iframe src="${escapeHtml(item.url)}" title="${escapeHtml(item.name)}" style="flex:1;width:100%;border:0;background:#0b0b0f"></iframe>
                 </div>`;
             return;
         }

@@ -21,6 +21,7 @@ what stops a fork bomb of panels spawning panels.
 from __future__ import annotations
 
 import os
+import signal
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,57 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from adbutils import adb
+
+
+def _listening_pids() -> dict:
+    """{port: pid} for every locally-listening TCP port. One netstat call.
+
+    Used so an account can be stopped by the panel it is serving, which works
+    even for a process this supervisor did not start or has lost the handle to -
+    the case where "Stop" left the bot happily playing on."""
+    result = {}
+    try:
+        if os.name == "nt":
+            out = subprocess.run(["netstat", "-ano", "-p", "tcp"],
+                                 capture_output=True, text=True, timeout=5).stdout
+            for line in out.splitlines():
+                parts = line.split()
+                if len(parts) >= 5 and parts[0].upper() == "TCP" and parts[3].upper() == "LISTENING":
+                    local = parts[1]
+                    if ":" in local:
+                        try:
+                            result[int(local.rsplit(":", 1)[-1])] = int(parts[4])
+                        except ValueError:
+                            pass
+        else:
+            out = subprocess.run(["lsof", "-nP", "-iTCP", "-sTCP:LISTEN"],
+                                 capture_output=True, text=True, timeout=5).stdout
+            for line in out.splitlines()[1:]:
+                parts = line.split()
+                if len(parts) >= 9 and ":" in parts[8]:
+                    try:
+                        result[int(parts[8].rsplit(":", 1)[-1])] = int(parts[1])
+                    except ValueError:
+                        pass
+    except Exception:
+        pass
+    return result
+
+
+def _kill_tree(pid: int) -> None:
+    """Kill a process and its children. When the bot dies its scrcpy socket
+    closes and the emulator releases any held touch, so the character stops."""
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                           capture_output=True, timeout=10)
+        else:
+            try:
+                os.killpg(os.getpgid(pid), signal.SIGKILL)
+            except Exception:
+                os.kill(pid, signal.SIGKILL)
+    except Exception:
+        pass
 
 from utils import (PROJECT_ROOT, load_toml_as_dict, resolve_project_path,
                    save_dict_as_toml, invalidate_toml_cache)
@@ -106,9 +158,23 @@ class InstanceManager:
 
     # ---- lifecycle --------------------------------------------------------
 
-    def _running(self, name: str) -> bool:
+    def _port_of_name(self, name: str):
+        entry = next((e for e in self._read() if e.get("name") == name), None)
+        return int(entry["port"]) if entry and entry.get("port") else None
+
+    def _running(self, name: str, listening=None) -> bool:
+        # A tracked process that is still alive, OR anything serving this
+        # account's panel port - the latter catches a process this supervisor
+        # did not start or lost track of, so status and Stop stay honest.
         proc = self._procs.get(name)
-        return proc is not None and proc.poll() is None
+        if proc is not None and proc.poll() is None:
+            return True
+        port = self._port_of_name(name)
+        if port is None:
+            return False
+        if listening is None:
+            listening = _listening_pids()
+        return port in listening
 
     def start(self, name: str) -> dict:
         if not is_supervisor():
@@ -129,25 +195,38 @@ class InstanceManager:
             if entry.get("port"):
                 env["VVOK_WEB_PORT"] = str(entry["port"])
 
+            # Below-normal priority so a stack of accounts leaves the machine
+            # responsive rather than pinning every core (the "very laggy"
+            # report). The vision loop is the heavy part; capping Max IPS in an
+            # account's own settings shares the CPU further.
+            creationflags = 0
+            if os.name == "nt":
+                creationflags = getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)
+
             proc = subprocess.Popen([sys.executable, str(PROJECT_ROOT / "main.py")],
-                                    cwd=str(PROJECT_ROOT), env=env)
+                                    cwd=str(PROJECT_ROOT), env=env,
+                                    creationflags=creationflags)
             self._procs[name] = proc
             return {"ok": True, "message": f"{name} starting."}
 
     def stop(self, name: str) -> dict:
         name = _safe_name(name)
         with self._lock:
-            proc = self._procs.get(name)
-            if proc is None or proc.poll() is not None:
-                self._procs.pop(name, None)
-                return {"ok": True, "message": f"{name} is not running."}
-            proc.terminate()
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-        with self._lock:
-            self._procs.pop(name, None)
+            proc = self._procs.pop(name, None)
+            port = self._port_of_name(name)
+
+        # First the handle we have, if any.
+        if proc is not None and proc.poll() is None:
+            _kill_tree(proc.pid)
+
+        # Then whatever is still serving this account's panel port - this is
+        # what makes Stop actually stop a bot the supervisor is not tracking
+        # (started in a previous session, or whose handle was lost). Without it
+        # "Stop all" left an account merrily playing on.
+        if port is not None:
+            pid = _listening_pids().get(port)
+            if pid:
+                _kill_tree(pid)
         return {"ok": True, "message": f"{name} stopped."}
 
     def stop_all(self) -> None:
@@ -312,6 +391,7 @@ class InstanceManager:
     # ---- status -----------------------------------------------------------
 
     def list_payload(self) -> dict:
+        listening = _listening_pids()
         with self._lock:
             items = []
             for entry in self._read():
@@ -321,7 +401,7 @@ class InstanceManager:
                     "name": name,
                     "adb_serial": entry.get("adb_serial", ""),
                     "port": port,
-                    "running": self._running(name),
+                    "running": self._running(name, listening),
                     "url": f"http://127.0.0.1:{port}" if port else None,
                 })
         return {"is_supervisor": is_supervisor(), "items": items}
