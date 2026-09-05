@@ -549,8 +549,6 @@ function renderDashboard() {
         : "";
     const statusCopy = runtime.state === "error"
         ? (runtime.last_error || "VvokAI stopped with an error.")
-        : runtime.state === "running"
-            ? "Session is active. You can pause or stop after the match."
         : runtime.state === "pausing"
             ? "Pause requested. VvokAI will stop in the lobby."
             : runtime.state === "stopping"
@@ -566,12 +564,12 @@ function renderDashboard() {
                             : "Add at least one brawler to the queue before starting.";
 
     let runtimePanel = `
-        <button id="startRuntimeBtn" class="btn btn-primary btn-huge ${canStart ? "" : "is-disabled"}" ${canStart ? "" : "disabled"}>
+        <button id="startRuntimeBtn" class="btn btn-primary btn-huge ${canStart ? "" : "is-disabled"}">
             ${iconMarkup("play")}
             <span>Start</span>
         </button>
         <p class="runtime-note ${runtime.state === "error" ? "runtime-error" : ""}">${escapeHtml(statusCopy)}</p>
-        ${!queue.length ? '<button data-open-brawlers class="btn">Go to Brawlers</button>' : ''}
+        ${!queue.length ? '<button id="goToBrawlersBtn" class="btn" style="margin-top: 12px;">Go to Brawlers</button>' : ''}
         ${renderRuntimeSchedule()}
     `;
 
@@ -606,9 +604,7 @@ function renderDashboard() {
         <div class="sheet">
             <div class="command-band">
                 <div class="command-state">
-                    <p class="eyebrow">VvokAI / Session</p>
                     <div class="command-title">${escapeHtml(runtimeLabel(runtime))}</div>
-                    ${queue.length ? `<div class="session-focus"><img src="${escapeHtml(queue[0].icon_url || '')}" alt=""><div><strong>${escapeHtml(queue[0].brawler)}</strong><span>${escapeHtml(String(queue[0][queue[0].type === 'wins' ? 'wins' : 'trophies'] ?? 0))} / ${escapeHtml(String(queue[0].push_until))} ${escapeHtml(queue[0].type === 'wins' ? 'wins' : 'trophies')}</span></div></div>` : ''}
                     <div class="command-sub">${queue.length} ${queue.length === 1 ? "brawler" : "brawlers"} queued${runtime.activity ? ` <span class="doing">${escapeHtml(runtime.activity)}</span>` : ""}</div>
                 </div>
                 <div class="command-actions">${runtimePanel}</div>
@@ -661,7 +657,6 @@ function renderDashboard() {
     document.getElementById("liveToggleBtn")?.addEventListener("click", toggleLiveView);
     document.getElementById("browsePlaystylesBtn")?.addEventListener("click", () => setView("playstyles"));
     document.getElementById("goToBrawlersBtn")?.addEventListener("click", () => setView("queue"));
-    view.querySelectorAll("[data-open-brawlers]").forEach(button => button.addEventListener("click", () => setView("queue")));
     bindRuntimeButtons();
     bindScheduleDismiss();
 }

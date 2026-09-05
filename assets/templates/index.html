@@ -13,7 +13,6 @@
     <link rel="icon" type="image/png" href="/api/assets/support/logo.png">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/vvok.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/workspace.css') }}">
 </head>
 <body>
     <div id="vfx-bg"></div>
@@ -28,7 +27,7 @@
                 </div>
             </div>
 
-            <nav class="nav-menu" aria-label="Main navigation"></nav>
+            <nav class="nav-menu"></nav>
 
             <div class="sidebar-footer">
                 <div class="system-status">
@@ -77,7 +76,7 @@
                 </div>
             </header>
 
-            <div id="alertStack" class="alerts-container" role="status" aria-live="polite"></div>
+            <div id="alertStack" class="alerts-container"></div>
 
             <div class="views-wrapper">
                 <section id="view-dashboard" class="view active"></section>
@@ -113,11 +112,12 @@
     </div>
 
     <div id="tooltip" class="tooltip hidden"></div>
-    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+    <div id="toast" class="toast hidden"></div>
 
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     <!-- Cursor-tracked lighting, parallax and counters. Loaded after app.js
          and watches for its re-renders, so it needs no hooks inside it. -->
+    <script src="{{ url_for('static', filename='js/vvok-fx.js') }}"></script>
     <!-- Russian for the interface chrome. A pass over the finished DOM rather
          than a string table in every template, so an untranslated string shows
          in English instead of showing as a missing key. -->
