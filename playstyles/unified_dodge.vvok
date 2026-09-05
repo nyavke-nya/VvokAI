@@ -968,9 +968,6 @@ def try_use_super(enemy_coords, enemy_distance):
         return
 
     super_type = brawler_info.get("super_type", "damage")
-    if not is_enemy_hittable(player_pos, enemy_coords, walls, "super"):
-        return
-
     in_range = enemy_distance <= super_range
     always_worth_it = super_type in ["spawnable", "other"]
     # Stu and Surge charge forward on their super, so they can open from
@@ -980,6 +977,14 @@ def try_use_super(enemy_coords, enemy_distance):
         and super_type == "charge"
         and enemy_distance <= super_range + attack_range
     )
+
+    # A clear line of sight is only needed for a super that has to REACH the
+    # enemy - a damage or projectile one. Spawnables (turrets, bears), dashes
+    # and "other" supers do not, and gating them behind line of sight was why
+    # they so often never went off. So check the line only when it applies.
+    needs_line = not (always_worth_it or dash_opener)
+    if needs_line and not is_enemy_hittable(player_pos, enemy_coords, walls, "super"):
+        return
 
     if in_range or always_worth_it or dash_opener:
         if is_hypercharge_ready:
