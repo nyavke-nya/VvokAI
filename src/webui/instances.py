@@ -21,6 +21,7 @@ what stops a fork bomb of panels spawning panels.
 from __future__ import annotations
 
 import io
+import logging
 import os
 import signal
 import shutil
@@ -30,6 +31,8 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from adbutils import adb
+
+logger = logging.getLogger(__name__)
 
 
 def _listening_pids() -> dict:
@@ -65,6 +68,52 @@ def _listening_pids() -> dict:
     except Exception:
         pass
     return result
+
+
+def _adb_screenshot(serial: str):
+    """A small JPEG straight off the device via ADB, or None (reason logged).
+
+    Reliable only when the device is idle. While a bot is streaming that same
+    emulator over scrcpy, a second screencap here can fail - which is exactly
+    why a RUNNING account is previewed from its own process instead (below)."""
+    if not serial:
+        return None
+    try:
+        adb.connect(serial)
+    except Exception:
+        pass
+    try:
+        image = adb.device(serial=serial).screenshot()
+        image.thumbnail((360, 360))
+        buffer = io.BytesIO()
+        image.convert("RGB").save(buffer, "JPEG", quality=60)
+        return buffer.getvalue()
+    except Exception as exc:
+        logger.info("preview: ADB screencap failed for %s: %s", serial, exc)
+        return None
+
+
+def _encode_jpeg(frame, max_size: int = 360, quality: int = 60):
+    """A numpy RGB frame (the bot's live scrcpy frame) to JPEG bytes."""
+    try:
+        import cv2
+        img = frame
+        height, width = img.shape[:2]
+        if max(height, width) > max_size:
+            scale = max_size / float(max(height, width))
+            img = cv2.resize(img, (int(width * scale), int(height * scale)))
+        if img.ndim == 3 and img.shape[2] == 3:
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        ok, buffer = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
+        return buffer.tobytes() if ok else None
+    except Exception:
+        return None
+
+
+def own_device_screenshot():
+    """This process's own device, for the account panel's /api/preview.jpg when
+    no bot frame is available yet (process up, bot not started - device idle)."""
+    return _adb_screenshot(os.environ.get("VVOK_ADB_SERIAL", ""))
 
 
 def _kill_tree(pid: int) -> None:
@@ -394,29 +443,31 @@ class InstanceManager:
     def screenshot(self, name: str):
         """A small JPEG of what the emulator is showing, or None.
 
-        This is how you tell accounts apart - a name like "acc-16384" means
-        nothing, but a glance at the actual lobby (which brawler, which trophy
-        count) says immediately which window it is. Works whether or not the bot
-        is running; it only needs the emulator up with ADB."""
+        This is how you tell accounts apart - a name means nothing, but a glance
+        at the actual lobby says which window it is.
+
+        A running account is previewed from ITS OWN process, which already has a
+        live scrcpy frame - so the preview never fights the running bot for a
+        second screencap on the same device (that contention was the 404s while
+        accounts were playing). A stopped account is captured directly, since
+        its device is idle then."""
         name = _safe_name(name)
         entry = next((e for e in self._read() if e.get("name") == name), None)
         if entry is None:
             raise FileNotFoundError(f"Account '{name}' is not configured.")
-        serial = str(entry.get("adb_serial", ""))
-        if not serial:
-            return None
-        try:
-            adb.connect(serial)
-        except Exception:
-            pass
-        try:
-            image = adb.device(serial=serial).screenshot()
-            image.thumbnail((360, 360))
-            buffer = io.BytesIO()
-            image.convert("RGB").save(buffer, "JPEG", quality=60)
-            return buffer.getvalue()
-        except Exception:
-            return None
+
+        port = entry.get("port")
+        if port and self._running(name):
+            try:
+                import requests
+                reply = requests.get(f"http://127.0.0.1:{int(port)}/api/preview.jpg",
+                                     timeout=4)
+                if reply.ok and reply.content:
+                    return reply.content
+            except Exception as exc:
+                logger.info("preview: account %s panel gave no frame (%s)", name, exc)
+
+        return _adb_screenshot(str(entry.get("adb_serial", "")))
 
     # ---- status -----------------------------------------------------------
 

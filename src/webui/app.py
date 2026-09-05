@@ -11,7 +11,7 @@ from discord_bot import DiscordBot
 from remote_control import RemoteControl
 from telegram_bot import TelegramBot
 from utils import get_brawler_icon_path, resolve_project_path
-from .instances import InstanceManager
+from .instances import InstanceManager, _encode_jpeg, own_device_screenshot
 from .runtime import RuntimeManager
 from .services import WebDataService
 
@@ -302,6 +302,29 @@ def create_app(vvok_main, start_discord_bot=False):
         # ADB screencap every tick, while previews still refresh on their own.
         return Response(data, mimetype="image/jpeg",
                         headers={"Cache-Control": "max-age=15"})
+
+    @app.get("/api/preview.jpg")
+    def preview():
+        # This account's own preview, served to the supervisor's Accounts page.
+        # Reuse the running bot's live scrcpy frame if there is one - it costs
+        # the device nothing extra. Only if the bot has not started (no frame)
+        # do we screencap directly, and then the device is idle so it succeeds.
+        controller = getattr(remote, "window_controller", None)
+        if controller is not None:
+            try:
+                frame, _ = controller.get_latest_frame()
+            except Exception:
+                frame = None
+            if frame is not None:
+                data = _encode_jpeg(frame)
+                if data:
+                    return Response(data, mimetype="image/jpeg",
+                                    headers={"Cache-Control": "no-store"})
+        data = own_device_screenshot()
+        if not data:
+            return ("", 404)
+        return Response(data, mimetype="image/jpeg",
+                        headers={"Cache-Control": "no-store"})
 
     @app.post("/api/instances")
     def add_instance():
