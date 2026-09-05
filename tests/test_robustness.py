@@ -597,4 +597,46 @@ report.check("and short tracks are no longer dropped before it can run",
              "if track.hits < 2:" in _tracker_src, True)
 
 
+report.section("a new account never inherits another account's identity")
+# What happened: every account's config was seeded by copying the shared cfg/,
+# player_tag and API token included. Account two then resynced against account
+# one's Brawl Stars profile, so the trophies typed in (1057) were overwritten by
+# whatever the API said for the OTHER player (2014) and the queue was rewritten
+# with them on every restart - "it resets the queue after restarting the second
+# account".
+import tempfile as _tf, shutil as _sh, pathlib as _pl, io as _io, re as _re
+from webui.instances import _blank_identity as _blank
+
+_seed = _pl.Path(_tf.mkdtemp())
+_sh.copy2("cfg/general_config.toml", _seed / "general_config.toml")
+_io.open(_seed / "login.toml", "w", encoding="utf-8").write('key = "somekey"' + chr(10))
+_before = _io.open(_seed / "general_config.toml", encoding="utf-8").read()
+_blank(_seed)
+_after = _io.open(_seed / "general_config.toml", encoding="utf-8").read()
+
+def _value(text, key):
+    found = _re.search(r"(?m)^\s*%s\s*=\s*(.*)$" % key, text)
+    return found.group(1).strip() if found else None
+
+report.check("the seeded tag and token come out empty",
+             [_value(_after, k) for k in ("player_tag", "brawl_api_token",
+                                          "brawl_api_email", "brawl_api_password")],
+             ['""', '""', '""', '""'])
+report.check("and the saved login key with them",
+             _value(_io.open(_seed / "login.toml", encoding="utf-8").read(), "key"), '""')
+# The keys have to survive - blanking the whole line would break the config.
+report.check("the settings themselves are still there",
+             all(_value(_after, k) is not None for k in
+                 ("player_tag", "brawl_api_token", "brawl_api_email")), True)
+report.check("nothing else in the file moved",
+             len(_after.splitlines()), len(_before.splitlines()))
+import toml as _toml
+_parsed = None
+try:
+    _parsed = _toml.loads(_after)
+except Exception:
+    pass
+report.check("and it is still valid TOML", _parsed is not None, True)
+
+
 sys.exit(report.finish())

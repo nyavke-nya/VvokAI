@@ -23,6 +23,7 @@ from __future__ import annotations
 import io
 import logging
 import os
+import re
 import signal
 import shutil
 import subprocess
@@ -157,6 +158,39 @@ _AUTO_PORT_BASE = 5001
 # the supervisor's, never a child's.
 _SEED_SKIP = {"match_history.csv", "instances.toml", "instances.example.toml"}
 
+# Blanked when a new account's config is seeded from the shared cfg/. These
+# identify WHOSE account it is, and copying them meant every account started
+# life pointing at the first one's Brawl Stars profile: the startup resync then
+# pulled that player's trophies over whatever had been typed in (2014 instead of
+# the 1057 that was entered) and rewrote the queue with them on every restart.
+# Left empty, the API sync stays out of the way until the account is given its
+# own tag and token in its own panel.
+_IDENTITY_BLANKS = {
+    "general_config.toml": ("player_tag", "brawl_api_token",
+                            "brawl_api_email", "brawl_api_password"),
+    "login.toml": ("key",),
+}
+
+
+def _blank_identity(cfg_dir):
+    """Empty the per-account identity fields in a freshly seeded config.
+
+    Line-based on purpose: a TOML round-trip would throw away the comments that
+    explain every setting in these files.
+    """
+    for filename, keys in _IDENTITY_BLANKS.items():
+        target = cfg_dir / filename
+        if not target.exists():
+            continue
+        try:
+            text = io.open(target, encoding="utf-8", newline="").read()
+            for key in keys:
+                text = re.sub(r"(?m)^(\s*%s\s*=\s*).*$" % re.escape(key),
+                              lambda m: m.group(1) + '""', text)
+            io.open(target, "w", encoding="utf-8", newline="").write(text)
+        except OSError as exc:
+            logger.info("could not blank identity in %s: %s", target, exc)
+
 
 def is_supervisor() -> bool:
     """True in the root process, False inside a spawned account panel."""
@@ -208,6 +242,10 @@ class InstanceManager:
                 shutil.copytree(item, target, dirs_exist_ok=True)
             else:
                 shutil.copy2(item, target)
+        # A new account is nobody yet: it must not inherit the identity of the
+        # account this was seeded from, or the API sync will overwrite its queue
+        # with that player's trophies.
+        _blank_identity(cfg_dir)
 
     # ---- lifecycle --------------------------------------------------------
 
