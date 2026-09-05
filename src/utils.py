@@ -118,6 +118,14 @@ PROJECT_ROOT = _get_project_root()
 # would waste gigabytes.
 _CFG_DIR_ENV = os.environ.get("VVOK_CFG_DIR")
 
+# Per-account state that historically lives at the project root. When an
+# instance is scoped to its own config dir, these move into it too, so each
+# account keeps its OWN brawler queue instead of all of them fighting over one
+# shared file at the root - which is why a target set on one account came back
+# changed. Only redirected when an instance scope is active; a single install
+# keeps them at the root exactly as before.
+_INSTANCE_ROOT_FILES = {"latest_brawler_data.json"}
+
 
 def _cfg_root() -> Path:
     if not _CFG_DIR_ENV:
@@ -127,8 +135,12 @@ def _cfg_root() -> Path:
 
 
 def resolve_project_path(*parts) -> Path:
-    if parts and str(parts[0]) == "cfg":
-        return _cfg_root().joinpath(*[str(p) for p in parts[1:]])
+    if parts:
+        first = str(parts[0])
+        if first == "cfg":
+            return _cfg_root().joinpath(*[str(p) for p in parts[1:]])
+        if _CFG_DIR_ENV and len(parts) == 1 and first in _INSTANCE_ROOT_FILES:
+            return _cfg_root().joinpath(first)
     return PROJECT_ROOT.joinpath(*parts)
 
 
