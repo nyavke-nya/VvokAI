@@ -298,9 +298,17 @@ def auto_update_wanted():
         text = (ROOT / "cfg" / "general_config.toml").read_text(encoding="utf-8")
     except OSError:
         return True
+    # The exact key, not a prefix. "auto_update" also prefixes
+    # auto_update_every_minutes, which sits ABOVE it in the shipped config - so a
+    # prefix match read "60", called that true and returned before ever reaching
+    # auto_update itself. Setting auto_update = false did nothing at all.
     for line in text.splitlines():
-        if line.strip().startswith("auto_update"):
-            value = line.split("=", 1)[-1].strip().strip('"').strip("'").lower()
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        key, separator, value = stripped.partition("=")
+        if separator and key.strip() == "auto_update":
+            value = value.strip().strip('"').strip("'").lower()
             return value not in ("false", "no", "off", "0")
     return True
 

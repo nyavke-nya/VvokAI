@@ -1820,6 +1820,10 @@ function instanceEmptyMessage() {
     return `<div class="empty-state wide-empty">No accounts yet. Add one below - one per MuMu window.</div>`;
 }
 
+// Seconds to wait after Start before offering "Configure", so the account's own
+// panel is actually listening by the time it can be clicked.
+const INSTANCE_PANEL_WARMUP = 5;
+
 function renderInstanceRow(item) {
     const running = item.running;
     const dot = `<span class="status-indicator ${running ? "is-running" : "is-idle"}"></span>`;
@@ -1827,9 +1831,14 @@ function renderInstanceRow(item) {
     const toggle = running
         ? `<button class="btn" data-instance-stop="${escapeHtml(item.name)}">Stop</button>`
         : `<button class="btn btn-primary" data-instance-start="${escapeHtml(item.name)}">Start</button>`;
-    const open = (running && item.url)
+    // Hold "Configure" back until the account's own web server has had time to
+    // come up. Offering it the instant Start was pressed meant a quick click
+    // opened a port nothing was serving yet - "127.0.0.1 refused to connect".
+    const warmingUp = item.uptime !== null && item.uptime !== undefined
+        && item.uptime < INSTANCE_PANEL_WARMUP;
+    const open = (running && item.url && !warmingUp)
         ? `<button class="btn" data-instance-open="${escapeHtml(item.name)}">Configure</button>`
-        : "";
+        : (running && warmingUp ? `<button class="btn" disabled>Starting...</button>` : "");
     const where = escapeHtml(item.adb_serial) + (item.port ? ` &middot; :${item.port}` : "");
     // A live preview of the emulator - the only reliable way to tell which
     // account is which, since the name and serial say nothing about the lobby.

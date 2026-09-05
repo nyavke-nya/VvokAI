@@ -28,6 +28,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from adbutils import adb
@@ -174,6 +175,8 @@ class InstanceManager:
         self._lock = threading.RLock()
         # name -> Popen for the accounts this supervisor has started.
         self._procs: dict[str, subprocess.Popen] = {}
+        # name -> when it was started, for the "Configure" grace period.
+        self._started_at: dict[str, float] = {}
 
     # ---- persistence ------------------------------------------------------
 
@@ -257,6 +260,11 @@ class InstanceManager:
                                     cwd=str(PROJECT_ROOT), env=env,
                                     creationflags=creationflags)
             self._procs[name] = proc
+            # When it started, so the panel can hold back "Configure" until the
+            # account's own web server is actually listening. Offering it
+            # immediately meant a click landed on a port nothing was serving yet
+            # and the embedded page showed "127.0.0.1 refused to connect".
+            self._started_at[name] = time.time()
             return {"ok": True, "message": f"{name} starting."}
 
     def stop(self, name: str) -> dict:
@@ -478,11 +486,18 @@ class InstanceManager:
             for entry in self._read():
                 name = entry["name"]
                 port = entry.get("port")
+                running = self._running(name, listening)
+                started = self._started_at.get(name)
                 items.append({
                     "name": name,
                     "adb_serial": entry.get("adb_serial", ""),
                     "port": port,
-                    "running": self._running(name, listening),
+                    "running": running,
+                    # Seconds since this supervisor started it, so the panel can
+                    # wait for the account's web server before offering
+                    # "Configure". None means we did not start it this session,
+                    # in which case it has been up long enough already.
+                    "uptime": (time.time() - started) if (running and started) else None,
                     "url": f"http://127.0.0.1:{port}" if port else None,
                 })
         return {"is_supervisor": is_supervisor(), "items": items}

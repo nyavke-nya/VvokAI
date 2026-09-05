@@ -306,7 +306,10 @@ class LobbyAutomation:
         if frame is None:
             return False
         try:
-            return bool(is_in_brawler_selection(frame))
+            # strict=False: this is the auto-select flow, where failing to see an
+            # open list is what breaks selection. It cannot cause the mid-match
+            # false positive, because only the state machine runs mid-match.
+            return bool(is_in_brawler_selection(frame, strict=False))
         except Exception:
             return False
 
@@ -498,7 +501,7 @@ class LobbyAutomation:
 
                 frame, frame_time = self.window_controller.get_latest_frame()
                 after_tap = frame is not None and frame_time > tapped_at
-                if after_tap and is_in_brawler_selection(frame):
+                if after_tap and is_in_brawler_selection(frame, strict=False):
                     return "open"
 
                 if time.time() >= deadline:

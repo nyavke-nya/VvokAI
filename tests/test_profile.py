@@ -558,7 +558,7 @@ class _Clicker:
 
 # The frame carries the reading, so the two sources cannot disagree by accident
 # and each test below says exactly one thing.
-_lobby_mod.is_in_brawler_selection = lambda frame: frame == "brawler_selection"
+_lobby_mod.is_in_brawler_selection = lambda frame, strict=True: frame == "brawler_selection"
 
 
 def _open(states, frame_age=0.0, stale_limit=1.0):
@@ -745,22 +745,42 @@ report.check("the heart's new home is inside the search box", _hx <= 1306 and _h
 report.check("and its old one still is, for a game yet to update",
              _hx <= 1560 and _hx + _hw >= 1640, True)
 report.at_most("without reaching across the whole bar", _hw, 700)
-# The heart alone is the tell, deliberately. Pairing the size sweep with a
-# loose 0.68 threshold, a wide top band AND a second "task" icon made the check
-# match the MATCH HUD's own icons - mid-match the state finder read
-# "brawler_selection", the loop concluded the game had ended, and the bot stood
-# still only attacking (the AFK-while-farming bug). A band that starts clear of
-# the score/timer/portraits, the heart only, and a strict threshold fix it.
+# Two callers, two opposite failure modes, so the check has two strictnesses.
+#
+# The STATE MACHINE runs every frame including mid-match, where a false hit is
+# the expensive mistake: the loop concludes the game ended and the bot stands
+# still only attacking (the AFK-while-farming bug). Pairing the size sweep with
+# a loose threshold, a wide top band AND a second "task" icon matched the MATCH
+# HUD's own icons. So that path takes the heart only, a band clear of the
+# score/timer/portraits, and a strict threshold.
+#
+# The AUTO-SELECT flow only asks right after tapping the Brawlers button, where
+# a MISS is the expensive mistake - the bot decides the list never opened, taps
+# again and lands on the glory panel ("auto select does not work"). It cannot
+# cause the AFK bug because nothing consults it mid-match, so it keeps the
+# tolerant settings that made selection work across emulator icon sizes.
 report.at_least("the band starts clear of the top-of-match clutter", _hx, 1200)
 _sf = read_source("state_finder.py")
 _isb = _sf[_sf.index("def is_in_brawler_selection("):_sf.index("def is_in_offer_popup(")]
-report.check("it keys on the heart, not the task icon that matched HUD clutter",
-             "brawler_menu_heart.png" in _isb and "brawler_menu_task.png" not in _isb, True)
+_strict_path = _isb[_isb.index("if strict:"):_isb.index("for name in")]
+report.check("the state-machine path keys on the heart, not the task icon that matched HUD clutter",
+             "brawler_menu_heart.png" in _strict_path
+             and "brawler_menu_task.png" not in _strict_path, True)
 import re as _re_thr
 _thr = _re_thr.search(
-    r"_matches_at_any_scale\([^)]*?,\s*([0-9]*\.[0-9]+)\s*,\s*BRAWLER_ICON_SCALES", _isb)
+    r"_matches_at_any_scale\([^)]*?,\s*([0-9]*\.[0-9]+)\s*,\s*BRAWLER_ICON_SCALES", _strict_path)
 report.check("at a strict threshold, so the match HUD cannot clear it",
              _thr is not None and float(_thr.group(1)) >= 0.85, True)
+# And the selection flow stays tolerant. Tightening THIS is what broke auto
+# select on other emulators once already.
+report.check("the auto-select path still tries both toolbar icons",
+             "brawler_menu_task.png" in _isb, True)
+report.at_most("and keeps a forgiving threshold for other emulators",
+               float(_re_thr.search(r"SELECTION_FLOW_THRESHOLD = ([0-9]*\.[0-9]+)", _sf).group(1)),
+               0.70)
+report.check("and the auto-select callers ask for it explicitly",
+             read_source("lobby_automation.py").count(
+                 "is_in_brawler_selection(frame, strict=False)"), 2)
 # The icon is drawn a different SIZE on different emulators (this is what made
 # selection work on MuMu and fail on LDPlayer/MemU with the same templates), so
 # the match sweeps a range of sizes rather than trusting one fixed scale.

@@ -23,7 +23,15 @@ from pathlib import Path
 try:
     import tomllib  # Python 3.11+
 except ModuleNotFoundError:  # pragma: no cover - older interpreters
-    import tomli as tomllib
+    # Fall back to `toml`, which IS in requirements.txt. The obvious choice here
+    # is tomli, but it is not a dependency of this project, so on 3.10 this
+    # script died at import with ModuleNotFoundError before doing anything.
+    import toml
+
+    class tomllib:  # noqa: N801 - stands in for the stdlib module's API
+        @staticmethod
+        def load(handle):
+            return toml.loads(handle.read().decode("utf-8"))
 
 ROOT = Path(__file__).resolve().parent.parent
 

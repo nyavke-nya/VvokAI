@@ -228,7 +228,14 @@ def _matches_at_any_scale(image, template_path, region, threshold, scales):
     return False
 
 
-def is_in_brawler_selection(image) -> bool:
+# The tolerant settings used only inside the auto-select flow (see below): the
+# whole top toolbar band and a loose threshold, so an emulator that draws the
+# icons at its own size is still recognised.
+SELECTION_FLOW_REGION = [1050, 0, 700, 150]
+SELECTION_FLOW_THRESHOLD = 0.68
+
+
+def is_in_brawler_selection(image, strict: bool = True) -> bool:
     # The sideways-menu update moved everything on this screen except the two
     # icons in its top toolbar: a task clipboard and a heart. The old check
     # looked for the heart alone, in one narrow box the icon no longer sits in,
@@ -265,9 +272,31 @@ def is_in_brawler_selection(image) -> bool:
     # hamburger button is a reliable tell the brawler list does not share.
     if is_in_lobby(image):
         return False
-    region = region_data.get("brawler_menu_heart", [1250, 0, 650, 140])
-    return _matches_at_any_scale(image, states_path + "brawler_menu_heart.png",
-                                 region, 0.86, BRAWLER_ICON_SCALES)
+
+    if strict:
+        # The state machine's path, run on every frame including mid-match.
+        # Here a FALSE HIT is the expensive mistake: it makes Play.main() decide
+        # the match ended, and the bot stops moving and shooting. So: the heart
+        # only, the narrow band the heart actually occupies in the list (clear of
+        # a match's score/timer/portraits), and a strict threshold. A miss here
+        # is cheap - the state simply falls through to "match", which is right.
+        region = region_data.get("brawler_menu_heart", [1250, 0, 650, 140])
+        return _matches_at_any_scale(image, states_path + "brawler_menu_heart.png",
+                                     region, 0.86, BRAWLER_ICON_SCALES)
+
+    # The auto-select path, asked only while that flow is running - right after
+    # the Brawlers button was tapped. Here a MISS is the expensive mistake: the
+    # bot concludes the list never opened, taps again and lands on the glory
+    # panel ("auto select does not work"). It cannot cause the mid-match AFK bug,
+    # because nothing consults it mid-match. So it keeps the tolerant settings:
+    # either icon, the whole toolbar band, and a loose threshold, which is what
+    # made selection work across MuMu / LDPlayer / MemU icon sizes.
+    for name in ("brawler_menu_heart.png", "brawler_menu_task.png"):
+        if _matches_at_any_scale(image, states_path + name,
+                                 SELECTION_FLOW_REGION, SELECTION_FLOW_THRESHOLD,
+                                 BRAWLER_ICON_SCALES):
+            return True
+    return False
 
 
 def is_in_offer_popup(image) -> bool:
