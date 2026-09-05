@@ -237,35 +237,37 @@ def is_in_brawler_selection(image) -> bool:
     # this layout lands on the glory panel. That is the "auto select just opens
     # the list / glory" everyone was reporting.
     #
-    # Three things make this robust to the redesign and to the emulator:
-    #   - it matches EITHER icon, so losing one to a restyle is not fatal;
-    #   - it searches the whole toolbar band, not one icon's former spot, so the
-    #     icons sliding along the bar in a re-layout no longer hides them;
-    #   - it tries a spread of icon SIZES, so an emulator that draws the icon a
-    #     little larger or smaller than the template is still recognised. That
-    #     last one is what made selection work on MuMu and fail on LDPlayer/MemU
-    #     with identical templates - the heart was on screen, just a size the
-    #     fixed-scale match could not clear.
+    # It still tries a spread of icon SIZES, so an emulator that draws the heart
+    # a little larger or smaller than the template is recognised - that is what
+    # made selection work on MuMu and fail on LDPlayer/MemU with identical
+    # templates, and it is a real compatibility need, so it stays.
     #
-    # If EVERY icon at every size still misses, the list is genuinely unreadable
-    # and lobby_automation saves the frame to debug_frames/ to be recut to.
+    # But the earlier version paired that size-sweep with a LOOSE 0.68 threshold,
+    # a WIDE top band [1050,0,700,150] and a second "task" icon - and that combo
+    # matched the MATCH HUD's own icons. Mid-match the state checker then read
+    # "brawler_selection", Play.main() concluded the match had ended, and the bot
+    # stopped moving and shooting: the "stands AFK, only attacks while farming"
+    # bug people reported on Bluestacks. The three changes that remove the false
+    # hit without losing the size tolerance:
+    #   - the heart only. The task clipboard was the icon matching HUD clutter.
+    #   - the narrower band [1250,0,650,140], where the heart actually sits in
+    #     the list, clear of the score/timer/portraits along the top of a match.
+    #   - a strict threshold, so only a near-exact heart counts.
+    #
+    # If it still misses, the list is genuinely unreadable and lobby_automation
+    # saves the frame to debug_frames/ to be recut to.
     #
     # The lobby is ruled out first, and this is not redundant. get_in_game_state
     # checks the lobby before this and would never reach here in the lobby - but
     # lobby_automation._list_is_open calls this DIRECTLY on a frame, bypassing
-    # that order. Without the guard the size-sweep, which is looser than a fixed
-    # match, found a heart-ish blob in the lobby's own top bar and reported the
-    # list already open: the bot then skipped the brawlers button and hammered
-    # the friend-slot plus instead. The lobby's hamburger button is a reliable
-    # tell the brawler list does not share, so one cheap check settles it.
+    # that order. Without the guard the size-sweep found a heart-ish blob in the
+    # lobby's own top bar and reported the list already open. The lobby's
+    # hamburger button is a reliable tell the brawler list does not share.
     if is_in_lobby(image):
         return False
-    region = region_data.get("brawler_menu_heart", [1050, 0, 700, 150])
-    for name in ("brawler_menu_heart.png", "brawler_menu_task.png"):
-        if _matches_at_any_scale(image, states_path + name, region,
-                                 0.68, BRAWLER_ICON_SCALES):
-            return True
-    return False
+    region = region_data.get("brawler_menu_heart", [1250, 0, 650, 140])
+    return _matches_at_any_scale(image, states_path + "brawler_menu_heart.png",
+                                 region, 0.86, BRAWLER_ICON_SCALES)
 
 
 def is_in_offer_popup(image) -> bool:

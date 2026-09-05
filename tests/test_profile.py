@@ -745,17 +745,22 @@ report.check("the heart's new home is inside the search box", _hx <= 1306 and _h
 report.check("and its old one still is, for a game yet to update",
              _hx <= 1560 and _hx + _hw >= 1640, True)
 report.at_most("without reaching across the whole bar", _hw, 700)
-# The heart alone stopped being enough: a later restyle dropped its match below
-# the old 0.75, so the check now accepts EITHER toolbar icon and the box has to
-# reach back far enough to hold the task clipboard that sits left of the heart.
-report.check("the task clipboard, left of the heart, is inside the box too",
-             _hx <= 1180, True)
+# The heart alone is the tell, deliberately. Pairing the size sweep with a
+# loose 0.68 threshold, a wide top band AND a second "task" icon made the check
+# match the MATCH HUD's own icons - mid-match the state finder read
+# "brawler_selection", the loop concluded the game had ended, and the bot stood
+# still only attacking (the AFK-while-farming bug). A band that starts clear of
+# the score/timer/portraits, the heart only, and a strict threshold fix it.
+report.at_least("the band starts clear of the top-of-match clutter", _hx, 1200)
 _sf = read_source("state_finder.py")
 _isb = _sf[_sf.index("def is_in_brawler_selection("):_sf.index("def is_in_offer_popup(")]
-report.check("and the list is recognised by either icon, not the heart alone",
-             "brawler_menu_task.png" in _isb and "brawler_menu_heart.png" in _isb, True)
-report.check("at a threshold the restyled icons can still clear",
-             "0.68" in _isb, True)
+report.check("it keys on the heart, not the task icon that matched HUD clutter",
+             "brawler_menu_heart.png" in _isb and "brawler_menu_task.png" not in _isb, True)
+import re as _re_thr
+_thr = _re_thr.search(
+    r"_matches_at_any_scale\([^)]*?,\s*([0-9]*\.[0-9]+)\s*,\s*BRAWLER_ICON_SCALES", _isb)
+report.check("at a strict threshold, so the match HUD cannot clear it",
+             _thr is not None and float(_thr.group(1)) >= 0.85, True)
 # The icon is drawn a different SIZE on different emulators (this is what made
 # selection work on MuMu and fail on LDPlayer/MemU with the same templates), so
 # the match sweeps a range of sizes rather than trusting one fixed scale.
