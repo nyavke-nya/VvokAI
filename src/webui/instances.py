@@ -20,6 +20,7 @@ what stops a fork bomb of panels spawning panels.
 
 from __future__ import annotations
 
+import io
 import os
 import signal
 import shutil
@@ -387,6 +388,35 @@ class InstanceManager:
             if added:
                 self._write(entries)
         return {"ok": True, "found": len(serials), "added": added}
+
+    # ---- preview ----------------------------------------------------------
+
+    def screenshot(self, name: str):
+        """A small JPEG of what the emulator is showing, or None.
+
+        This is how you tell accounts apart - a name like "acc-16384" means
+        nothing, but a glance at the actual lobby (which brawler, which trophy
+        count) says immediately which window it is. Works whether or not the bot
+        is running; it only needs the emulator up with ADB."""
+        name = _safe_name(name)
+        entry = next((e for e in self._read() if e.get("name") == name), None)
+        if entry is None:
+            raise FileNotFoundError(f"Account '{name}' is not configured.")
+        serial = str(entry.get("adb_serial", ""))
+        if not serial:
+            return None
+        try:
+            adb.connect(serial)
+        except Exception:
+            pass
+        try:
+            image = adb.device(serial=serial).screenshot()
+            image.thumbnail((360, 360))
+            buffer = io.BytesIO()
+            image.convert("RGB").save(buffer, "JPEG", quality=60)
+            return buffer.getvalue()
+        except Exception:
+            return None
 
     # ---- status -----------------------------------------------------------
 

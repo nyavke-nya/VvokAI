@@ -1831,9 +1831,15 @@ function renderInstanceRow(item) {
         ? `<button class="btn" data-instance-open="${escapeHtml(item.name)}">Configure</button>`
         : "";
     const where = escapeHtml(item.adb_serial) + (item.port ? ` &middot; :${item.port}` : "");
+    // A live preview of the emulator - the only reliable way to tell which
+    // account is which, since the name and serial say nothing about the lobby.
+    const thumb = `<img src="/api/instances/${encodeURIComponent(item.name)}/screenshot" alt=""
+        onerror="this.style.visibility='hidden'"
+        style="width:132px;height:74px;object-fit:cover;border-radius:8px;background:#111;flex:0 0 auto">`;
     return `
-        <div class="spec-row" style="align-items:center;gap:12px;padding:10px 0">
-            <div>
+        <div class="spec-row" style="align-items:center;gap:14px;padding:12px 0">
+            ${thumb}
+            <div style="flex:1;min-width:0">
                 <div>${dot} <strong>${escapeHtml(item.name)}</strong> <span style="opacity:.6">${state_}</span></div>
                 <div style="opacity:.6;font-size:12px">${where}</div>
             </div>

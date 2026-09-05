@@ -293,6 +293,16 @@ def create_app(vvok_main, start_discord_bot=False):
     def scan_instances():
         return jsonify(instance_manager.scan_and_add())
 
+    @app.get("/api/instances/<name>/screenshot")
+    def instance_screenshot(name: str):
+        data = instance_manager.screenshot(name)
+        if not data:
+            return ("", 404)
+        # A short cache so the 4s status poll re-using this URL does not fire an
+        # ADB screencap every tick, while previews still refresh on their own.
+        return Response(data, mimetype="image/jpeg",
+                        headers={"Cache-Control": "max-age=15"})
+
     @app.post("/api/instances")
     def add_instance():
         payload = request.get_json(silent=True) or {}
