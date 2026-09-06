@@ -30,6 +30,12 @@
     ]);
 
     const RU = {
+        "02 / LINEUP": "02 / СОСТАВ",
+        "Pick your": "Выбери",
+        "next player.": "своего бойца.",
+        "03 / IN PLAY": "03 / В ИГРЕ",
+        "The playbook.": "Книга тактик.",
+        "Choose your approach": "Выбери свой подход",
         "01 / SESSION": "01 / СЕССИЯ",
         "Current brawler": "Текущий боец",
         "Build your queue. Start your session.": "Соберите очередь и запустите сессию.",

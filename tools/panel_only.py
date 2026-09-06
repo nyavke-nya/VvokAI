@@ -15,4 +15,5 @@ from main import vvok_main
 from webui import create_app
 
 app = create_app(vvok_main, start_discord_bot=False)
+app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.run(host="127.0.0.1", port=5051, debug=False, use_reloader=False, threaded=True)

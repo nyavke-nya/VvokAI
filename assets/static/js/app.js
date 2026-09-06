@@ -274,9 +274,16 @@ async function bootstrap() {
     state.selectedBrawler = state.selectedBrawler || payload.queue[0]?.brawler || payload.brawlers[0]?.name || "";
     syncQueueFormState();
 
+    updateChrome();
+    renderAll();
+    toggleAuthModal();
+    startRuntimePolling();
+    startInstancePolling();
+
     const playerTag = payload.settings.general.player_tag || "";
     if (playerTag) {
         const playerInfo = await fetchJSON(`/api/player-info?tag=${encodeURIComponent(playerTag)}`, {}, true);
+        if (state.bootstrap !== payload) return;
         state.playerInfo = playerInfo?.ok
             ? playerInfo
             : { ok: false, player_tag: cleanPlayerTag(playerTag), player_name: "", stats: {},
@@ -285,14 +292,13 @@ async function bootstrap() {
     }
 
     if (payload.app?.is_supervisor) {
-        state.instances = await fetchJSON("/api/instances", {}, true);
+        const instances = await fetchJSON("/api/instances", {}, true);
+        if (state.bootstrap !== payload) return;
+        state.instances = instances;
     }
 
-    updateChrome();
-    renderAll();
-    toggleAuthModal();
-    startRuntimePolling();
-    startInstancePolling();
+    if (state.currentView === "queue") renderQueue();
+    if (state.currentView === "instances") renderInstances();
 }
 
 // The parts that change while nothing else does: the rate, the pill, the
@@ -461,6 +467,9 @@ function setView(view) {
     });
 
     document.getElementById("pageTitle").textContent = NAV_ITEMS[view].label;
+    const scrollArea = document.querySelector(".views-wrapper");
+    if (scrollArea) scrollArea.scrollTop = 0;
+    if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
     renderQueueDock();
 }
 
@@ -835,8 +844,8 @@ function renderQueue(force = false) {
             <section class="panel">
                 <div class="panel-header">
                     <div>
-                        <p class="eyebrow">Brawler Queue</p>
-                        <h3 class="panel-title">Select a brawler and add it to the run order</h3>
+                        <p class="eyebrow">02 / LINEUP</p>
+                        <h3 class="panel-title lineup-title">Pick your<br>next player.</h3>
                     </div>
                     <div class="player-pill ${playerPill.className}">
                         ${playerPill.className === "is-loading" ? '<div class="player-pill-spinner"></div>' : ''}
@@ -975,7 +984,7 @@ function renderPlaystyles() {
         <div class="ps-page">
             <section class="panel panel-accent playstyle-selected-shell">
                 <div class="playstyle-selected-head">
-                    <p class="eyebrow">Selected</p>
+                    <p class="eyebrow">03 / IN PLAY</p>
                 </div>
                 <div class="playstyle-selected-card-wrap">
                     ${renderPlaystyleShowcaseCard(active, true)}
@@ -993,7 +1002,7 @@ function renderPlaystyles() {
             </section>
 
             <section class="ps-lib-wrap">
-                <p class="ps-lib-title">Library</p>
+                <div class="library-heading"><p class="ps-lib-title">The playbook.</p><span class="eyebrow">Choose your approach</span></div>
                 <div class="ps-library">
                     ${renderPlaystyleLibrary(active)}
                 </div>
@@ -1011,14 +1020,15 @@ function renderPlaystyleLibrary(active = getActivePlaystyle()) {
     });
 
     return filtered.length
-        ? filtered.map((item) => renderPlaystyleCard(item)).join("")
+        ? filtered.map((item, index) => renderPlaystyleCard(item, index)).join("")
         : `<div class="empty-state wide-empty">No playstyles match the current search or filter.</div>`;
 }
 
-function renderPlaystyleCard(item) {
+function renderPlaystyleCard(item, index = 0) {
     return `
         <article class="ps-card" data-activate-playstyle="${escapeHtml(item.filename)}">
-            <button class="ps-delete-btn" data-delete-playstyle="${escapeHtml(item.filename)}" aria-label="Delete ${escapeHtml(item.name)}">&times;</button>
+            <div class="tactic-edition" aria-hidden="true"><span>VVOK / PLAYBOOK</span><strong>${String(index + 1).padStart(2, "0")}</strong></div>
+            <button class="ps-delete-btn" data-delete-playstyle="${escapeHtml(item.filename)}" aria-label="Delete ${escapeHtml(item.name)}" title="Delete ${escapeHtml(item.name)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 10v7M14 10v7"/></svg></button>
             ${renderPlaystyleShowcaseCard(item, false)}
         </article>
     `;
@@ -1516,6 +1526,14 @@ function renderHistoryGrid() {
         : `<div class="empty-state wide-empty">No match history has been recorded yet.</div>`;
 }
 
+function historySparkline(item) {
+    const values = (item.trophy_points || []).slice(-24).map(p => Number(p.value)).filter(Number.isFinite);
+    if (values.length < 2) return "";
+    const min = Math.min(...values), span = Math.max(...values) - min || 1;
+    const points = values.map((value, i) => `${(i * 120 / (values.length - 1)).toFixed(1)},${(34 - (value - min) / span * 28).toFixed(1)}`).join(" ");
+    return `<svg class="history-spark" viewBox="0 0 120 40" aria-label="Recent trophy trend" role="img"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`;
+}
+
 function renderHistoryCard(item) {
     const trophyDelta = Number(item.trophy_delta || 0);
     return `
@@ -1551,7 +1569,7 @@ function renderHistoryCard(item) {
                     <strong>${formatPercent(item.loss_rate)}</strong>
                 </div>
             </div>
-            <div class="hist-more">Click to see more info</div>
+            ${historySparkline(item)}<div class="hist-more" aria-hidden="true">↗</div>
         </article>
     `;
 }
@@ -2244,7 +2262,7 @@ function renderQueueStrip(queue) {
                         <span>${escapeHtml(item.current_label)}: ${item.current_value}</span>
                         <span>${escapeHtml(item.target_label)}: ${item.push_until}</span>
                     </div>
-                    <button class="qi-del" data-delete-queue="${escapeHtml(item.brawler)}" aria-label="Delete ${escapeHtml(item.brawler)}">&times;</button>
+                    <button class="qi-del" data-delete-queue="${escapeHtml(item.brawler)}" aria-label="Remove ${escapeHtml(item.brawler)} from the queue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></button>
                 </article>
             `).join("")}
         </div>

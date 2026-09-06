@@ -257,6 +257,10 @@ class Detect:
         so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         so.intra_op_num_threads = self.optimal_threads_amount
         so.inter_op_num_threads = self.optimal_threads_amount
+        # Three loaded models otherwise keep worker threads spinning between
+        # calls, competing with the emulator even while their model is idle.
+        so.add_session_config_entry("session.intra_op.allow_spinning", "0")
+        so.add_session_config_entry("session.inter_op.allow_spinning", "0")
 
         # Try each provider in turn instead of committing to one.
         #

@@ -1,0 +1,157 @@
+/* A lineup, a playbook and a match journal — each with its own composition. */
+#view-queue .brawlers-layout { grid-template-columns:minmax(0,1fr) 330px; gap:24px; height:auto; align-items:start; }
+#view-queue .brawlers-layout>.panel:first-child { padding:8px 0 24px; background:transparent; border:0; }
+#view-queue .lineup-title { font-size:clamp(36px,4vw,54px); font-style:italic; font-weight:900; letter-spacing:-2.5px; line-height:1!important; }
+#view-queue .panel-header { border:0; padding:0 0 20px; }
+#view-queue .player-pill { background:#242528; border:1px solid #3b3c3f; border-radius:9px; padding:10px 14px; }
+#view-queue .player-pill strong { color:#ffb29f; font-size:11px; }
+#view-queue .queue-toolbar { padding:16px 0; border-top:1px solid #3b3c3f; }
+#view-queue .grid-select { display:grid; grid-template-columns:repeat(auto-fill,minmax(77px,1fr)); gap:9px; padding:6px 2px 25px; overflow:visible; max-height:none; }
+#view-queue .b-cell { position:relative; width:100%; min-height:95px; border:1px solid #34363a; border-radius:16px 16px 7px 7px; background:#222427; padding:12px 5px 8px; box-shadow:none; transform:none; }
+#view-queue .b-cell img { width:49px; height:49px; border-radius:12px; filter:none; }
+#view-queue .b-cell span { font-size:10px; color:#c7c3bd; margin-top:7px; }
+#view-queue .b-cell:hover { background:#323034; border-color:#a78e84; transform:translateY(-2px); }
+#view-queue .b-cell.active { background:#eee9df; border-color:#eee9df; }
+#view-queue .b-cell.active span { color:#242526; font-weight:700; }
+#view-queue .brawlers-layout>.panel:last-child { padding:24px; background:#eee9df; color:#202224; border:0; border-radius:18px!important; overflow:visible; max-height:none; }
+#view-queue .selected-brawler-top { display:flex; flex-direction:column; align-items:flex-start; border-bottom:1px dashed #bcb3a6; padding-bottom:22px; gap:20px; }
+#view-queue .brawler-detail-art { width:100px; height:100px; border-radius:25px!important; transform:rotate(-6deg); box-shadow:8px 8px 0 #d3cabc; filter:none; }
+#view-queue .selected-brawler-top .panel-title { font-size:36px; font-style:italic; font-weight:900; letter-spacing:-1.7px; color:#202224; text-transform:capitalize; }
+#view-queue .selected-brawler-top .eyebrow { color:#71695f; }
+#view-queue .selected-brawler-top .meta-line { color:#71695f; font-size:11px; font-weight:400; }
+#view-queue .queue-editor { gap:20px; }
+#view-queue .queue-editor .input-group>span { color:#615a52; font-size:10px; }
+#view-queue .queue-editor input[type=number] { background:transparent; border:0; border-bottom:1px solid #afa697; border-radius:0!important; color:#202224; font-size:24px; font-weight:600; padding:8px 0; box-shadow:none; }
+#view-queue .seg-control { border:1px solid #bcb3a6; background:#ddd6ca; border-radius:8px; }
+#view-queue .seg-btn { background:transparent; color:#615a52; font-size:11px; border:0; box-shadow:none; }
+#view-queue .seg-btn.active { background:#242526; color:#eee9df; border-radius:7px; }
+#view-queue .check-card { background:transparent; border:0; padding:0; }
+#view-queue .check-info strong { color:#34302c; font-size:11px; }
+#view-queue .check-info span { color:#71695f; font-size:10px; }
+.queue-dock { border-radius:14px!important; background:#222427; }
+.queue-item { border-radius:10px!important; }
+/* The active tactic is the jacket. The library is a row of numbered covers. */
+#view-playstyles .playstyle-selected-shell { position:relative; padding:32px; overflow:hidden; background:#bbb0d5; color:#25222e; border:0; min-height:240px; border-radius:18px!important; }
+#view-playstyles .playstyle-selected-shell::after { display:block!important; content:""; position:absolute; width:240px; height:240px; right:-50px; top:-45px; border:1px solid #6c6086; border-radius:36%; transform:rotate(28deg); background:transparent; pointer-events:none; opacity:.6; }
+#view-playstyles .playstyle-selected-head { justify-content:flex-start; margin-bottom:25px; }
+#view-playstyles .playstyle-selected-head .eyebrow { color:#50455f; }
+#view-playstyles .selected .playstyle-showcase-head { max-width:75%; }
+#view-playstyles .selected .playstyle-showcase-head h4 { font-size:40px; font-style:italic; font-weight:900; letter-spacing:-2px; color:#25222e; line-height:1.05; }
+#view-playstyles .selected .playstyle-card-description { color:#443b50; max-width:600px; font-size:12px; line-height:1.7; }
+#view-playstyles .selected .playstyle-showcase-head>span { color:#615570; }
+#view-playstyles .selected .ps-vis { border-color:#9183a5; }
+#view-playstyles .selected .ps-m-pill,#view-playstyles .selected .ps-univ { color:#43394f; border-color:#8c7f9d; }
+#view-playstyles .toolbar-strip { background:transparent; border:0; padding:8px 0; }
+.library-heading { display:flex; justify-content:space-between; align-items:baseline; margin:26px 0 18px; }
+#view-playstyles .ps-lib-title { font-size:30px; font-weight:800; letter-spacing:-1px; color:#eee9df; margin:0; }
+#view-playstyles .ps-library { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; }
+#view-playstyles .ps-card { display:flex; flex-direction:column; min-width:0; min-height:330px; padding:23px; border:0; background:#ded6c9; color:#292929; border-radius:4px 18px 18px 4px!important; box-shadow:inset 5px 0 0 #bfb6a8!important; }
+#view-playstyles .ps-card:nth-child(3n+2) { background:#c9cdbf; box-shadow:inset 5px 0 0 #a6ad97!important; }
+#view-playstyles .ps-card:nth-child(3n+3) { background:#cfbdaf; box-shadow:inset 5px 0 0 #b29c8a!important; }
+.tactic-edition { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:32px; color:#625c52; }
+.tactic-edition span { font:8px var(--font-mono); letter-spacing:1.5px; max-width:70px; line-height:1.8; }
+.tactic-edition strong { font-size:52px; line-height:.9; font-weight:900; font-style:italic; letter-spacing:-3px; padding-right:12px; opacity:.35; }
+#view-playstyles .ps-card .playstyle-showcase-head h4 { color:#282828; font-size:24px; font-weight:800; letter-spacing:-1px; line-height:1.1; }
+#view-playstyles .ps-card .playstyle-showcase-head>span { color:#756b60; }
+#view-playstyles .ps-card .playstyle-card-description { color:#544d43; font-size:11px; line-height:1.75; }
+#view-playstyles .ps-card .ps-vis { margin-top:20px; border-top:1px dashed #9d9285; padding-top:16px; }
+#view-playstyles .ps-card .ps-univ,#view-playstyles .ps-card .ps-m-pill { color:#544d43; border-color:#a3988a; }
+#view-playstyles .ps-card:hover { outline:2px solid #ff987e; outline-offset:4px; transform:none; }
+#view-playstyles .ps-delete-btn { color:#544d43; background:transparent; border:0; top:9px; right:9px; }
+/* Match journal: one horizontal entry per brawler, with real recent history. */
+#view-history>.panel { padding:0; background:transparent; border:0; }
+#view-history .history-head { background:#eee9df; color:#242526; border-radius:18px; padding:26px; margin-bottom:24px; flex-wrap:wrap; gap:20px; }
+#view-history .history-head .eyebrow { color:#736b61; }
+#view-history .history-total { font-size:38px; font-weight:900; font-style:italic; letter-spacing:-2px; color:#242526; }
+#view-history .history-summary-meta { color:#736b61; }
+#view-history .hist-grid { display:flex; flex-direction:column; gap:0; }
+#view-history .hist-card { display:grid; grid-template-columns:minmax(220px,1.2fr) minmax(210px,1fr) 120px 24px; gap:24px; align-items:center; padding:18px 20px; border:0; border-bottom:1px solid #393b3e; border-radius:0!important; background:transparent; min-height:100px; }
+#view-history .hist-card:hover { background:#252729; transform:none; }
+#view-history .hist-top { gap:10px; }
+#view-history .hist-identity img { width:48px; height:48px; border-radius:13px!important; }
+#view-history .hist-identity h4 { font-size:18px; text-transform:capitalize; }
+#view-history .hist-trophy-delta { font-size:17px; color:#c8b6ef; }
+#view-history .hist-trophy-delta.negative { color:#e79b85; }
+#view-history .hist-trophy-delta img { display:none; }
+#view-history .hist-stats { margin:0; border:0; gap:18px; padding:0; }
+#view-history .hist-stat { background:transparent; border:0; padding:0; text-align:left; }
+#view-history .hist-stat label { font-size:9px; color:#a5a19c; }
+#view-history .hist-stat strong { font-size:19px; color:#eee9df; }
+.history-spark { width:120px; height:40px; color:#b9a6dd; }
+#view-history .hist-more { padding:0; border:0; font-size:22px; color:#a5a19c; }
+#view-profile .profile-hero { background:#eee9df; color:#252627; padding:30px; border:0; }
+#view-profile .profile-hero .panel-title { font-size:42px; font-style:italic; font-weight:900; letter-spacing:-2px; color:#252627; }
+#view-profile .profile-hero .eyebrow,#view-profile .profile-hero .meta-line { color:#72695e; }
+#view-profile .profile-tile { background:transparent; border:0; border-top:1px solid #bcb3a6; border-radius:0; box-shadow:none; }
+#view-profile .profile-value { font-size:35px; letter-spacing:-1.5px; color:#252627; }
+#view-profile .profile-label,#view-profile .profile-note { color:#72695e; }
+#view-settings .set-nav { counter-reset:setting; padding-top:12px; }
+#view-settings .set-nav-item { border:0; border-radius:10px; padding:16px 15px; margin-bottom:6px; }
+#view-settings .set-nav-item::before { counter-increment:setting; content:"0" counter(setting); font:9px var(--font-mono); color:#82776c; display:block; margin-bottom:9px; }
+#view-settings .set-nav-item.is-active { background:#eee9df; }
+#view-settings .set-nav-item.is-active strong { color:#292929; }
+#view-settings .set-nav-item.is-active span { color:#736b61; }
+#view-settings .settings-section { border:1px solid #393b3e; background:#1d1f21; padding:28px; }
+#view-settings .settings-section .panel-title { font-size:31px; letter-spacing:-1.2px; }
+@media(max-width:1100px) {
+ #view-playstyles .ps-library { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ #view-history .hist-card { grid-template-columns:minmax(180px,1fr) minmax(190px,1fr) 24px; gap:18px; }
+ .history-spark { display:none; }
+ #view-queue .brawlers-layout { grid-template-columns:minmax(0,1fr) 290px; }
+}
+@media(max-width:800px) {
+ #view-queue .brawlers-layout { grid-template-columns:1fr; height:auto; }
+ #view-queue .brawlers-layout>.panel:last-child { position:static; }
+ #view-playstyles .selected .playstyle-showcase-head { max-width:100%; }
+ #view-playstyles .selected .playstyle-showcase-head h4 { font-size:32px; }
+ #view-playstyles .ps-library { grid-template-columns:1fr; }
+ #view-playstyles .ps-card { min-height:260px; }
+ .library-heading { align-items:flex-start; gap:12px; flex-direction:column; }
+ #view-history .hist-card { grid-template-columns:1fr 24px; gap:18px; }
+ #view-history .hist-stats { grid-column:1/-1; grid-row:2; }
+ #view-history .hist-more { grid-column:2; grid-row:1; }
+ #view-history .history-total,#view-profile .profile-hero .panel-title { font-size:30px; }
+}
+/* Keep the actual selection controls above the dock on laptop displays. */
+@media(min-width:1000px) {
+ #view-queue .panel-header { display:grid; grid-template-columns:1fr minmax(140px,210px); align-items:center; gap:20px; }
+ #view-queue .lineup-title { font-size:42px; }
+ #view-queue .selected-brawler-top { display:grid; grid-template-columns:76px minmax(0,1fr); gap:16px; padding-bottom:18px; }
+ #view-queue .brawler-detail-art { width:76px; height:76px; border-radius:19px!important; }
+ #view-queue .selected-brawler-top .panel-title { font-size:30px; }
+ #view-queue .selected-brawler-top .meta-line { font-size:10px; line-height:1.5; }
+}
+.queue-dock { padding:14px 18px; }
+.queue-dock-head { margin-bottom:10px; }
+.queue-dock .queue-item { padding:10px 12px; min-height:66px; }
+.queue-dock .qi-img { width:28px; height:28px; }
+.queue-dock .qi-text strong { font-size:12px; }
+.queue-dock .qi-text span { font-size:10px; }
+#view-queue .queue-editor input[type=number]:disabled { background:#ddd6ca!important; color:#686052!important; opacity:1; }
+
+/* Align the journal controls independently of legacy toolbar widths. */
+#view-history .history-actions { display:grid; grid-template-columns:minmax(0,1fr) 190px; width:100%; gap:12px; }
+#view-history .history-actions .tb-search { width:100%; min-width:0; max-width:none; }
+#view-history #historySearch,#view-history #historySort { width:100%; min-width:0; height:44px; box-sizing:border-box; margin:0; background:#e1dacf; color:#292929; border:1px solid #b7ad9f; box-shadow:none; border-radius:8px!important; }
+#view-history #historySearch::placeholder { color:#746b60; opacity:1; }
+#view-history .hist-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; width:100%; background:transparent; box-shadow:none; }
+#view-history .hist-stat { min-width:0; }
+/* Override .ps-card > * { position:relative }, which displaced this button. */
+#view-playstyles .ps-card > .ps-delete-btn { position:absolute; top:12px; right:12px; display:grid; place-items:center; width:30px; height:30px; padding:6px; border:1px solid #a89c8d; border-radius:8px; background:transparent; color:#6d6256; opacity:.7; }
+#view-playstyles .ps-card > .ps-delete-btn:hover,#view-playstyles .ps-card > .ps-delete-btn:focus-visible { background:#f0e9df; color:#3c342b; opacity:1; transform:none; }
+#view-playstyles .ps-delete-btn svg { width:15px; height:15px; pointer-events:none; }
+#view-playstyles .tactic-edition { padding-right:32px; }
+@media(max-width:800px) { #view-history .history-actions { grid-template-columns:1fr; } }
+/* Equal metric cells: labels and values share the same center and baseline. */
+#view-history .hist-stats { overflow:visible; align-items:stretch; }
+#view-history .hist-stat { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:10px 4px; border:1px solid #383a3d; border-radius:8px; background:#202224; }
+#view-history .hist-stat label { display:block; margin:0; padding:0; font:11px/16px Arial,Helvetica,sans-serif; text-align:center; }
+#view-history .hist-stat strong { display:block; margin:0; padding:0; font:600 20px/24px Arial,Helvetica,sans-serif; font-variant-numeric:tabular-nums; text-align:center; }
+@media(max-width:800px) {
+ #view-history .hist-card { grid-template-columns:minmax(0,1fr) auto 24px; align-items:center; }
+ #view-history .hist-top { display:contents; }
+ #view-history .hist-identity { grid-column:1; grid-row:1; }
+ #view-history .hist-trophy-delta { grid-column:2; grid-row:1; align-self:center; margin:0; }
+ #view-history .hist-more { grid-column:3; grid-row:1; align-self:center; }
+ #view-history .hist-stats { grid-column:1/-1; grid-row:2; gap:8px; }
+}

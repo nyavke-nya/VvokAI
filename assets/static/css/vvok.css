@@ -851,11 +851,12 @@ textarea:focus {
     box-shadow: var(--lift-3);
 }
 
-.queue-index {
-    background: linear-gradient(180deg, #ffffff, #c8c8cd) !important;
-    color: #08080a !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 1), 0 2px 6px rgba(0, 0, 0, 0.55);
-}
+/* The index used to be a white pill with near-black text on it. The pill was
+   dropped further down this file - background back to transparent - but the
+   text colour was written with !important and survived, so what was left was a
+   #08080a numeral on a #181818 card. Black on black, which is how it came to
+   be described as ugly rather than as missing. The rule that set it is gone;
+   the one below is the whole of it now. */
 
 /* --------------------------------------------------------------------------
    PORTRAITS
@@ -1407,7 +1408,9 @@ body {
    on it, which is when it matters. */
 .qi-del {
     background: transparent;
-    border: 0;
+    /* border-color, not border: the 1px frame is what appears on hover, and
+       zeroing the width here left the hover rule with nothing to colour. */
+    border-color: transparent;
     color: var(--text-muted);
     font-size: 1.05rem;
     line-height: 1;
@@ -1417,7 +1420,16 @@ body {
 }
 
 .queue-item:hover .qi-del { opacity: 1; }
-.qi-del:hover { color: var(--text-primary); background: transparent; }
+
+/* On the pointer it becomes a control: a box you can see the edge of, so it is
+   obvious what the click target is. Off it, it is a mark and nothing more. */
+.qi-del:hover,
+.qi-del:focus-visible {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--border-strong);
+    opacity: 1;
+}
 
 
 /* --------------------------------------------------------------------------

@@ -1,0 +1,16 @@
+/* Shared popup select; the native select remains the form/event source. */
+.select-native { display:none!important; }
+.select-shell { width:100%; min-width:0; }
+.select-trigger { width:100%; min-height:44px; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:11px 14px; border:1px solid #55504b; border-radius:9px; background:#222427; color:#eee9df; text-align:left; font:500 13px/20px Arial,Helvetica,sans-serif; cursor:pointer; box-shadow:none; }
+.select-trigger::after { content:""; width:6px; height:6px; border-right:1.5px solid currentColor; border-bottom:1.5px solid currentColor; transform:rotate(45deg); flex-shrink:0; margin:0 3px 4px; opacity:.7; }
+.select-trigger[aria-expanded=true] { border-color:#b5a5cc; }
+.select-trigger:disabled { opacity:.45; cursor:not-allowed; }
+.select-menu { position:fixed; z-index:10000; box-sizing:border-box; overflow-y:auto; margin:0; padding:6px; background:#292b2e; color:#eee9df; border:1px solid #626064; border-radius:12px; box-shadow:0 12px 30px #0005; }
+.select-option { position:relative; display:block; width:100%; border:0; border-radius:7px; padding:10px 32px 10px 12px; text-align:left; background:transparent; color:inherit; cursor:pointer; font:13px/20px Arial,Helvetica,sans-serif; }
+.select-option[aria-selected=true]::after { content:"✓"; position:absolute; right:12px; color:#ff987e; }
+.select-option.is-highlighted,.select-option:hover { background:#414044; }
+.select-option:disabled { opacity:.4; cursor:not-allowed; }
+#view-history .history-actions .select-trigger,#view-queue .queue-editor .select-trigger { background:#e1dacf; color:#292929; border-color:#b7ad9f; }
+.select-trigger:focus-visible { outline:2px solid #b9a6dd!important; outline-offset:3px; }
+.setting-row .select-shell { max-width:280px; }
+@media(max-width:800px) { .setting-row .select-shell { max-width:100%; } }
