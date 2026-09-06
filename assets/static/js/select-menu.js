@@ -116,6 +116,9 @@
         if (active && !active.trigger.isConnected) close();
     }).observe(document.body,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['disabled','selected']});
     document.addEventListener('click', e => { if (active && !active.menu.contains(e.target) && !active.trigger.contains(e.target)) close(); });
-    document.addEventListener('scroll', e => { if (active && !active.menu.contains(e.target)) close(); },true);
+    // Passive: a scroll listener cannot cancel scrolling anyway, and saying so
+    // lets the compositor scroll without waiting to find out.
+    document.addEventListener('scroll', e => { if (active && !active.menu.contains(e.target)) close(); },
+                              { capture: true, passive: true });
     window.addEventListener('resize',close);
 })();

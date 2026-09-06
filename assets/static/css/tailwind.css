@@ -149,8 +149,16 @@ body {
    COMPONENTS
    ========================================================================= */
 /* Panels / Cards */
+/* No backdrop-filter, and that is a performance fix rather than a taste one.
+   A backdrop blur makes the browser snapshot and re-blur everything behind the
+   element on EVERY frame it is on screen - and these are on screen constantly
+   and scrolled past constantly, so the whole page paid for it continuously.
+   What it bought was nothing at all: the theme paints these surfaces opaque
+   (measured live: rgb(238,233,223) and rgb(187,176,213)), and you cannot see a
+   blur through an opaque surface. It stays on the overlays below, where the
+   surface really is see-through and where nothing scrolls behind it. */
 .panel {
-    background: var(--bg-card); backdrop-filter: blur(20px); border: 1px solid var(--border-light);
+    background: var(--bg-card); border: 1px solid var(--border-light);
     border-radius: var(--radius-lg); padding: 24px; box-shadow: 0 8px 30px rgba(0,0,0,0.2);
 }
 .panel-accent { border-color: var(--border-brand); box-shadow: 0 0 40px var(--brand-dim), inset 0 0 0 1px rgba(255, 255, 255, 0.10); }
@@ -251,7 +259,10 @@ input:focus, select:focus { border-color: var(--brand-main); box-shadow: 0 0 0 3
    ========================================================================= */
 .queue-dock {
     position: sticky; bottom: 0; left: 0; right: 0;
-    background: rgba(8, 9, 12, 0.95); backdrop-filter: blur(20px); border-top: 1px solid var(--border-brand);
+    /* Same again, and worse here: the dock is STICKY, so it sat over the
+       scrolling content re-blurring the full width of it every frame. Its
+       surface is opaque too (rgb(34,36,39) once the theme is applied). */
+    background: rgba(8, 9, 12, 0.95); border-top: 1px solid var(--border-brand);
     padding: 14px 30px; min-height: 84px; display: flex; flex-direction: column; gap: 8px; z-index: 20; flex-shrink: 0;
     box-shadow: 0 -10px 40px rgba(0,0,0,0.5);
 }

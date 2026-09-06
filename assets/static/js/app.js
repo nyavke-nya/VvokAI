@@ -250,26 +250,40 @@ function bindShellEvents() {
 // that far, now. "auto" is passed explicitly so this keeps behaving the same
 // if anyone later puts scroll-behavior: smooth on these containers - a fresh
 // animation on every notch is exactly what reads as lag.
+const SIDEWAYS_STRIPS = ".queue-strip, .ps-library";
+
+function onSidewaysWheel(event) {
+    if (event.ctrlKey || event.shiftKey || event.deltaY === 0) return;
+
+    const strip = event.currentTarget;
+    // Nothing to scroll sideways - leave the wheel to the page.
+    if (strip.scrollWidth <= strip.clientWidth) return;
+
+    const atStart = strip.scrollLeft <= 0;
+    const atEnd = strip.scrollLeft >= strip.scrollWidth - strip.clientWidth - 1;
+    // At either end, hand the wheel back rather than swallowing it - otherwise
+    // the page stops scrolling whenever the pointer happens to be over a strip
+    // that has run out.
+    if ((atStart && event.deltaY < 0) || (atEnd && event.deltaY > 0)) return;
+
+    event.preventDefault();
+    strip.scrollBy({ left: event.deltaY, behavior: "auto" });
+}
+
+// Attached to the strips themselves, and to nothing else.
+//
+// This handler has to be non-passive to preventDefault, and a non-passive
+// wheel listener on DOCUMENT stops the compositor from scrolling anything at
+// all until the main thread has run it - so the whole page inherits the wait,
+// for the sake of two rows that wanted it. Bound to the strips, it costs only
+// the strips. Called after every render that can put one on the page; the flag
+// stops a re-render stacking a second listener on a surviving element.
 function bindSidewaysWheel() {
-    document.addEventListener("wheel", (event) => {
-        if (event.ctrlKey || event.shiftKey || event.deltaY === 0) return;
-
-        const strip = event.target.closest?.(".queue-strip, .ps-library");
-        if (!strip) return;
-        // Nothing to scroll sideways, or the wheel is over something that
-        // scrolls up and down in its own right - leave both alone.
-        if (strip.scrollWidth <= strip.clientWidth) return;
-
-        const atStart = strip.scrollLeft <= 0;
-        const atEnd = strip.scrollLeft >= strip.scrollWidth - strip.clientWidth - 1;
-        // At either end, hand the wheel back to the page rather than
-        // swallowing it - otherwise the page stops scrolling whenever the
-        // pointer happens to be over a strip that has run out.
-        if ((atStart && event.deltaY < 0) || (atEnd && event.deltaY > 0)) return;
-
-        event.preventDefault();
-        strip.scrollBy({ left: event.deltaY, behavior: "auto" });
-    }, { passive: false });
+    document.querySelectorAll(SIDEWAYS_STRIPS).forEach((strip) => {
+        if (strip.dataset.wheelBound) return;
+        strip.dataset.wheelBound = "1";
+        strip.addEventListener("wheel", onSidewaysWheel, { passive: false });
+    });
 }
 
 // Placed against the thing it describes, and always outside it.
@@ -2643,6 +2657,9 @@ function bindBrawlerCardEvents() {
 }
 
 function bindQueueStripEvents() {
+    // The strip is rebuilt whenever the queue changes, so its wheel handler
+    // has to be put back with it.
+    bindSidewaysWheel();
     document.querySelectorAll("[data-delete-queue]").forEach((button) => {
         button.addEventListener("click", async (event) => {
             event.preventDefault();
@@ -2764,6 +2781,7 @@ async function persistQueueOrder(order) {
 }
 
 function bindPlaystyleEvents() {
+    bindSidewaysWheel();
     document.getElementById("playstyleSearch")?.addEventListener("input", (event) => {
         state.playstyleSearch = event.target.value;
         const library = document.querySelector("#view-playstyles .ps-library");
