@@ -1007,18 +1007,51 @@ textarea:focus {
 /* --------------------------------------------------------------------------
    SCROLLBAR
    -------------------------------------------------------------------------- */
-::-webkit-scrollbar { width: 11px; height: 11px; }
+/* One scrollbar for the whole app.
+   None of this was reaching the screen: mono.css set the standard
+   scrollbar-color on *, and in Chromium that property switches ::-webkit-
+   scrollbar off completely and gives back the operating system's own bar -
+   15px, with the little arrow buttons at the ends. A Windows 95 control in the
+   middle of the panel, which is exactly how it looked. */
+::-webkit-scrollbar { width: 12px; height: 12px; background: transparent; }
 ::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* The step arrows. They do nothing a wheel does not do better, they are the
+   one part of the native bar that cannot be made to match anything, and on a
+   short horizontal strip they eat most of its length. */
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+
+/* The transparent border plus background-clip is what insets the pill inside
+   the track, so it reads as floating rather than as filling a gutter. */
 ::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.10));
-    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 999px;
     border: 3px solid transparent;
     background-clip: content-box;
 }
-::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.2));
-    background-clip: content-box;
-}
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); background-clip: content-box; }
+::-webkit-scrollbar-thumb:active { background: rgba(255, 255, 255, 0.42); background-clip: content-box; }
+
+/* Thinner inside a panel than at the edge of the page: a 12px bar across a
+   200px card of brawlers is a stripe, not a control. */
+.queue-strip::-webkit-scrollbar,
+.ps-library::-webkit-scrollbar,
+.history-result-grid::-webkit-scrollbar,
+.history-playstyle-list::-webkit-scrollbar,
+.history-chart-scroll-window::-webkit-scrollbar { width: 9px; height: 9px; }
+
+.queue-strip::-webkit-scrollbar-thumb,
+.ps-library::-webkit-scrollbar-thumb,
+.history-result-grid::-webkit-scrollbar-thumb,
+.history-playstyle-list::-webkit-scrollbar-thumb,
+.history-chart-scroll-window::-webkit-scrollbar-thumb { border-width: 2px; }
+
+/* No scroll-behavior: smooth here, and that is deliberate. It animates every
+   direct scrollLeft/scrollTop assignment too, so anything that positions a
+   strip in code stops being able to read back where it is - the position is
+   mid-flight. A wheel that answers instantly is what "not laggy" means; the
+   easing belongs to the thing being scrolled to, not to the scrolling. */
 
 ::selection { background: rgba(255, 255, 255, 0.25); color: #fff; }
 

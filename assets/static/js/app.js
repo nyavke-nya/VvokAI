@@ -235,6 +235,41 @@ function bindShellEvents() {
 
     document.getElementById("authForm")?.addEventListener("submit", handleLogin);
     bindTooltipEvents();
+    bindSidewaysWheel();
+}
+
+// A wheel over a row that only scrolls sideways should move that row.
+//
+// It did not: the queue and the tactic library scroll horizontally, a wheel
+// over them scrolled the PAGE, and the only way to reach the far end of
+// ninety-six brawlers was to catch a nine pixel bar with the pointer and drag
+// it. That is why the scrollbar was being looked at closely enough to be
+// called ugly - it was the only way to work the thing.
+//
+// Mapped one to one and applied instantly: a notch of the wheel moves the row
+// that far, now. "auto" is passed explicitly so this keeps behaving the same
+// if anyone later puts scroll-behavior: smooth on these containers - a fresh
+// animation on every notch is exactly what reads as lag.
+function bindSidewaysWheel() {
+    document.addEventListener("wheel", (event) => {
+        if (event.ctrlKey || event.shiftKey || event.deltaY === 0) return;
+
+        const strip = event.target.closest?.(".queue-strip, .ps-library");
+        if (!strip) return;
+        // Nothing to scroll sideways, or the wheel is over something that
+        // scrolls up and down in its own right - leave both alone.
+        if (strip.scrollWidth <= strip.clientWidth) return;
+
+        const atStart = strip.scrollLeft <= 0;
+        const atEnd = strip.scrollLeft >= strip.scrollWidth - strip.clientWidth - 1;
+        // At either end, hand the wheel back to the page rather than
+        // swallowing it - otherwise the page stops scrolling whenever the
+        // pointer happens to be over a strip that has run out.
+        if ((atStart && event.deltaY < 0) || (atEnd && event.deltaY > 0)) return;
+
+        event.preventDefault();
+        strip.scrollBy({ left: event.deltaY, behavior: "auto" });
+    }, { passive: false });
 }
 
 // Placed against the thing it describes, and always outside it.

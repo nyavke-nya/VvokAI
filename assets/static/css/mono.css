@@ -8,7 +8,14 @@
  --brand-glow:transparent; --sidebar-width:170px;
  --font:Arial,Helvetica,sans-serif; --font-display:Arial,Helvetica,sans-serif;
 }
-* { scrollbar-color:#666 #171717; }
+/* Firefox only. In Chromium the standard scrollbar-color/-width properties
+   SWITCH OFF ::-webkit-scrollbar entirely and hand back the native bar -
+   arrow buttons and all - which is what this was doing to every scroller
+   in the app. The real styling lives in vvok.css; this is the fallback
+   for the one engine that cannot read it. */
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-color:#666 #171717; scrollbar-width:thin; }
+}
 body { background:#111; filter:grayscale(1); }
 body::before,body::after,#vfx-bg { display:none!important; }
 .sidebar { width:var(--sidebar-width); background:#080808; border-right:1px solid #303030; padding:30px 16px 20px; }
