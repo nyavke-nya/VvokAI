@@ -17,6 +17,7 @@ from werkzeug.utils import secure_filename
 
 from utils import (
     api_base_url,
+    clean_player_tag,
     clean_queue,
     get_brawler_list,
     get_discord_link,
@@ -779,6 +780,10 @@ class WebDataService:
         if section == "general":
             payload = self._select_fields(self._load_config("cfg/general_config.toml"),
                                           self.GENERAL_FIELDS)
+            # So a config left holding "#" by an older build shows the box as
+            # empty rather than as a tag made of punctuation.
+            if not clean_player_tag(payload.get("player_tag")):
+                payload["player_tag"] = ""
             # The password is never sent back to the browser. A placeholder
             # goes instead, so the field can still show that one is set, and
             # update_settings treats that exact string as "leave it alone".
@@ -814,6 +819,15 @@ class WebDataService:
             # placeholder back must not overwrite it with asterisks.
             if payload.get("brawl_api_password") == SECRET_PLACEHOLDER:
                 payload.pop("brawl_api_password")
+            # An empty box means no tag, and must be stored as one. The panel
+            # used to send back a bare "#" for an emptied field; that is not
+            # falsy, so the bot read it as a configured tag and asked the API
+            # about a player with no name after every match. Normalising here
+            # covers any client that still does it, and heals a config that
+            # already holds one.
+            if "player_tag" in payload:
+                tag = clean_player_tag(payload["player_tag"])
+                payload["player_tag"] = f"#{tag}" if tag else ""
             self._save_config("cfg/general_config.toml", self._apply_updates(config, self.GENERAL_FIELDS, payload))
             if "play_order" in payload and self.get_settings_payload("general").get("play_order") != "in_order":
                 self.save_queue_data([

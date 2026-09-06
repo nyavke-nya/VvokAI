@@ -732,14 +732,19 @@ function cleanPlayerTag(value) {
     return String(value || "").trim().replace(/^%23/i, "").replaceAll("#", "").trim();
 }
 
+// An emptied box stays empty. Both of these used to answer "#" for no input,
+// and the first is bound to the field's own input event - so deleting the last
+// character put the prefix straight back and the tag could not be cleared at
+// all. What got saved was a lone "#", which is not falsy, so the bot went on
+// believing a tag was set and asked the API about a player with no name.
 function formatPlayerTagInput(value) {
     const cleanTag = cleanPlayerTag(value);
-    return cleanTag ? `#${cleanTag}` : "#";
+    return cleanTag ? `#${cleanTag}` : "";
 }
 
 function ensurePlayerTagPrefix(value) {
     const text = String(value || "").trim();
-    if (!text) return "#";
+    if (!text) return "";
     return text.startsWith("#") ? text : `#${cleanPlayerTag(text)}`;
 }
 

@@ -128,6 +128,45 @@ _CFG_DIR_ENV = os.environ.get("VVOK_CFG_DIR")
 # keeps them at the root exactly as before.
 _INSTANCE_ROOT_FILES = {"latest_brawler_data.json", "vvokai_log.txt"}
 
+# Settings that belong to the PERSON, not to the Brawl Stars account. Every
+# account of one owner uses the same developer-portal key, because a key is
+# tied to a developer login and an IP address - not to a player - and one key
+# answers questions about any tag. So these are read from, and written to, the
+# shared cfg/ even inside an account scoped to its own config dir.
+#
+# Copying them per account was worse than untidy. brawl_token._reissue revokes
+# every key this bot made before creating a new one, so four accounts each
+# holding their own copy of the same key would revoke each other's the first
+# time an address changed: one recovers, the other three are left holding a key
+# that was deleted underneath them.
+#
+# player_tag is deliberately NOT here. That one really is per account.
+_SHARED_CFG_KEYS = {
+    "general_config.toml": ("brawl_api_token", "brawl_api_email",
+                            "brawl_api_password", "_brawl_api_token_ip"),
+    "login.toml": ("key",),
+}
+
+
+def _shared_keys_for(full_path) -> tuple:
+    """The keys of this config that live in the shared cfg/, if any."""
+    if not _CFG_DIR_ENV:
+        return ()
+    return _SHARED_CFG_KEYS.get(Path(full_path).name, ())
+
+
+def clean_player_tag(value) -> str:
+    """A player tag with nothing but its own characters, or "" if none.
+
+    "#" alone is the one that mattered. The panel put the prefix back the
+    moment the box was emptied, so a tag could never be cleared, and what
+    reached the config was a lone "#" - which is not falsy, so everything
+    downstream believed a tag was set and asked the API about a player with no
+    name, once a match.
+    """
+    return str(value or "").strip().replace("%23", "").replace("#", "").strip()
+
+
 
 def _cfg_root() -> Path:
     if not _CFG_DIR_ENV:
@@ -171,11 +210,42 @@ def load_toml_as_dict(file_path, cache=True):
     try:
         with open(full_path, 'r', encoding='utf-8') as f:
             data = toml.load(f)
-            cached_toml[str(full_path)] = data
-            return data
     except Exception as e:
         print(f"Error loading {full_path}: {e}")
         return {}
+
+    data = _overlay_shared(full_path, data)
+    cached_toml[str(full_path)] = data
+    return data
+
+
+def _shared_path(full_path) -> Path:
+    """Where the shared copy of this config lives: the project's own cfg/."""
+    return PROJECT_ROOT / "cfg" / Path(full_path).name
+
+
+def _overlay_shared(full_path, data: dict) -> dict:
+    """Put the owner's shared settings over an account's own copy.
+
+    Read-time rather than copy-time, so a token reissued or retyped anywhere
+    reaches every account at once instead of the three that were not looking.
+    """
+    keys = _shared_keys_for(full_path)
+    if not keys:
+        return data
+    shared_path = _shared_path(full_path)
+    if shared_path == Path(full_path) or not shared_path.exists():
+        return data
+    try:
+        with open(shared_path, 'r', encoding='utf-8') as f:
+            shared = toml.load(f)
+    except Exception as e:
+        print(f"Error loading shared {shared_path}: {e}")
+        return data
+    for key in keys:
+        if key in shared:
+            data[key] = shared[key]
+    return data
 
 def invalidate_toml_cache(file_path):
     full_path = _config_full_path(file_path)
@@ -184,6 +254,7 @@ def invalidate_toml_cache(file_path):
 
 def save_dict_as_toml(data, file_path):
     full_path = _config_full_path(file_path)
+    _write_shared(full_path, data)
     full_path.parent.mkdir(parents=True, exist_ok=True)
     # Written beside the target and swapped in, rather than opened for writing
     # in place. open(..., 'w') truncates immediately, so a crash, a power cut or
@@ -207,6 +278,34 @@ def save_dict_as_toml(data, file_path):
             pass
         raise
     cached_toml[str(full_path)] = data
+
+
+def _write_shared(full_path, data: dict) -> None:
+    """Send the owner's shared settings to the shared cfg/, not the account's.
+
+    Written there as well as here: the account's own copy is harmless once the
+    overlay above always wins, and leaving it means an account that is later
+    unscoped still has something to fall back on.
+    """
+    keys = [key for key in _shared_keys_for(full_path) if key in data]
+    if not keys:
+        return
+    shared_path = _shared_path(full_path)
+    if shared_path == Path(full_path):
+        return
+    try:
+        shared = {}
+        if shared_path.exists():
+            with open(shared_path, 'r', encoding='utf-8') as f:
+                shared = toml.load(f)
+        if all(shared.get(key) == data[key] for key in keys):
+            return
+        for key in keys:
+            shared[key] = data[key]
+        save_dict_as_toml(shared, shared_path)
+    except Exception as e:
+        # Never at the cost of the save that was actually asked for.
+        print(f"Could not update the shared config {shared_path}: {e}")
 
 
 reader = DefaultEasyOCR()
@@ -305,7 +404,8 @@ def api_update_brawler_data(brawler_data):
         from brawl_api import is_available
         if not is_available():
             return
-    player_tag = load_toml_as_dict("cfg/general_config.toml")["player_tag"]
+    player_tag = clean_player_tag(
+        load_toml_as_dict("cfg/general_config.toml").get("player_tag"))
     if not player_tag:
         return
     player_info = get_player_info(player_tag)

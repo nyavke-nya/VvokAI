@@ -163,7 +163,7 @@ def _kill_tree(pid: int) -> None:
     except Exception:
         pass
 
-from utils import (PROJECT_ROOT, load_toml_as_dict, resolve_project_path,
+from utils import (PROJECT_ROOT, clean_player_tag, load_toml_as_dict, resolve_project_path,
                    save_dict_as_toml, invalidate_toml_cache)
 
 INSTANCES_FILE = "cfg/instances.toml"
@@ -188,17 +188,22 @@ _AUTO_PORT_BASE = 5001
 # the supervisor's, never a child's.
 _SEED_SKIP = {"match_history.csv", "instances.toml", "instances.example.toml"}
 
-# Blanked when a new account's config is seeded from the shared cfg/. These
-# identify WHOSE account it is, and copying them meant every account started
-# life pointing at the first one's Brawl Stars profile: the startup resync then
-# pulled that player's trophies over whatever had been typed in (2014 instead of
-# the 1057 that was entered) and rewrote the queue with them on every restart.
-# Left empty, the API sync stays out of the way until the account is given its
-# own tag and token in its own panel.
+# Blanked when a new account's config is seeded from the shared cfg/. This says
+# WHOSE Brawl Stars profile the account is, and copying it meant every account
+# started life pointing at the first one's: the startup resync then pulled that
+# player's trophies over whatever had been typed in (2014 instead of the 1057
+# that was entered) and rewrote the queue with them on every restart. Left
+# empty, the API sync stays out of the way until the account is given its own
+# tag in its own panel.
+#
+# The developer-portal credentials are NOT here, and used to be. They belong to
+# the owner, not to the account - one key answers questions about any tag - so
+# they are shared rather than copied, and utils._SHARED_CFG_KEYS is what makes
+# every account read and write the one copy in cfg/. Blanking them here made
+# each new account demand its own key and its own login, which is not what
+# anybody wanted and is not how the portal works.
 _IDENTITY_BLANKS = {
-    "general_config.toml": ("player_tag", "brawl_api_token",
-                            "brawl_api_email", "brawl_api_password"),
-    "login.toml": ("key",),
+    "general_config.toml": ("player_tag",),
 }
 
 
@@ -222,6 +227,19 @@ def _blank_identity(cfg_dir):
             logger.info("could not blank identity in %s: %s", target, exc)
 
 
+_TAG_LINE = re.compile(r"(?m)^\s*player_tag\s*=\s*[\"'](.*?)[\"']\s*$")
+
+
+def _tag_in(path):
+    """The player tag written in a config file, stripped of its # and spaces."""
+    try:
+        text = io.open(path, encoding="utf-8", newline="").read()
+    except OSError:
+        return ""
+    found = _TAG_LINE.search(text)
+    return clean_player_tag(found.group(1)) if found else ""
+
+
 def is_supervisor() -> bool:
     """True in the root process, False inside a spawned account panel."""
     return not os.environ.get("VVOK_CFG_DIR")
@@ -241,6 +259,10 @@ class InstanceManager:
         self._procs: dict[str, subprocess.Popen] = {}
         # name -> when it was started, for the "Configure" grace period.
         self._started_at: dict[str, float] = {}
+        if is_supervisor():
+            # Once, at startup: accounts made before the tag was blanked
+            # at seeding time are all still carrying the owner's own tag.
+            self._unshare_inherited_tags()
 
     # ---- persistence ------------------------------------------------------
 
@@ -276,6 +298,31 @@ class InstanceManager:
         # account this was seeded from, or the API sync will overwrite its queue
         # with that player's trophies.
         _blank_identity(cfg_dir)
+
+    def _unshare_inherited_tags(self) -> None:
+        """Clear a player tag an account only has because it was copied.
+
+        Accounts made before the tag was blanked at seeding time all carry the
+        owner's own tag, and the panel could not clear it either - so every one
+        of them resyncs against the first account's profile and reports its
+        trophies. Two accounts cannot be the same Brawl Stars player, so a tag
+        identical to the shared one can only have been copied, and clearing it
+        loses nothing that was ever typed in on purpose.
+
+        Only that exact case. A tag somebody actually set for an account is
+        different from the shared one and is left alone.
+        """
+        shared = _tag_in(resolve_project_path("cfg", "general_config.toml"))
+        if not shared:
+            return
+        root = resolve_project_path("instances")
+        if not root.is_dir():
+            return
+        for cfg_dir in sorted(root.glob("*/cfg")):
+            if _tag_in(cfg_dir / "general_config.toml") != shared:
+                continue
+            _blank_identity(cfg_dir)
+            logger.info("cleared the inherited player tag in %s", cfg_dir)
 
     # ---- lifecycle --------------------------------------------------------
 

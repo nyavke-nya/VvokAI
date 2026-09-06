@@ -5,7 +5,8 @@ import cv2
 
 from state_finder import find_continue_button, get_state
 from trophy_observer import TrophyObserver, MatchResult
-from utils import find_template_center, load_toml_as_dict, notify_user, save_brawler_data
+from utils import (clean_player_tag, find_template_center, load_toml_as_dict,
+                   notify_user, save_brawler_data)
 
 try:
     from early_access.early_access import get_brawler_stats, get_player_info
@@ -91,9 +92,13 @@ class StageManager:
         # paid module was installed, so without it the attribute did not exist
         # at all and anything that touched it raised AttributeError. The tag is
         # plain config and the API path needs it either way.
-        self.player_tag = str(
-            load_toml_as_dict("./cfg/general_config.toml").get('player_tag', "") or ""
-        ).strip()
+        # Cleaned, not merely stripped: a config holding a bare "#" - which is
+        # what an emptied tag box used to save - is no tag at all, and reading
+        # it as one sent the bot to the API after every match asking about a
+        # player with no name.
+        self.player_tag = clean_player_tag(
+            load_toml_as_dict("./cfg/general_config.toml").get('player_tag', "")
+        )
         # Set when a switch to the queue head did not take, cleared when it
         # does. Checked on every visit to the lobby.
         self.brawler_needs_selecting = False
