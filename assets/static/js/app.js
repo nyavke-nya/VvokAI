@@ -237,30 +237,71 @@ function bindShellEvents() {
     bindTooltipEvents();
 }
 
+// Placed against the thing it describes, and always outside it.
+//
+// It used to be pinned to the cursor at clientY + 18 and then CLAMPED to
+// innerHeight - 140. Anywhere near the bottom of the window that clamp pulled
+// it back up on top of the element the pointer was on - and the queue strip is
+// exactly there, so hovering a row covered that row's own delete button with a
+// panel repeating what the row already said. It never blocked the click (the
+// panel takes no pointer events) but you could not see what you were aiming at.
+//
+// So: measure the panel, then put it under the target if it fits and over it
+// if it does not. Never clamped into the target's own band, and never moved by
+// the cursor wandering about inside it.
+const TOOLTIP_GAP = 10;
+const TOOLTIP_MARGIN = 8;
+
+function placeTooltip(tooltip, target) {
+    if (!target.getBoundingClientRect) return;
+    const anchor = target.getBoundingClientRect();
+
+    // Measured with the panel already visible; a hidden element measures 0.
+    const width = tooltip.offsetWidth;
+    const height = tooltip.offsetHeight;
+
+    const below = anchor.bottom + TOOLTIP_GAP;
+    const above = anchor.top - TOOLTIP_GAP - height;
+    // Below by preference. Above only when below would run off the window, and
+    // only when above has the room for it - otherwise below is still the better
+    // of the two, because that is the direction the page scrolls.
+    const fitsBelow = below + height <= window.innerHeight - TOOLTIP_MARGIN;
+    const top = (fitsBelow || above < TOOLTIP_MARGIN) ? below : above;
+
+    const centred = anchor.left + anchor.width / 2 - width / 2;
+    const left = Math.max(TOOLTIP_MARGIN,
+                          Math.min(centred, window.innerWidth - width - TOOLTIP_MARGIN));
+
+    tooltip.style.left = `${Math.round(left)}px`;
+    tooltip.style.top = `${Math.round(top)}px`;
+}
+
 function bindTooltipEvents() {
     const tooltip = document.getElementById("tooltip");
     if (!tooltip) return;
+    let shownFor = null;
 
     document.body.addEventListener("mouseover", (event) => {
         const target = event.target.closest("[data-tooltip]");
         if (!target) {
             tooltip.classList.add("hidden");
+            shownFor = null;
             return;
         }
+        // Moving between the children of one row is not a new tooltip, and
+        // re-placing it on each of those makes it jump.
+        if (target === shownFor) return;
+        shownFor = target;
 
         tooltip.innerHTML = target.dataset.tooltip;
         tooltip.classList.remove("hidden");
-    });
-
-    document.body.addEventListener("mousemove", (event) => {
-        if (tooltip.classList.contains("hidden")) return;
-        tooltip.style.left = `${Math.min(event.clientX + 18, window.innerWidth - 320)}px`;
-        tooltip.style.top = `${Math.min(event.clientY + 18, window.innerHeight - 140)}px`;
+        placeTooltip(tooltip, target);
     });
 
     document.body.addEventListener("mouseout", (event) => {
         if (!event.target.closest("[data-tooltip]")) {
             tooltip.classList.add("hidden");
+            shownFor = null;
         }
     });
 }
