@@ -65,7 +65,29 @@ class DodgeService:
         )
         self.log.open()
 
+        # Two locks, and the split is the point.
+        #
+        # _lock guards the handful of fields the bot loop and this thread pass
+        # between them, and is held for a few microseconds at a time.
+        #
+        # _frame_lock serialises frame processing against itself and against a
+        # reset. It is held for a whole tracker pass, which is milliseconds -
+        # so the bot loop must never wait on it. Holding _lock for that whole
+        # pass instead, which is what _process used to do, meant every
+        # get_projectiles/update_context/set_tactical_intent in the loop
+        # blocked until the tracker had finished its frame. That cost nothing
+        # while the screen was empty and doubled the loop's Python time the
+        # moment shots appeared and tracker frames got long: measured on a real
+        # session, 61.8 IPS with the screen quiet and 49.1 IPS under fire, with
+        # every millisecond of it in the pure-Python stages while YOLO - which
+        # drops the GIL - stayed flat.
         self._lock = threading.RLock()
+        self._frame_lock = threading.RLock()
+        # Bumped by every update_context. A frame reads it on the way in and
+        # checks it on the way out: that is how a frame in flight knows its
+        # accumulated pan has been superseded, without the bot loop having to
+        # wait for the frame to finish before it can publish fresh boxes.
+        self._context_generation = 0
         self._context = FrameContext()
         self._accumulated_shift = (0.0, 0.0)
         self._player_center = None
@@ -122,7 +144,9 @@ class DodgeService:
     def reset(self):
         # Serialize reset with the entire frame transaction: an old frame must
         # never publish a decision after a new match has cleared its context.
-        with self._lock:
+        # That is what _frame_lock is for; both are taken, and always in this
+        # order, which is the order _process takes them in too.
+        with self._frame_lock, self._lock:
             self.tracker.reset()
             self.tracker.motion.reset()
             self.enemy_tracker.reset()
@@ -166,6 +190,7 @@ class DodgeService:
             # screen motion into world motion.
             pan = self._accumulated_shift
             self._accumulated_shift = (0.0, 0.0)
+            self._context_generation += 1
             if player_center is not None:
                 self._player_center = player_center
             if player_radius:
@@ -324,7 +349,12 @@ class DodgeService:
                 self._stop_event.wait(0.05)
 
     def _process(self, frame, stamp, emergency):
-        with self._lock:
+        # The frame lock, not the state lock. _process_locked already takes
+        # _lock around each of the short reads and writes it needs, and holding
+        # it across the tracker and the solver as well - which is what this did
+        # - hands the bot loop a multi-millisecond wait on every call it makes
+        # into the service.
+        with self._frame_lock:
             self._process_locked(frame, stamp, emergency)
 
     def _process_locked(self, frame, stamp, emergency):
@@ -336,6 +366,7 @@ class DodgeService:
             tactical = self._tactical_vector
             is_blocked = self._is_blocked
             gas_veto = self._gas_veto
+            generation = self._context_generation
 
         aged_context = context.shift_by(shift[0], shift[1]) if any(shift) else context
         projectiles, frame_shift = self.tracker.update(frame, aged_context, stamp)
@@ -364,10 +395,19 @@ class DodgeService:
             self._projectiles = projectiles
             self._decision = decision
             self._decision_stamp = stamp
-            self._accumulated_shift = (
-                shift[0] + frame_shift[0],
-                shift[1] + frame_shift[1],
-            )
+            if generation == self._context_generation:
+                self._accumulated_shift = (
+                    shift[0] + frame_shift[0],
+                    shift[1] + frame_shift[1],
+                )
+            # Otherwise fresh boxes arrived while this frame was in flight.
+            # They are measured as of that moment and their own drift starts at
+            # zero, so adding this frame's pan on top would correct for a pan
+            # the new boxes have already been through - the bug the whole
+            # transaction used to be serialised to prevent. Dropping it costs
+            # the sub-frame of pan between the new context and the end of this
+            # frame; blocking the bot loop until the frame finished cost it
+            # milliseconds on every iteration.
 
         applied = None
         if emergency and decision is not None and decision.critical and decision.vector:

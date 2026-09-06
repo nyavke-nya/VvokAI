@@ -62,7 +62,13 @@ def publish():
     published.set()
 context_worker = threading.Thread(target=publish)
 context_worker.start()
-r.check('context waits for frame transaction', published.wait(.05), False)
+# The invariant is that a fresh context does not inherit the pan a frame in
+# flight was accumulating. That used to be enforced by making update_context
+# WAIT for the whole frame - tracker and solver included - which meant the bot
+# loop stalled on every iteration behind a thread whose frame costs 2.9 ms with
+# the screen quiet and 10.3 ms once it is full of tracks. The loop must not
+# wait; the frame checks a generation counter on the way out instead.
+r.check('publishing a context does not wait for the frame', published.wait(2), True)
 release.set()
 worker.join(2); context_worker.join(2)
 r.check('fresh context does not inherit old accumulated pan', service._accumulated_shift, (0,0))

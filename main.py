@@ -15,6 +15,23 @@ def _patched_getfile(obj):
 
 inspect.getfile = _patched_getfile
 
+# How long one thread may hold the interpreter before it has to offer it back.
+#
+# The default is 5 ms, and that is the size of the hitch. The dodge tracker runs
+# on its own thread, and its cost is not constant: measured over a real session,
+# a frame takes 2.9 ms with the screen quiet and 10.3 ms once there are eighty
+# tracks on it - so the moment shots appear there is a second thread wanting the
+# interpreter almost continuously. The bot loop then waits up to a full 5 ms
+# slice at a time, which is why the profile shows the pure-Python stages
+# stretching under fire (playstyle 6.7 -> 11.1 ms) while YOLO, which drops the
+# GIL for the duration of an inference, does not move at all (5.0 -> 4.8).
+#
+# 1 ms, measured on the same shape of workload: the worst stall the latency
+# sensitive loop sees falls from 5.5 ms to 1.5 ms, and its median does not
+# change. Below that the extra switching starts costing more than it saves -
+# 0.5 ms measured worse than 1 ms.
+sys.setswitchinterval(0.001)
+
 
 if __name__ == "__main__" and len(sys.argv) >= 9 and sys.argv[1] == "--debug-viewer-worker":
     from debug_view import DEFAULT_DEBUG_VIEW_FPS, run_viewer_worker
