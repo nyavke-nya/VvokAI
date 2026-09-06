@@ -3,7 +3,7 @@ import threading
 import time
 import cv2
 
-from state_finder import get_state
+from state_finder import find_continue_button, get_state
 from trophy_observer import TrophyObserver, MatchResult
 from utils import find_template_center, load_toml_as_dict, notify_user, save_brawler_data
 
@@ -71,7 +71,8 @@ class StageManager:
             'star_drop_demonic': lambda: self.click_star_drop("demonic"),
             'star_drop_starr_nova': lambda: self.click_star_drop("starr_nova"),
             'trophy_reward': lambda: self.window_controller.press("proceed"),
-            'prestige_milestone': lambda: self.window_controller.press("continue_or_equip"),
+            'prestige_milestone': self.tap_continue,
+            'continue_card': self.tap_continue,
             'end_draw': self.end_game,
             'end_victory': self.end_game,
             'end_defeat': self.end_game,
@@ -616,6 +617,25 @@ class StageManager:
     def quit_shop(self):
         self.window_controller.click(100 * self.window_controller.width_ratio, 60 * self.window_controller.height_ratio)
         time.sleep(1)
+
+    def tap_continue(self):
+        """Tap the CONTINUE on a full-screen card, wherever the card put it.
+
+        This used to press a fixed [700, 1000], which is where the prestige
+        milestone screen draws its button and nowhere else. The new-skin card
+        puts CONTINUE right of centre beside EQUIP NOW, so the fixed tap landed
+        on empty background and the card stayed up.
+
+        The fixed coordinate is still the fallback: do_state gets no frame, so
+        this takes its own, and by then the card may already be gone - in which
+        case a tap at the old spot is the same harmless nothing it was before.
+        """
+        screenshot = self.window_controller.screenshot()
+        spot = find_continue_button(screenshot) if screenshot is not None else None
+        if spot:
+            self.window_controller.click(*spot)
+            return
+        self.window_controller.press("continue_or_equip")
 
     def close_pop_up(self):
         screenshot = self.window_controller.screenshot()

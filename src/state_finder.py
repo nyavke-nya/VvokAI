@@ -164,6 +164,20 @@ def get_in_game_state(image):
         if is_in_trophy_reward(image):
             return "trophy_reward"
 
+        # Last, after every screen with a name of its own has had its say. A
+        # card nothing above recognised, but which offers a CONTINUE, is still
+        # a card that can be tapped away - and the alternative is what this was
+        # written for: the fallback below calls it a match, "match" is exempt
+        # from every stuck check by design, and the bot plays into a popup
+        # until the eight-minute no-detections restart notices. Ten minutes of
+        # nothing for a screen one tap closes.
+        #
+        # Placing it here is what makes it safe: it can only ever claim a frame
+        # that is otherwise about to be called a match on no evidence at all.
+        if should_print_debug_info: print("Checking for a dismissable card...")
+        if find_continue_button(image) is not None:
+            return "continue_card"
+
         return "match"
     finally:
         should_print_debug_info = False
@@ -343,6 +357,113 @@ def is_in_match_making(image):
 
 def is_in_prestige_milestone(image):
     return is_template_in_region(image, states_path + "prestige_continue.png", region_data.get('prestige_continue', [535, 950, 345, 95]))
+
+
+# The bottom of the screen, where a full-screen card puts the button that
+# dismisses it. Far wider than the prestige screen's own narrow box, because
+# the SAME button is not in the same place on every card: on the prestige one
+# it sits left of centre, on a "NEW SKIN!" one it sits right of centre next to
+# EQUIP NOW, and there is no reason to expect the next card Supercell ships to
+# agree with either.
+CONTINUE_BAND = [140, 860, 1640, 220]
+
+# The button is drawn at very close to the size the template was cut at - it is
+# the resolution that changes between emulators, and load_template already
+# scales for that. So this is a narrow sweep in FINE steps rather than the wide
+# one the toolbar icons need. Fine matters: matching the same word 5% off its
+# real size drops TM_CCOEFF_NORMED from 0.89 to 0.59, which is below what a
+# perfectly ordinary game screen scores, so a coarse sweep over a wide range
+# would find nothing and call everything a maybe. Steps of ~3.5% keep the worst
+# case within 2% of the peak.
+CONTINUE_SCALES = (0.85, 0.88, 0.91, 0.94, 0.98, 1.0, 1.04, 1.07, 1.11, 1.15, 1.19)
+
+# Measured, not guessed. The word at its right size scores 0.85-0.97; real game
+# screens with no CONTINUE on them score up to 0.53 in this band. 0.75 sits in
+# the gap with room on both sides.
+CONTINUE_THRESHOLD = 0.75
+
+# Anything this good is the button, and there is no point trying the remaining
+# sizes to find out whether one of them is better.
+CONTINUE_CONFIDENT = 0.9
+
+# The band is shrunk to this width before matching, and the template by the
+# same factor. The full-resolution sweep costs 39 ms a frame, and this check
+# runs on every frame that is about to be called a match - that is most of a
+# running bot's frames, spent looking for a button that is almost never there.
+# TM_CCOEFF_NORMED matches on shape, which survives the downscale, and the cost
+# falls with roughly the fourth power of the factor. 440 was picked by
+# measurement: smaller blurs the letters until ordinary screens start scoring
+# 0.6, which eats the margin the threshold above depends on.
+CONTINUE_MATCH_WIDTH = 440
+
+
+def find_continue_button(image):
+    """Where the word CONTINUE is on screen, or None.
+
+    Deliberately COLOUR BLIND. prestige_continue.png was cut from a green
+    button, and cv2.matchTemplate on three channels scores a blue button
+    against it near zero - so the green-cropped word could never find the blue
+    CONTINUE on a new-skin card, and the bot sat in front of one for ten
+    minutes with nothing recognising it. Converting both sides to grey throws
+    the button colour away and keeps the letters, which are what actually
+    identify the button: white block capitals with a heavy dark outline, the
+    same on every card whatever colour Supercell paints underneath them.
+
+    Returns a centre in the CURRENT frame's pixels, ready to click, rather than
+    a bare True - a fixed coordinate is only ever right for one card layout.
+    """
+    current_height, current_width = image.shape[:2]
+    x, y, w, h = CONTINUE_BAND
+    width_ratio, height_ratio = current_width / orig_screen_width, current_height / orig_screen_height
+    band_x, band_y = int(x * width_ratio), int(y * height_ratio)
+    band_w, band_h = int(w * width_ratio), int(h * height_ratio)
+    crop = image[band_y:band_y + band_h, band_x:band_x + band_w]
+    if crop.size == 0:
+        return None
+
+    template = load_template(states_path + "prestige_continue.png",
+                             current_width, current_height)
+    if template is None:
+        return None
+
+    crop_grey = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
+    base = cv2.cvtColor(template, cv2.COLOR_RGB2GRAY)
+
+    # Shrink both by the same factor, so their relative sizes - all
+    # matchTemplate cares about - are preserved.
+    work = min(1.0, CONTINUE_MATCH_WIDTH / max(crop_grey.shape[1], 1))
+    if work < 1.0:
+        crop_grey = cv2.resize(crop_grey,
+                               (max(1, int(crop_grey.shape[1] * work)),
+                                max(1, int(crop_grey.shape[0] * work))),
+                               interpolation=cv2.INTER_AREA)
+        base = cv2.resize(base, (max(1, int(base.shape[1] * work)),
+                                 max(1, int(base.shape[0] * work))),
+                          interpolation=cv2.INTER_AREA)
+
+    base_h, base_w = base.shape[:2]
+    best = None
+    for scale in CONTINUE_SCALES:
+        tw, th = max(1, int(base_w * scale)), max(1, int(base_h * scale))
+        if th > crop_grey.shape[0] or tw > crop_grey.shape[1]:
+            continue
+        scaled = base if scale == 1.0 else cv2.resize(
+            base, (tw, th),
+            interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR)
+        result = cv2.matchTemplate(crop_grey, scaled, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, max_loc = cv2.minMaxLoc(result)
+        if max_val > CONTINUE_THRESHOLD and (best is None or max_val > best[0]):
+            # Back out of the working scale, into the frame's own pixels.
+            best = (max_val,
+                    band_x + int((max_loc[0] + tw / 2) / work),
+                    band_y + int((max_loc[1] + th / 2) / work))
+            if max_val >= CONTINUE_CONFIDENT:
+                break
+
+    if best is None:
+        return None
+    return best[1], best[2]
+
 
 def is_at_buffie_machine(image):
     return is_template_in_region(image, states_path + "buffie_machine.png", region_data.get('buffie_machine', [1620, 780, 160, 160]))

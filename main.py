@@ -414,7 +414,12 @@ def vvok_main(remote, queue_data, stop_event=None, runtime_control=None):
         # "match" and "lobby" are deliberately absent: a long match is a long
         # match, and the lobby is where a paused or finished bot is supposed to
         # sit. Restarting either would break something that was working.
-        TRANSIENT_STATES = {"match_making", "popup", "shop", "brawler_selection"}
+        # "continue_card" is one of these too: it means a card is on screen
+        # that only the CONTINUE button identifies, so if tapping that
+        # button is not making it go away, nothing here will, and a restart
+        # beats sitting in front of it.
+        TRANSIENT_STATES = {"match_making", "popup", "shop", "brawler_selection",
+                            "continue_card"}
 
         def handle_detected_state(self, state):
             if state is None:
