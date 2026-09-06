@@ -1055,6 +1055,34 @@ input:focus, select:focus { border-color: var(--brand-main); box-shadow: 0 0 0 3
         height: auto;
     }
 
+    /* Stacked, this was still a grid with two equal rows, so each panel got
+       half the height - 212px for a picker whose header and toolbar alone need
+       299px. The card grid, being the flexible child, collapsed to nothing and
+       the rows that did show were sliced through the middle. Forcing the panel
+       taller only made it overlap the panel below it, because the ROW stayed
+       212px. A plain column has no rows to fight: each panel is simply as tall
+       as its content, one after the other. */
+    .brawlers-layout {
+        display: flex;
+        flex-direction: column;
+        height: auto;
+    }
+
+    /* And never less than two whole rows of cards. The panel has to be
+       allowed to be as tall as that needs: the base rule gives it min-height 0
+       so it can shrink inside the two-column layout, which in a column means
+       it happily shrinks below its own content and clips the grid. */
+    .brawlers-layout .grid-select {
+        min-height: 272px;
+        /* Bounded, so the picker stays a picker: without a ceiling the panel
+           grows to all 106 cards and the tab becomes a 2500px scroll. */
+        max-height: 60vh;
+    }
+
+    .brawlers-layout > .panel {
+        min-height: min-content;
+    }
+
     .brawlers-layout > .panel:last-child {
         position: static;
         max-height: none;

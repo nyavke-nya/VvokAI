@@ -228,29 +228,32 @@ input,select,textarea { border-radius:7px!important; background:#181a1b; }
 #view-playstyles .ps-library { gap: 14px; }
 #view-settings .set-layout { gap: 18px; }
 
-/* 2. The schedule popover opens inside the cream command band but had taken
-   the dark surfaces from the theme, so it painted #111 text on a #181818
-   panel - a contrast ratio of about 1.0. The labels, the times being typed
-   and the Done button were all but invisible. It takes the band's palette. */
+/* 2. The schedule popover rendered #111 text on a #181818 panel - a contrast
+   ratio of about 1.0, so the labels, the time being typed and the Done button
+   were all but invisible. The panel itself is fine: it drops BELOW the cream
+   card and over the dark page, so a dark surface is the right one to keep.
+   Only the text on it was wrong. */
 #view-dashboard .command-actions .sched-panel {
-    background: #f7f3ec;
-    border: 1px solid #b7aea2;
+    background: #191919;
+    border: 1px solid #3a3a3a;
     border-radius: 14px;
-    color: #111;
+    color: #ededed;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, .45);
 }
 #view-dashboard .command-actions .sched-panel span,
-#view-dashboard .command-actions .sched-panel label { color: #111; }
-#view-dashboard .command-actions .sched-panel small { color: #5f584f; }
+#view-dashboard .command-actions .sched-panel label,
+#view-dashboard .command-actions .sched-panel .sched-title { color: #ededed !important; }
+#view-dashboard .command-actions .sched-panel small { color: #9b9b9b !important; }
 #view-dashboard .command-actions .sched-fields input {
-    background: #fff !important;
-    border: 1px solid #b7aea2 !important;
-    color: #111 !important;
+    background: #0f0f0f !important;
+    border: 1px solid #4a4a4a !important;
+    color: #f2f2f2 !important;
     box-shadow: none !important;
 }
-#view-dashboard .command-actions .sched-fields input::placeholder { color: #8b8378 !important; }
+#view-dashboard .command-actions .sched-fields input::placeholder { color: #7e7e7e !important; }
 #view-dashboard .command-actions .sched-close {
-    background: #111;
-    border: 1px solid #111;
-    color: #f3efe8;
+    background: #ededed !important;
+    border: 1px solid #ededed !important;
+    color: #141414 !important;
 }
 
