@@ -99,6 +99,36 @@ def _closest_approach(rel_x, rel_y, rel_vx, rel_vy, horizon):
     return math.hypot(rel_x + rel_vx * t, rel_y + rel_vy * t)
 
 
+def _ramp_fraction(t, tau):
+    """How much of a change of direction has actually happened by time t.
+
+    A brawler is not a cursor. Told to go left it does not go left: it stops
+    going wherever it was going, turns, and works up to speed, and for the
+    first fraction of a second it is still mostly travelling the old way. The
+    solver used to model the escape as full speed in the new direction from the
+    instant it was chosen, which is why it could pick a mathematically clean
+    direction nine times out of ten and still be hit - the geometry was solved
+    for a brawler that does not exist.
+
+    Velocity is taken to approach the commanded one exponentially with time
+    constant `tau`. What matters for whether a shot connects is not the speed at
+    the moment of impact but the DISPLACEMENT before it, so this returns the
+    mean of that approach over [0, t] rather than its endpoint:
+
+        1 - (tau / t) * (1 - exp(-t / tau))
+
+    0 as t -> 0 (nothing has happened yet, the brawler is still doing what it
+    was doing) and 1 for t >> tau (the old instant-full-speed model, which is
+    correct once there has been time for it to be).
+    """
+    if tau <= 0.0 or t is None:
+        return 1.0
+    if t <= 0.0:
+        return 0.0
+    ratio = tau / t
+    return max(0.0, min(1.0, 1.0 - ratio * (1.0 - math.exp(-t / tau))))
+
+
 class DodgeSolver:
     def __init__(self, config):
         self.config = config
@@ -209,9 +239,27 @@ class DodgeSolver:
         lean_clearance = None
         breakdown = [] if collect_analysis else None
 
+        # What the brawler is doing right now, which is where any escape has to
+        # start from. Unknown means "from a standstill", which is still nearer
+        # the truth than "already at full speed the other way".
+        current_vx, current_vy = 0.0, 0.0
+        if motion is not None:
+            measured = getattr(motion, "velocity", None)
+            if measured:
+                current_vx, current_vy = float(measured[0]), float(measured[1])
+
+        # One ramp figure per threat, not per direction: it depends only on how
+        # long there is before that shot arrives.
+        ramp = {}
+        for threat in threats:
+            ramp[id(threat)] = _ramp_fraction(
+                threat.time_to_impact if threat.time_to_impact is not None
+                else config.horizon,
+                config.speed_ramp_time)
+
         for direction in self._directions:
-            move_vx = direction[0] * speed
-            move_vy = direction[1] * speed
+            target_vx = direction[0] * speed
+            target_vy = direction[1] * speed
             hit_wall = False
             hit_edge = False
             poisoned = False
@@ -226,6 +274,13 @@ class DodgeSolver:
                 total_radius = radius + projectile.radius
                 rel_x = projectile.x - player_center[0]
                 rel_y = projectile.y - player_center[1]
+                # The average velocity the brawler will actually have managed by
+                # the time this particular shot arrives - not the one it was
+                # told to have. Against a shot 150 ms out that is barely any of
+                # it; against one a second away it is all of it.
+                blend = ramp[id(threat)]
+                move_vx = current_vx + (target_vx - current_vx) * blend
+                move_vy = current_vy + (target_vy - current_vy) * blend
                 rel_vx = projectile.vx - move_vx
                 rel_vy = projectile.vy - move_vy
                 t = _impact_time(rel_x, rel_y, rel_vx, rel_vy, total_radius, config.horizon)
@@ -345,9 +400,23 @@ class DodgeSolver:
             #
             # So: take whichever free direction the shot passes furthest from,
             # but only if it is a real improvement over doing nothing.
+            # The floor scales with what the brawler can actually manage in
+            # the time available. lean_min_gain was calibrated when an
+            # escape was modelled as full speed from the first instant: at
+            # 330 px/s a 0.16 s window was 53 px of movement, so asking for
+            # 4 px of extra clearance filtered out only noise. Measured
+            # honestly that window is nearer 21 px, and the same 4 px turns
+            # into a fifth of everything achievable - which is how a fixed
+            # floor came to reject the lean entirely and go back to standing
+            # still through the shot. Held against the movement that exists
+            # rather than the movement that does not, it filters what it was
+            # written to filter. At speed_ramp_time = 0 this is exactly the
+            # old test.
+            min_gain = config.lean_min_gain * _ramp_fraction(
+                soonest, config.speed_ramp_time)
             if (config.near_miss_weight > 0 and lean_vector is not None
                     and stay_clearance is not None and lean_clearance is not None
-                    and lean_clearance > stay_clearance + config.lean_min_gain):
+                    and lean_clearance > stay_clearance + min_gain):
                 self._escape_vector = lean_vector
                 self._escape_ids = {t.projectile.id for t in incoming}
                 self._escape_expires = now + config.horizon + config.escape_hold_extra

@@ -69,6 +69,7 @@ class MotionMonitor:
         self._stuck_since = None
         self._drift = (0.0, 0.0)
         self._efficiency = 1.0
+        self._velocity = (0.0, 0.0)
         self._boundary = (0, 0)     # sign per axis: +1 = edge to the right/down
         self._boundary_frames = 0
         self._odometer = (0.0, 0.0)
@@ -97,6 +98,17 @@ class MotionMonitor:
         if self._stuck_since is None:
             return 0.0
         return time.time() - self._stuck_since
+
+    @property
+    def velocity(self):
+        """How fast the brawler is ACTUALLY travelling, and which way.
+
+        Measured off the camera, in full-frame px/s, and (0, 0) until the bot
+        has moved. The solver needs it because a brawler is not a cursor: an
+        escape to the left, chosen while walking right, spends its first
+        moments undoing the walk rather than clearing the shot.
+        """
+        return self._velocity
 
     @property
     def efficiency(self):
@@ -164,6 +176,7 @@ class MotionMonitor:
         self._stuck_since = None
         self._drift = (0.0, 0.0)
         self._efficiency = 1.0
+        self._velocity = (0.0, 0.0)
         self._boundary = (0, 0)
         self._boundary_frames = 0
         self._odometer = (0.0, 0.0)
@@ -191,10 +204,14 @@ class MotionMonitor:
 
         self._blocked = [b for b in self._blocked if now - b[2] < DIRECTION_TTL]
 
+        # No stick, no push: whatever the brawler was doing it is coasting
+        # to a stop, and reporting the last measured velocity would have
+        # the solver believe it is still travelling.
         if not joystick_vector or dt <= 0 or expected_speed <= 0:
             self._stalled_frames = 0
             self._stuck_since = None
             self._efficiency = 1.0
+            self._velocity = (0.0, 0.0)
             return
 
         commanded = math.hypot(joystick_vector[0], joystick_vector[1])
@@ -202,6 +219,7 @@ class MotionMonitor:
             self._stalled_frames = 0
             self._stuck_since = None
             self._efficiency = 1.0
+            self._velocity = (0.0, 0.0)
             return
 
         push_x = joystick_vector[0] / commanded
@@ -213,6 +231,7 @@ class MotionMonitor:
         travelled_y = -camera_shift[1]
         travelled = math.hypot(travelled_x, travelled_y)
         speed = travelled / dt
+        self._velocity = (travelled_x / dt, travelled_y / dt)
         self._efficiency = min(speed / expected_speed, 1.5)
 
         if self._efficiency < self.stuck_ratio:

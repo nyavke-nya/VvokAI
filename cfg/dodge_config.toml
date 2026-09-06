@@ -375,6 +375,26 @@ wall_penalty = 2.5
 # behind it. If the bot now swerves too early, lower toward 0.08.
 reaction_latency = 0.12
 
+# How long the brawler takes to actually be going the way it was told to, in
+# seconds - a time constant, not a hard delay.
+#
+# The solver used to model an escape as full speed in the new direction from
+# the instant it was chosen. A brawler does not do that. Told to go left while
+# walking right it first stops going right, turns, and works up to speed, and
+# for the first fraction of a second it is still mostly travelling the OLD way.
+# That is why the bot could pick a mathematically clean direction 89.9% of the
+# time on a real session and still be hit: the geometry was right for a
+# brawler that does not exist.
+#
+# What it changes is which escapes are believed. Against a shot a second out
+# the whole move happens and nothing is different. Against one 150 ms out
+# almost none of it does, so the solver stops crediting itself with a clearance
+# it will not have, and falls back to the near miss (see near_miss_weight)
+# instead of committing to an escape that was never going to finish.
+#
+# Set to 0 to go back exactly to the old instant-full-speed model.
+speed_ramp_time = 0.12
+
 # Safety margin on how long an escape is held after the shot that triggered it
 # should have arrived, in seconds. The escape itself is released as soon as the
 # tracker stops seeing the shot; this is only a backstop so a lost track cannot
