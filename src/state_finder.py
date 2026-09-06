@@ -1,6 +1,7 @@
 import os
 import sys
 import cv2
+import numpy as np
 import time
 sys.path.append(os.path.abspath('/'))
 from utils import load_toml_as_dict, config_bool
@@ -175,7 +176,7 @@ def get_in_game_state(image):
         # Placing it here is what makes it safe: it can only ever claim a frame
         # that is otherwise about to be called a match on no evidence at all.
         if should_print_debug_info: print("Checking for a dismissable card...")
-        if find_continue_button(image) is not None:
+        if find_dismiss_button(image) is not None:
             return "continue_card"
 
         return "match"
@@ -463,6 +464,110 @@ def find_continue_button(image):
     if best is None:
         return None
     return best[1], best[2]
+
+
+# Brawl Stars paints the button that gets you off a screen in one colour, and
+# it is not a colour anything else on screen is: measured off the middle of
+# prestige_continue.png, which is a crop of that very button, it is BGR
+# (7, 219, 2) - hue 61 of 179, saturation 253 of 255. Fully saturated pure
+# green. Grass, health bars and the gadget ring are all duller, darker or both.
+PRIMARY_GREEN_HSV_LOW = (48, 170, 140)
+PRIMARY_GREEN_HSV_HIGH = (74, 255, 255)
+
+# The button's own size at 1920x1080, from the region prestige_continue sits in.
+# Used as the yardstick for "big enough to be a button" rather than a bare pixel
+# count, so it rescales with the frame like everything else here.
+BUTTON_REFERENCE_AREA = 345 * 95
+
+# A button is at least this much of that. NEXT is a shorter word than CONTINUE
+# and its button is narrower, so this has room below 1.0 - but a health bar is
+# ~2% of it and the gadget ring nowhere near the shape, so there is no need to
+# go low.
+BUTTON_MIN_AREA_SHARE = 0.35
+
+# Wider than tall, and not a bar. A circle (the gadget) is ~1.0 and is rejected
+# from below; a health bar is 8:1 or more and is rejected from above.
+BUTTON_MIN_ASPECT = 1.6
+BUTTON_MAX_ASPECT = 6.0
+
+# A rounded rectangle fills most of its bounding box. A ragged patch of foliage
+# does not.
+BUTTON_MIN_FILL = 0.62
+
+# The label. A button of this game always has one, in heavy white capitals, and
+# it covers a good part of the face - so a plain green slab with nothing written
+# on it is not a button.
+BUTTON_LABEL_MIN_SHARE = 0.04
+BUTTON_LABEL_MAX_SHARE = 0.55
+
+
+def find_primary_button(image):
+    """The centre of the game's green go-on button in the bottom band, or None.
+
+    find_continue_button above reads the WORD, which only works for the word it
+    has a picture of. The prestige screen says NEXT, the skin card says EQUIP
+    NOW, and the next screen will say something else again - so a bot that can
+    only read CONTINUE stands in front of them for ten minutes.
+
+    This reads the button instead of the label: the game's one primary-action
+    colour, in a patch the size and shape of a button, with white lettering on
+    it. That does not care what the lettering says.
+    """
+    height, width = image.shape[:2]
+    x, y, w, h = CONTINUE_BAND
+    width_ratio, height_ratio = width / orig_screen_width, height / orig_screen_height
+    band_x, band_y = int(x * width_ratio), int(y * height_ratio)
+    band_w, band_h = int(w * width_ratio), int(h * height_ratio)
+    crop = image[band_y:band_y + band_h, band_x:band_x + band_w]
+    if crop.size == 0 or crop.ndim != 3:
+        return None
+
+    # Frames arrive RGB; cvtColor wants to be told which.
+    hsv = cv2.cvtColor(crop, cv2.COLOR_RGB2HSV)
+    mask = cv2.inRange(hsv, np.array(PRIMARY_GREEN_HSV_LOW, dtype=np.uint8),
+                       np.array(PRIMARY_GREEN_HSV_HIGH, dtype=np.uint8))
+    if not mask.any():
+        return None
+    # Close the lettering over, so the label does not split the face into
+    # several pieces none of which is button-sized on its own.
+    kernel = np.ones((5, 5), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+    scale = (width / orig_screen_width) * (height / orig_screen_height)
+    min_area = BUTTON_REFERENCE_AREA * scale * BUTTON_MIN_AREA_SHARE
+
+    count, _labels, stats, centroids = cv2.connectedComponentsWithStats(mask, 8)
+    best = None
+    for index in range(1, count):
+        left, top, box_w, box_h, area = stats[index]
+        if area < min_area or box_h <= 0:
+            continue
+        aspect = box_w / float(box_h)
+        if not BUTTON_MIN_ASPECT <= aspect <= BUTTON_MAX_ASPECT:
+            continue
+        if area / float(box_w * box_h) < BUTTON_MIN_FILL:
+            continue
+
+        face = hsv[top:top + box_h, left:left + box_w]
+        # The lettering: bright and colourless, against a face that is neither.
+        label = ((face[..., 1] < 70) & (face[..., 2] > 185)).mean()
+        if not BUTTON_LABEL_MIN_SHARE <= label <= BUTTON_LABEL_MAX_SHARE:
+            continue
+
+        if best is None or area > best[0]:
+            best = (area, band_x + centroids[index][0], band_y + centroids[index][1])
+
+    if best is None:
+        return None
+    return int(best[1]), int(best[2])
+
+
+def find_dismiss_button(image):
+    """Where to tap to get off a full-screen card: the word, or the button."""
+    found = find_continue_button(image)
+    if found is not None:
+        return found
+    return find_primary_button(image)
 
 
 def is_at_buffie_machine(image):

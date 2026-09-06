@@ -3,7 +3,7 @@ import threading
 import time
 import cv2
 
-from state_finder import find_continue_button, get_state
+from state_finder import find_dismiss_button, get_state
 from trophy_observer import TrophyObserver, MatchResult
 from utils import (clean_player_tag, find_template_center, load_toml_as_dict,
                    notify_user, save_brawler_data)
@@ -629,14 +629,16 @@ class StageManager:
         This used to press a fixed [700, 1000], which is where the prestige
         milestone screen draws its button and nowhere else. The new-skin card
         puts CONTINUE right of centre beside EQUIP NOW, so the fixed tap landed
-        on empty background and the card stayed up.
+        on empty background and the card stayed up. The total-prestige screen
+        moves it again AND calls it NEXT, which is why the button is found by
+        what it looks like rather than by what it says.
 
         The fixed coordinate is still the fallback: do_state gets no frame, so
         this takes its own, and by then the card may already be gone - in which
         case a tap at the old spot is the same harmless nothing it was before.
         """
         screenshot = self.window_controller.screenshot()
-        spot = find_continue_button(screenshot) if screenshot is not None else None
+        spot = find_dismiss_button(screenshot) if screenshot is not None else None
         if spot:
             self.window_controller.click(*spot)
             return

@@ -132,6 +132,101 @@ for _shot in sorted(glob.glob("debug_frames/*.png")):
                  None)
 
 
+report.section("and a button that does not say CONTINUE is still a button")
+# The next report was the TOTAL PRESTIGE screen, whose button says NEXT. Reading
+# the word only ever works for the word we have a picture of - the skin card
+# says EQUIP NOW, this one says NEXT, and the one after that will say something
+# else again. So the button is also found by what it LOOKS like: the game's one
+# primary-action colour, in a patch the size and shape of a button, with white
+# lettering on it.
+GREEN = (2, 219, 7)  # frames arrive RGB; the template's own BGR is (7, 219, 2)
+
+
+def screen(width=1920, height=1080):
+    frame = np.zeros((height, width, 3), np.uint8)
+    frame[:] = (30, 20, 60)
+    return frame
+
+
+def green_button(frame, centre, size, text="NEXT", colour=GREEN):
+    cx, cy = centre
+    w, h = size
+    cv2.rectangle(frame, (cx - w // 2, cy - h // 2), (cx + w // 2, cy + h // 2),
+                  colour, -1)
+    cv2.putText(frame, text, (cx - w // 3, cy + h // 4), cv2.FONT_HERSHEY_DUPLEX,
+                h / 45.0, (255, 255, 255), max(2, h // 14))
+    return frame
+
+
+_next = sf.find_dismiss_button(green_button(screen(), (960, 940), (300, 96), "NEXT"))
+report.check("the prestige screen's NEXT is found", _next is not None, True)
+if _next:
+    report.check("and tapped where it is",
+                 abs(_next[0] - 960) < 25 and abs(_next[1] - 940) < 25, True)
+
+_equip = sf.find_dismiss_button(
+    green_button(screen(), (1420, 930), (380, 92), "EQUIP NOW"))
+report.check("so is a longer label, off to one side", _equip is not None, True)
+
+# The whole point is that it does not read the label, so the label may be
+# anything at all.
+for _word in ("NEXT", "OK", "CLAIM", "PLAY", "ok"):
+    report.check(f"a button labelled {_word!r}",
+                 sf.find_dismiss_button(
+                     green_button(screen(), (960, 940), (300, 96), _word)) is not None,
+                 True)
+
+report.section("without turning every green thing into a button")
+report.check("an empty screen is still empty",
+             sf.find_dismiss_button(screen()), None)
+
+# The gadget ring is the same green and sits in the same band. It is a CIRCLE.
+_gadget = screen()
+cv2.circle(_gadget, (1640, 990), 58, GREEN, -1)
+report.check("the gadget ring is not a button", sf.find_dismiss_button(_gadget), None)
+
+# Health bars are that green too, and wide - but nothing like button-sized.
+_bars = screen()
+for _x, _y in ((600, 900), (900, 950), (1300, 1010)):
+    cv2.rectangle(_bars, (_x, _y), (_x + 160, _y + 16), GREEN, -1)
+report.check("nor are health bars", sf.find_dismiss_button(_bars), None)
+
+# Grass. Big, green, and the reason the colour gate is measured off the button
+# itself rather than guessed: the game's button green is fully saturated and
+# foliage is not.
+_grass = screen()
+_rng = np.random.default_rng(2)
+_grass[860:1080, 140:1780] = (
+    _rng.integers(0, 40, (220, 1640, 3), dtype=np.uint8)
+    + np.array([40, 110, 45], np.uint8))
+report.check("nor a field of grass", sf.find_dismiss_button(_grass), None)
+
+# A slab of the right colour and shape with nothing written on it.
+_blank = screen()
+cv2.rectangle(_blank, (810, 894), (1110, 986), GREEN, -1)
+report.check("nor a green slab with no label on it",
+             sf.find_dismiss_button(_blank), None)
+
+for _shot in sorted(glob.glob("debug_frames/*.png")):
+    _frame = cv2.imread(_shot)
+    if _frame is None:
+        continue
+    report.check(f"and a real game screen is still not one "
+                 f"({os.path.basename(_shot)})",
+                 sf.find_dismiss_button(cv2.cvtColor(_frame, cv2.COLOR_BGR2RGB)),
+                 None)
+
+report.section("at whatever size the emulator draws it")
+for _w, _h in ((1600, 900), (1280, 720), (960, 540)):
+    _sx, _sy = _w / 1920.0, _h / 1080.0
+    _want = (int(960 * _sx), int(940 * _sy))
+    _got = sf.find_dismiss_button(green_button(
+        screen(_w, _h), _want, (max(8, int(300 * _sx)), max(8, int(96 * _sy)))))
+    report.check(f"{_w}x{_h}",
+                 bool(_got and abs(_got[0] - _want[0]) < 25
+                      and abs(_got[1] - _want[1]) < 25), True)
+
+
 report.section("the state cascade uses it as a last resort, never a first")
 _stubbed = ("is_in_end_of_a_match", "is_in_lobby", "is_in_match_making",
             "is_in_shop", "is_in_offer_popup", "is_in_brawl_pass",
@@ -139,21 +234,21 @@ _stubbed = ("is_in_end_of_a_match", "is_in_lobby", "is_in_match_making",
             "is_at_buffie_machine", "is_in_daily_wins", "is_in_star_drop",
             "is_in_trophy_reward", "is_in_brawler_selection")
 _saved = {name: getattr(sf, name) for name in _stubbed}
-_saved_find = sf.find_continue_button
+_saved_find = sf.find_dismiss_button
 try:
     for name in _stubbed:
         setattr(sf, name, lambda *a, **k: False)
 
-    sf.find_continue_button = lambda image: (1110, 930)
+    sf.find_dismiss_button = lambda image: (1110, 930)
     report.check("an unrecognised card with a CONTINUE is a card, not a match",
                  sf.get_in_game_state(None), "continue_card")
 
-    sf.find_continue_button = lambda image: None
+    sf.find_dismiss_button = lambda image: None
     report.check("and one without stays a match, as before",
                  sf.get_in_game_state(None), "match")
 
     # The point of putting it last: every screen with a name of its own wins.
-    sf.find_continue_button = lambda image: (1110, 930)
+    sf.find_dismiss_button = lambda image: (1110, 930)
     sf.is_in_trophy_reward = lambda image: True
     report.check("a trophy reward is still a trophy reward",
                  sf.get_in_game_state(None), "trophy_reward")
@@ -164,7 +259,7 @@ try:
 finally:
     for name, value in _saved.items():
         setattr(sf, name, value)
-    sf.find_continue_button = _saved_find
+    sf.find_dismiss_button = _saved_find
 
 
 report.section("the card is tapped where it actually is")
@@ -175,6 +270,8 @@ report.check("and the prestige screen goes through the same handler",
              "'prestige_milestone': self.tap_continue" in _stage, True)
 report.check("it clicks the located button",
              "self.window_controller.click(*spot)" in _stage, True)
+report.check("and finds it by the button, not only by the word",
+             "find_dismiss_button(screenshot)" in _stage, True)
 report.check("and still falls back to the configured coordinate",
              'self.window_controller.press("continue_or_equip")' in _stage, True)
 
