@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import math
+import threading
+
 import csv
 from datetime import datetime
 import json
@@ -97,9 +100,11 @@ logger = logging.getLogger(__name__)
 
 
 SECRET_PLACEHOLDER = "•" * 12
+SECRET_FIELDS = {"brawl_api_token", "brawl_api_password", "telegram_token", "discord_bot_token", "webhook_url"}
 
 
 class WebDataService:
+    _history_lock = threading.Lock()
     PLAY_ORDER_VALUES = {"in_order", "lowest_to_highest", "highest_to_lowest"}
 
     GENERAL_FIELDS: dict[str, tuple[str, Any]] = {
@@ -201,7 +206,7 @@ class WebDataService:
             return self._bool_from_string(value)
         if value_type == "auto_int":
             value_str = str(value).strip()
-            return value_str if value_str.lower() == "auto" else int(value_str)
+            return "auto" if value_str.lower() == "auto" else int(value_str)
         if value_type == "play_order":
             value_str = str(value or "").strip().lower()
             return value_str if value_str in self.PLAY_ORDER_VALUES else "in_order"
@@ -225,6 +230,15 @@ class WebDataService:
                 continue
             value_type, _default = schema[key]
             parsed = self._deserialize(value_type, value)
+            if value_type in {"int", "float", "auto_int"} and parsed != "auto":
+                if not math.isfinite(parsed) or parsed < 0:
+                    raise ValueError(f"{key} must be a finite, non-negative number.")
+                if key in {"max_ips", "used_threads", "perceived_tile_size", "ocr_scale_down_factor", "trophies_multiplier", "debug_view_fps"} and parsed <= 0:
+                    raise ValueError(f"{key} must be greater than zero.")
+                if key in {"wall_detection_confidence", "entity_detection_confidence", "ocr_scale_down_factor"} and parsed > 1:
+                    raise ValueError(f"{key} must not exceed 1.")
+                if key == "emulator_port" and not 1 <= parsed <= 65535:
+                    raise ValueError("emulator_port must be between 1 and 65535.")
             config[key] = self._serialize(value_type, parsed)
         return config
 
@@ -658,15 +672,17 @@ class WebDataService:
         playstyles = []
         for item in get_playstyles_list():
             metadata = item.get("metadata") or {}
+            if not isinstance(metadata, dict):
+                metadata = {}
             filename = item.get("filename")
             playstyles.append({
                 "filename": filename,
-                "name": metadata.get("name") or filename.rsplit(".", 1)[0],
+                "name": str(metadata.get("name") or filename.rsplit(".", 1)[0]),
                 "description": metadata.get("description") or "No description provided.",
                 "author": metadata.get("author") or "Unknown",
                 "date": metadata.get("date") or "",
-                "brawlers": metadata.get("brawlers") or [],
-                "gamemodes": metadata.get("gamemodes") or [],
+                "brawlers": [v for v in metadata.get("brawlers", []) if isinstance(v, str)] if isinstance(metadata.get("brawlers"), list) else [],
+                "gamemodes": [v for v in metadata.get("gamemodes", []) if isinstance(v, str)] if isinstance(metadata.get("gamemodes"), list) else [],
                 "is_active": _same_playstyle(filename, current_playstyle),
             })
 
@@ -720,9 +736,8 @@ class WebDataService:
         upload_dir.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(dir=upload_dir, prefix=".__upload__", delete=False) as upload:
             temp_path = Path(upload.name)
-        file_storage.save(temp_path)
-
         try:
+            file_storage.save(temp_path)
             with open(temp_path, "r", encoding="utf-8") as handle:
                 metadata_line = handle.readline().strip()
                 if not metadata_line:
@@ -767,8 +782,9 @@ class WebDataService:
             # The password is never sent back to the browser. A placeholder
             # goes instead, so the field can still show that one is set, and
             # update_settings treats that exact string as "leave it alone".
-            if payload.get("brawl_api_password"):
-                payload["brawl_api_password"] = SECRET_PLACEHOLDER
+            for key in SECRET_FIELDS:
+                if payload.get(key):
+                    payload[key] = SECRET_PLACEHOLDER
             return payload
         if section == "bot":
             payload = self._select_fields(self._load_config("cfg/bot_config.toml"), self.BOT_FIELDS)
@@ -780,12 +796,17 @@ class WebDataService:
             return self._select_fields(self._normalize_debug_settings(self._load_config("cfg/debug_settings.toml")), self.DEBUG_FIELDS)
         if section == "webhook":
             config = self._load_config("cfg/webhook_config.toml")
-            return self._select_fields(config, self.WEBHOOK_FIELDS)
+            payload = self._select_fields(config, self.WEBHOOK_FIELDS)
+            for key in SECRET_FIELDS:
+                if payload.get(key):
+                    payload[key] = SECRET_PLACEHOLDER
+            return payload
         raise KeyError(f"Unknown settings section: {section}")
 
     def update_settings(self, section: str, payload: dict[str, Any]) -> dict[str, Any]:
         section = section.lower()
-        payload = payload or {}
+        payload = {key: value for key, value in (payload or {}).items()
+                   if not (key in SECRET_FIELDS and value == SECRET_PLACEHOLDER)}
         if section == "general":
             config = self._load_config("cfg/general_config.toml")
             payload = dict(payload)
@@ -931,6 +952,28 @@ class WebDataService:
         return bool(player_info.get("name") and isinstance(player_info.get("brawlers"), list) and player_info.get("brawlers"))
 
     def get_match_history_payload(self) -> dict[str, Any]:
+        # CSV aggregation dominates idle panel CPU on older machines. Keep one
+        # snapshot until the file is replaced, edited, created or removed.
+        path = resolve_project_path("cfg", "match_history.csv")
+        with self._history_lock:
+            def signature():
+                try:
+                    st = path.stat()
+                    return (str(path), st.st_mtime_ns, st.st_ctime_ns, st.st_size, st.st_ino)
+                except FileNotFoundError:
+                    return (str(path), None)
+            key = signature()
+            cached = getattr(self, "_history_cache", None)
+            if cached is not None and cached[0] == key:
+                return cached[1]
+            result = self._read_match_history_payload()
+            # A writer raced the read: serve this snapshot once, never cache it
+            # under the signature of a newer file we have not actually read.
+            if signature() == key:
+                self._history_cache = (key, result)
+            return result
+
+    def _read_match_history_payload(self) -> dict[str, Any]:
         csv_path = resolve_project_path("cfg", "match_history.csv")
         if not csv_path.exists():
             empty = self._build_match_history_response([])

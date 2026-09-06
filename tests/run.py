@@ -13,16 +13,18 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-FILES = ["test_remote.py", "test_tracker.py", "test_health.py", "test_solver.py", "test_hazards.py", "test_aim.py", "test_playstyle.py", "test_api.py", "test_updater.py", "test_resync.py", "test_profile.py", "test_stats_agree.py", "test_robustness.py", "test_team_invite.py", "test_i18n.py", "test_trophies.py", "test_layout.py", "test_watchdog.py", "test_telemetry.py", "test_live_view.py", "test_dataset.py", "test_player_identity.py"]
+FILES = ["test_panel_performance.py", "test_audit_fixes.py", "test_remote.py", "test_tracker.py", "test_health.py", "test_solver.py", "test_hazards.py", "test_aim.py", "test_playstyle.py", "test_api.py", "test_updater.py", "test_resync.py", "test_profile.py", "test_stats_agree.py", "test_robustness.py", "test_team_invite.py", "test_i18n.py", "test_trophies.py", "test_layout.py", "test_watchdog.py", "test_telemetry.py", "test_live_view.py", "test_dataset.py", "test_player_identity.py"]
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
     failures = []
     for name in FILES:
         result = subprocess.run(
             [sys.executable, os.path.join(HERE, name)],
             cwd=os.path.dirname(HERE),
-            env={**os.environ, "PYTHONPATH": HERE + os.pathsep + os.environ.get("PYTHONPATH", "")},
+            env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONPATH": HERE + os.pathsep + os.environ.get("PYTHONPATH", "")},
             capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
         print(result.stdout, end="")

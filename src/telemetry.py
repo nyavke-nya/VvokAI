@@ -255,21 +255,42 @@ def _mark_sent():
         pass
 
 
+_send_lock = threading.Lock()
+_in_flight = False
+_retry_after = 0.0
+RETRY_INTERVAL = 300
+
+
 def send(profile=None, provider="", version="", ips=None, force=False,
          build=""):
-    """Report, on a thread, if switched on and not too recent. Never raises."""
-    if not enabled() or (not force and not _due()):
+    """Report in one background worker; profile may be a lazy callable."""
+    global _in_flight, _retry_after
+    if not enabled():
         return False
+    with _send_lock:
+        if _in_flight or (not force and (time.monotonic() < _retry_after or not _due())):
+            return False
+        _in_flight = True
 
     def work():
+        global _in_flight, _retry_after
         try:
-            report = collect(profile, provider, version, ips, build)
+            value = profile() if callable(profile) else profile
+            report = collect(value, provider, version, ips, build)
             if _post(report):
                 _mark_sent()
         except Exception:
-            # Nothing here is worth a line in somebody's log, let alone a
-            # crash. If it did not go, it goes next time or it does not.
             pass
+        finally:
+            with _send_lock:
+                _retry_after = time.monotonic() + RETRY_INTERVAL
+                _in_flight = False
 
-    threading.Thread(target=work, daemon=True, name="vvok-stats").start()
+    try:
+        threading.Thread(target=work, daemon=True, name="vvok-stats").start()
+    except Exception:
+        with _send_lock:
+            _in_flight = False
+            _retry_after = time.monotonic() + RETRY_INTERVAL
+        return False
     return True

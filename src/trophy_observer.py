@@ -1,7 +1,7 @@
 import csv
 import os
 import requests
-from utils import load_toml_as_dict, save_dict_as_toml, api_base_url, hash_playstyle, VVOK_VERSION, resolve_project_path
+from utils import atomic_text_writer, load_toml_as_dict, save_dict_as_toml, api_base_url, hash_playstyle, VVOK_VERSION, resolve_project_path
 from enum import Enum
 from dataclasses import dataclass
 from typing import Optional
@@ -120,7 +120,7 @@ class TrophyObserver:
 
     def save_history(self):
         try:
-            with open(self.history_file, "w", encoding="utf-8", newline="") as handle:
+            with atomic_text_writer(self.history_file, newline="") as handle:
                 writer = csv.DictWriter(handle, fieldnames=HISTORY_COLUMNS)
                 writer.writeheader()
                 for row in self.match_history:

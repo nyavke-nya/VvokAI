@@ -147,7 +147,7 @@ _main_src = open("main.py", encoding="utf-8").read()
 report.check("the loop feeds the rate in as it measures it",
              "note_ips_for_stats" in _main_src, True)
 report.check("and reports from a bot that is running, not only at startup",
-             "send(profile=self.stats_profile()" in _main_src, True)
+             "send(profile=self.stats_profile)" in _main_src, True)
 
 telemetry._measured["ips"] = []
 telemetry._measured["provider"] = ""

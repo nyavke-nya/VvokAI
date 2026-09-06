@@ -2009,9 +2009,7 @@ body:has(#view-dashboard.active) .queue-dock { display: none; }
    one. This catches the handful of rules that hardcode a pixel value instead
    of using a token. Written with two class selectors so it outranks them -
    a bare `*` has zero specificity and loses to every one. */
-.app-layout [class],
-.app-layout [class]::before,
-.app-layout [class]::after { border-radius: 0; }
+/* Component radii are owned by the active theme. */
 
 /* Photographs of brawlers. Just enough to stop the corner pixels reading as
    a hard artefact against the row. */

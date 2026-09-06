@@ -10,9 +10,10 @@
          falls back to Bahnschrift, which ships with Windows, so the interface
          keeps its shape either way. The mono stack is entirely local. -->
     <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="icon" type="image/png" href="/api/assets/support/logo.png">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath fill=%27white%27 d=%27M0 0h32v32H0z%27/%3E%3Cpath fill=%27black%27 d=%27M5 6h6l5 16 5-16h6L19 27h-6z%27/%3E%3C/svg%3E">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/vvok.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/mono.css') }}">
 </head>
 <body>
     <div id="vfx-bg"></div>
@@ -27,7 +28,7 @@
                 </div>
             </div>
 
-            <nav class="nav-menu"></nav>
+            <nav class="nav-menu" aria-label="Navigation"></nav>
 
             <div class="sidebar-footer">
                 <div class="system-status">
@@ -112,12 +113,10 @@
     </div>
 
     <div id="tooltip" class="tooltip hidden"></div>
-    <div id="toast" class="toast hidden"></div>
+    <div id="toast" role="status" aria-live="polite" class="toast hidden"></div>
 
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
-    <!-- Cursor-tracked lighting, parallax and counters. Loaded after app.js
-         and watches for its re-renders, so it needs no hooks inside it. -->
-    <script src="{{ url_for('static', filename='js/vvok-fx.js') }}"></script>
+
     <!-- Russian for the interface chrome. A pass over the finished DOM rather
          than a string table in every template, so an untranslated string shows
          in English instead of showing as a missing key. -->

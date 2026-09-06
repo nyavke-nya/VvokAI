@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from urllib.parse import urlsplit
 
 from flask import (Flask, Response, jsonify, render_template, request,
                    send_file)
@@ -124,6 +125,17 @@ def create_app(vvok_main, start_discord_bot=False):
         template_folder=str(resolve_project_path("assets", "templates")),
         static_folder=str(resolve_project_path("assets", "static")),
     )
+
+    @app.before_request
+    def check_browser_origin():
+        # Local scripts omit Origin. Browsers must only command their own panel.
+        origin = request.headers.get("Origin")
+        if origin:
+            parsed = urlsplit(origin)
+            if parsed.scheme not in {"http", "https"} or parsed.netloc.lower() != request.host.lower():
+                return jsonify({"ok": False, "message": "Foreign browser origin rejected."}), 403
+        if request.method not in {"GET", "HEAD", "OPTIONS"} and request.headers.get("Sec-Fetch-Site") == "cross-site":
+            return jsonify({"ok": False, "message": "Cross-site command rejected."}), 403
 
     runtime_manager = RuntimeManager(vvok_main)
     data_service = WebDataService(runtime_manager)

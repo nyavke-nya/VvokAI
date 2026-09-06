@@ -19,6 +19,7 @@ import cv2
 from packaging import version
 import traceback
 import tempfile
+from contextlib import contextmanager
 
 try:
     from early_access.early_access import get_brawler_stats, get_player_info
@@ -235,12 +236,29 @@ def count_mask_pixels(mask, x1, y1, x2, y2):
         return 0
     return cv2.countNonZero(mask[y1:y2, x1:x2])
 
+@contextmanager
+def atomic_text_writer(path, *, newline=None):
+    """Publish a complete file, preserving the last version on any failure."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as handle:
+            yield handle
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
 def save_brawler_data(data):
     """
     Save the given data to a json file. As a list of dictionaries.
     """
     queue_path = resolve_project_path("latest_brawler_data.json")
-    with open(queue_path, 'w', encoding='utf-8') as f:
+    with atomic_text_writer(queue_path) as f:
         json.dump(data, f, indent=4)
 
 

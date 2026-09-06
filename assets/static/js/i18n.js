@@ -30,6 +30,10 @@
     ]);
 
     const RU = {
+        "01 / SESSION": "01 / СЕССИЯ",
+        "Current brawler": "Текущий боец",
+        "Build your queue. Start your session.": "Соберите очередь и запустите сессию.",
+        "Session is running. Pause takes effect in the lobby.": "Сессия идёт. Пауза сработает в лобби.",
         // ---- navigation and chrome
         "Dashboard": "Главная", "Brawlers": "Бойцы", "Playstyles": "Стили игры",
         "History": "История", "Settings": "Настройки", "Library": "Библиотека",

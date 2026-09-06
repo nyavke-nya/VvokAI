@@ -197,7 +197,7 @@ function renderNav() {
     nav.innerHTML = Object.entries(NAV_ITEMS)
         .filter(([, item]) => !item.supervisorOnly || supervisor)
         .map(([view, item]) => `
-        <button class="nav-item ${view === state.currentView ? "active" : ""}" data-view="${view}">
+        <button class="nav-item ${view === state.currentView ? "active" : ""}" data-view="${view}" aria-current="${view === state.currentView ? "page" : "false"}">
             <span class="nav-icon">${iconMarkup(item.icon)}</span>
             <span>${escapeHtml(item.label)}</span>
         </button>
@@ -447,7 +447,13 @@ async function handleLogin(event) {
 }
 
 function setView(view) {
+    if (!NAV_ITEMS[view]) return;
+    if (view !== "dashboard" && liveViewShowing()) stopLiveView();
     state.currentView = view;
+    const renders = {dashboard:renderDashboard, queue:renderQueue, playstyles:renderPlaystyles,
+        history:renderHistory, profile:renderProfile, logs:renderLogs,
+        instances:renderInstances, settings:renderSettings};
+    renders[view]();
     renderNav();
 
     document.querySelectorAll(".view").forEach((section) => {
@@ -460,14 +466,6 @@ function setView(view) {
 
 function renderAll() {
     renderAlerts();
-    renderDashboard();
-    renderQueue();
-    renderPlaystyles();
-    renderHistory();
-    renderProfile();
-    renderLogs();
-    renderInstances();
-    renderSettings();
     setView(state.currentView);
 }
 
@@ -553,6 +551,8 @@ function renderDashboard() {
             ? "Pause requested. VvokAI will stop in the lobby."
             : runtime.state === "stopping"
                 ? "VvokAI is shutting down. This should only take a few seconds."
+                : runtime.state === "running"
+                    ? "Session is running. Pause takes effect in the lobby."
                 : isPaused
                     ? "VvokAI is paused in the lobby. Press Start to resume."
                     : canStart
@@ -564,12 +564,12 @@ function renderDashboard() {
                             : "Add at least one brawler to the queue before starting.";
 
     let runtimePanel = `
-        <button id="startRuntimeBtn" class="btn btn-primary btn-huge ${canStart ? "" : "is-disabled"}">
+        <button id="startRuntimeBtn" class="btn btn-primary btn-huge ${canStart ? "" : "is-disabled"}" ${canStart ? "" : "disabled"}>
             ${iconMarkup("play")}
             <span>Start</span>
         </button>
         <p class="runtime-note ${runtime.state === "error" ? "runtime-error" : ""}">${escapeHtml(statusCopy)}</p>
-        ${!queue.length ? '<button id="goToBrawlersBtn" class="btn" style="margin-top: 12px;">Go to Brawlers</button>' : ''}
+        ${!queue.length ? '<button data-open-brawlers class="btn" style="margin-top: 12px;">Go to Brawlers</button>' : ''}
         ${renderRuntimeSchedule()}
     `;
 
@@ -596,6 +596,8 @@ function renderDashboard() {
             <div class="measure-value${live ? " is-live" : ""}">${escapeHtml(String(value))}</div>
         </div>`;
 
+    const current = queue[0];
+
     // The layout is the design: a command band across the top, a strip of
     // measurements under it, then the two things you actually read - what it
     // is playing, and what is left to play. No cards, no boxes; the rules
@@ -604,8 +606,13 @@ function renderDashboard() {
         <div class="sheet">
             <div class="command-band">
                 <div class="command-state">
+                    <div class="session-kicker"><span>01 / SESSION</span><span class="studio-edition">PLAY. REPEAT.</span></div>
+                    ${current ? `<div class="session-art" aria-hidden="true"><span class="art-orbit"></span><img src="${escapeHtml(current.icon_url)}" alt=""></div>` : ""}
                     <div class="command-title">${escapeHtml(runtimeLabel(runtime))}</div>
                     <div class="command-sub">${queue.length} ${queue.length === 1 ? "brawler" : "brawlers"} queued${runtime.activity ? ` <span class="doing">${escapeHtml(runtime.activity)}</span>` : ""}</div>
+                </div>
+                <div class="session-current">
+                    ${current ? `<img src="${escapeHtml(current.icon_url)}" alt=""><div><span class="eyebrow">Current brawler</span><strong>${escapeHtml(current.brawler)}</strong></div><div class="session-target"><strong>${escapeHtml(String(current.type === "wins" ? current.wins || 0 : current.trophies || 0))}</strong><span>/ ${escapeHtml(String(current.push_until || 0))} ${current.type === "wins" ? "wins" : "trophies"}</span></div>` : `<p class="session-empty">Build your queue. Start your session.</p>`}
                 </div>
                 <div class="command-actions">${runtimePanel}</div>
             </div>
@@ -616,7 +623,7 @@ function renderDashboard() {
                     <button id="liveToggleBtn" class="btn btn-quiet">Watch</button>
                 </div>
                 <div class="live-body" id="liveBody">
-                    <p class="live-hint">See what the bot sees, with everything it
+                    <div class="live-standby" aria-hidden="true"><span></span><span></span><svg viewBox="0 0 64 64"><path d="M24 18L46 32 24 46Z" fill="currentColor"/></svg></div><p class="live-hint">See what the bot sees, with everything it
                     has found drawn on top. Works from anywhere the panel opens,
                     and only runs while you are looking at it.</p>
                 </div>
@@ -657,27 +664,23 @@ function renderDashboard() {
     document.getElementById("liveToggleBtn")?.addEventListener("click", toggleLiveView);
     document.getElementById("browsePlaystylesBtn")?.addEventListener("click", () => setView("playstyles"));
     document.getElementById("goToBrawlersBtn")?.addEventListener("click", () => setView("queue"));
+    view.querySelector("[data-open-brawlers]")?.addEventListener("click", () => setView("queue"));
     bindRuntimeButtons();
     bindScheduleDismiss();
 }
 
+let scheduleDismissBound = false;
 function bindScheduleDismiss() {
-    const panel = document.querySelector(".runtime-schedule");
-    if (!panel || panel.dataset.dismissBound) return;
-    panel.dataset.dismissBound = "1";
-
-    panel.querySelector(".sched-close")?.addEventListener("click", () => {
-        panel.removeAttribute("open");
-    });
-
+    if (scheduleDismissBound) return;
+    scheduleDismissBound = true;
     document.addEventListener("click", (event) => {
-        if (panel.hasAttribute("open") && !panel.contains(event.target)) {
+        const panel = document.querySelector(".runtime-schedule[open]");
+        if (panel && (!panel.contains(event.target) || event.target.closest(".sched-close"))) {
             panel.removeAttribute("open");
         }
     });
-
     document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape") panel.removeAttribute("open");
+        if (event.key === "Escape") document.querySelector(".runtime-schedule[open]")?.removeAttribute("open");
     });
 }
 
@@ -697,7 +700,7 @@ function renderSheetQueue(queue) {
         return `
             <div class="sq-row${index === 0 ? " is-current" : ""}">
                 <span class="sq-index">${String(index + 1).padStart(2, "0")}</span>
-                <img class="sq-img" src="${escapeHtml(item.icon_url)}" alt="${escapeHtml(item.brawler)}">
+                <img loading="lazy" decoding="async" class="sq-img" src="${escapeHtml(item.icon_url)}" alt="${escapeHtml(item.brawler)}">
                 <span class="sq-name">${escapeHtml(item.brawler)}</span>
                 <span class="sq-now">${current}</span>
                 <span class="sq-target">${target}</span>
@@ -833,7 +836,7 @@ function renderQueue(force = false) {
                     <div class="player-pill ${playerPill.className}">
                         ${playerPill.className === "is-loading" ? '<div class="player-pill-spinner"></div>' : ''}
                         <strong>${escapeHtml(playerPill.title)}</strong>
-                        <span>${escapeHtml(playerPill.detail)}</span>
+                        ${playerPill.className === "has-error" ? `<details class="player-api-detail"><summary>Details</summary><p>${escapeHtml(playerPill.detail)}</p></details>` : `<span>${escapeHtml(playerPill.detail)}</span>`}
                     </div>
                 </div>
 
@@ -889,7 +892,7 @@ function renderBrawlerCards() {
 
     return filtered.map((item) => `
         <button class="b-cell ${item.name === state.selectedBrawler ? "active" : ""}" data-brawler="${escapeHtml(item.name)}">
-            <img src="${escapeHtml(item.icon_url)}" alt="${escapeHtml(item.name)}">
+            <img loading="lazy" decoding="async" src="${escapeHtml(item.icon_url)}" alt="${escapeHtml(item.name)}">
             <span>${escapeHtml(item.name)}</span>
         </button>
     `).join("");
@@ -1482,12 +1485,14 @@ function getHistorySummary() {
     const items = state.bootstrap.history.items || [];
     const wins = items.reduce((total, item) => total + Number(item.wins || 0), 0);
     const losses = items.reduce((total, item) => total + Number(item.losses || 0), 0);
-    const totalMatches = wins + losses;
+    const draws = items.reduce((total, item) => total + Number(item.draws || 0), 0);
+    const totalMatches = wins + losses + draws;
 
     return {
         total_matches: totalMatches,
         wins,
         losses,
+        draws,
         win_rate: totalMatches ? (wins / totalMatches) * 100 : 0,
         loss_rate: totalMatches ? (losses / totalMatches) * 100 : 0,
     };
@@ -1991,9 +1996,12 @@ async function instanceAction(action, name) {
 function startInstancePolling() {
     // Refresh only the status list (never the whole view, so a half-typed Add
     // form is not wiped), and only while the Accounts page is open.
-    setInterval(() => {
-        if (state.currentView === "instances" && state.instances?.is_supervisor) {
-            updateInstanceList();
+    if (state.instancePollTimer) return;
+    state.instancePollTimer = setInterval(async () => {
+        if (!document.hidden && !state.instancePollBusy && state.currentView === "instances" && state.instances?.is_supervisor) {
+            state.instancePollBusy = true;
+            try { await updateInstanceList(); }
+            finally { state.instancePollBusy = false; }
         }
     }, 4000);
 }
@@ -2354,11 +2362,26 @@ function bindRuntimeButtons() {
 
 function startRuntimePolling() {
     if (state.runtimePollTimer) return;
-    state.runtimePollTimer = setInterval(refreshRuntimeState, 1200);
+    const tick = async () => {
+        try { await refreshRuntimeState(); }
+        finally {
+            const delay = document.hidden ? 10000 : state.bootstrap?.runtime?.is_running ? 1200 : 4000;
+            state.runtimePollTimer = setTimeout(tick, delay);
+        }
+    };
+    state.runtimePollTimer = setTimeout(tick, 1200);
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+            if (liveViewShowing()) stopLiveView();
+        } else {
+            refreshRuntimeState();
+        }
+    });
 }
 
 async function refreshRuntimeState() {
-    if (!state.bootstrap) return;
+    if (!state.bootstrap || document.hidden || state.runtimePollBusy) return;
+    state.runtimePollBusy = true;
 
     try {
         const result = await fetchJSON("/api/runtime/status", {}, true);
@@ -2404,6 +2427,8 @@ async function refreshRuntimeState() {
         }
     } catch {
         return;
+    } finally {
+        state.runtimePollBusy = false;
     }
 }
 

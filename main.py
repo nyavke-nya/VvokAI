@@ -231,7 +231,7 @@ def vvok_main(remote, queue_data, stop_event=None, runtime_control=None):
                 detector = getattr(self.Play, "Detect_main_info", None)
                 if detector is not None:
                     note_provider(getattr(detector, "device", ""))
-                send(profile=self.stats_profile())
+                send(profile=self.stats_profile)
             except Exception:
                 pass
 

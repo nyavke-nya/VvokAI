@@ -99,7 +99,7 @@ report.check("the tab is registered", 'profile: { label: "Profile"' in app_js, T
 report.check("the view container exists",
              'id="view-profile"' in read_source("templates/index.html"),
              True)
-report.check("and it is rendered with the rest", "    renderProfile();" in app_js, True)
+report.check("profile is registered for rendering on navigation", "profile:renderProfile" in app_js, True)
 
 report.section("reading a time off the config")
 report.check("HH:MM", parse_clock("23:30"), 23 * 60 + 30)

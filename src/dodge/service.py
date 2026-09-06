@@ -65,7 +65,7 @@ class DodgeService:
         )
         self.log.open()
 
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._context = FrameContext()
         self._accumulated_shift = (0.0, 0.0)
         self._player_center = None
@@ -120,13 +120,24 @@ class DodgeService:
         self.log.close()
 
     def reset(self):
-        self.tracker.reset()
-        self.tracker.motion.reset()
-        self.enemy_tracker.reset()
-        self.teammate_tracker.reset()
+        # Serialize reset with the entire frame transaction: an old frame must
+        # never publish a decision after a new match has cleared its context.
         with self._lock:
+            self.tracker.reset()
+            self.tracker.motion.reset()
+            self.enemy_tracker.reset()
+            self.teammate_tracker.reset()
+            self.solver = DodgeSolver(self.config)
+            self._context = FrameContext()
+            self._player_center = None
+            self._tactical_vector = None
+            self._is_blocked = None
+            self._gas_veto = None
             self._projectiles = []
             self._decision = None
+            self._decision_stamp = 0.0
+            self._last_emergency = None
+            self._emergency_until = 0.0
             self._accumulated_shift = (0.0, 0.0)
 
     # ------------------------------------------------------------------
@@ -160,12 +171,12 @@ class DodgeService:
             if player_radius:
                 self._player_radius = player_radius
 
-        if self.config.aim_enabled:
-            self.enemy_tracker.update(context.enemies, pan, now)
-        # Not behind aim_enabled: following an ally is a movement decision and
-        # has nothing to do with leading shots. A light playstyle with aiming
-        # off still needs to know which ally is which.
-        self.teammate_tracker.update(context.teammates, pan, now)
+            if self.config.aim_enabled:
+                self.enemy_tracker.update(context.enemies, pan, now)
+            # Not behind aim_enabled: following an ally is a movement decision and
+            # has nothing to do with leading shots. A light playstyle with aiming
+            # off still needs to know which ally is which.
+            self.teammate_tracker.update(context.teammates, pan, now)
 
     # ------------------------------------------------------------------
     # aiming
@@ -313,6 +324,10 @@ class DodgeService:
                 self._stop_event.wait(0.05)
 
     def _process(self, frame, stamp, emergency):
+        with self._lock:
+            self._process_locked(frame, stamp, emergency)
+
+    def _process_locked(self, frame, stamp, emergency):
         with self._lock:
             context = self._context
             shift = self._accumulated_shift
